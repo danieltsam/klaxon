@@ -5,6 +5,7 @@ export interface AlarmRecord {
   id: string;
   target_time: string;
   label: string;
+  description?: string;
   status: 'pending' | 'ringing' | 'dismissed' | 'snoozed' | 'canceled' | 'disabled';
   repeat_days?: string; // e.g. '1,2,3,4,5'
   sound_tone?: string; // e.g. 'alarm', 'chime', 'digital'
@@ -32,6 +33,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     target_time TEXT NOT NULL,
     label TEXT NOT NULL,
+    description TEXT DEFAULT NULL,
     status TEXT DEFAULT 'pending',
     repeat_days TEXT DEFAULT NULL,
     sound_tone TEXT DEFAULT 'alarm',
@@ -50,6 +52,7 @@ db.exec(`
 
 // Migrations for existing databases
 const migrations = [
+  'ALTER TABLE alarms ADD COLUMN description TEXT DEFAULT NULL;',
   'ALTER TABLE alarms ADD COLUMN repeat_days TEXT DEFAULT NULL;',
   "ALTER TABLE alarms ADD COLUMN sound_tone TEXT DEFAULT 'alarm';",
   'ALTER TABLE alarms ADD COLUMN ramp_seconds INTEGER DEFAULT 30;',
@@ -93,10 +96,11 @@ export const AlarmRepo = {
 
   create(alarm: AlarmRecord): AlarmRecord {
     db.prepare(`
-      INSERT INTO alarms (id, target_time, label, status, repeat_days, sound_tone, ramp_seconds)
-      VALUES (@id, @target_time, @label, @status, @repeat_days, @sound_tone, @ramp_seconds)
+      INSERT INTO alarms (id, target_time, label, description, status, repeat_days, sound_tone, ramp_seconds)
+      VALUES (@id, @target_time, @label, @description, @status, @repeat_days, @sound_tone, @ramp_seconds)
     `).run({
       ...alarm,
+      description: alarm.description || null,
       repeat_days: alarm.repeat_days || null,
       sound_tone: alarm.sound_tone || 'alarm',
       ramp_seconds: alarm.ramp_seconds ?? 30

@@ -1313,7 +1313,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         onPressed: () async {
-                          final id = DateTime.now().millisecondsSinceEpoch % 100000;
                           final cleanTime = DateTime(
                             selectedTime.year,
                             selectedTime.month,
@@ -1330,8 +1329,20 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                               : 'Alarm';
                           final desc = descController.text.trim();
 
+                          // First create on backend to establish sync with dashboard
+                          String? remoteId = await BackendClient.createRemoteAlarm(
+                            targetTime: cleanTime,
+                            label: title,
+                            description: desc,
+                            soundTone: selectedTone,
+                            rampSeconds: selectedRampSeconds,
+                          );
+
+                          final assignedUuid = remoteId ?? 'local_${DateTime.now().millisecondsSinceEpoch}';
+                          final intId = IdMapper.uuidToInt(assignedUuid);
+
                           final settings = AlarmSettings(
-                            id: id,
+                            id: intId,
                             dateTime: cleanTime,
                             assetAudioPath: assetAudio,
                             loopAudio: true,
@@ -1349,27 +1360,17 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             ),
                           );
 
-                          // First create on backend to establish sync with dashboard
-                          String? remoteId = await BackendClient.createRemoteAlarm(
-                            targetTime: cleanTime,
-                            label: title,
-                            soundTone: selectedTone,
-                            rampSeconds: selectedRampSeconds,
-                          );
-
-                          final assignedUuid = remoteId ?? 'local_$id';
-
                           await Alarm.set(alarmSettings: settings);
                           await IdMapper.saveMapping(
-                            id,
+                            intId,
                             assignedUuid,
                             label: title,
                             description: desc,
                             targetTime: cleanTime,
                           );
-                          await IdMapper.setSoundTone(id, selectedTone);
-                          await IdMapper.setRampSeconds(id, selectedRampSeconds);
-                          await IdMapper.setEnabled(id, true);
+                          await IdMapper.setSoundTone(intId, selectedTone);
+                          await IdMapper.setRampSeconds(intId, selectedRampSeconds);
+                          await IdMapper.setEnabled(intId, true);
 
                           if (bottomSheetContext.mounted) {
                             Navigator.pop(bottomSheetContext);

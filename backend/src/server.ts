@@ -119,12 +119,13 @@ app.post<{
   Body: {
     target_time: string;
     label: string;
+    description?: string;
     repeat_days?: string | number[];
     sound_tone?: string;
     ramp_seconds?: number;
   }
 }>('/api/alarms', async (request, reply) => {
-  const { target_time, label, repeat_days, sound_tone, ramp_seconds } = request.body || {};
+  const { target_time, label, description, repeat_days, sound_tone, ramp_seconds } = request.body || {};
 
   if (!target_time || !label) {
     return reply.status(400).send({
@@ -161,6 +162,7 @@ app.post<{
     id,
     target_time: dateObj.toISOString(),
     label: label.trim(),
+    description: description ? description.trim() : undefined,
     status: 'pending',
     repeat_days: repeatDaysStr,
     sound_tone: normalizedTone,
@@ -177,6 +179,9 @@ app.post<{
     sound_tone: normalizedTone,
     ramp_seconds: String(normalizedRamp)
   };
+  if (newAlarm.description) {
+    fcmPayload.description = newAlarm.description;
+  }
   if (repeatDaysStr) {
     fcmPayload.repeat_days = repeatDaysStr;
   }

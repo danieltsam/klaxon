@@ -114,6 +114,7 @@ describe('Fastify Alarm API & Persistence Test Suite', () => {
         payload: {
           target_time: targetTimeWithSeconds,
           label: 'Standup Sync',
+          description: 'Engineering daily standup and check-in',
           repeat_days: [1, 2, 3, 4, 5]
         }
       });
@@ -123,6 +124,7 @@ describe('Fastify Alarm API & Persistence Test Suite', () => {
       assert.ok(data.id);
       createdAlarmId = data.id;
       assert.strictEqual(data.label, 'Standup Sync');
+      assert.strictEqual(data.description, 'Engineering daily standup and check-in');
       assert.strictEqual(data.status, 'pending');
       assert.strictEqual(data.repeat_days, '1,2,3,4,5');
 
@@ -146,6 +148,7 @@ describe('Fastify Alarm API & Persistence Test Suite', () => {
       const found = alarms.find((a: any) => a.id === createdAlarmId);
       assert.ok(found, 'Created alarm should appear in active view');
       assert.strictEqual(found.status, 'pending');
+      assert.strictEqual(found.description, 'Engineering daily standup and check-in');
     });
 
     it('GET /api/alarms?view=history should not include pending alarms', async () => {

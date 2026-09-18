@@ -56,8 +56,15 @@ class AlarmService {
         0,
       );
 
+      final desc = data['description']?.toString();
       // Ensure mapping is preserved
-      await IdMapper.saveMapping(intId, uuid.toString(), label: label.toString(), targetTime: parsedDateTime);
+      await IdMapper.saveMapping(
+        intId,
+        uuid.toString(),
+        label: label.toString(),
+        description: desc,
+        targetTime: parsedDateTime,
+      );
       await IdMapper.setSnoozed(intId, false);
       await IdMapper.setSoundTone(intId, tone);
       await IdMapper.setRampSeconds(intId, rampSec);
@@ -129,6 +136,7 @@ class AlarmService {
         final tone = remote['sound_tone']?.toString() ?? 'alarm';
         final rampSec = int.tryParse(remote['ramp_seconds']?.toString() ?? '30') ?? 30;
         final status = remote['status']?.toString() ?? 'pending';
+        final desc = remote['description']?.toString();
 
         if (uuid == null || targetTimeStr == null) continue;
         remoteUuids.add(uuid);
@@ -143,6 +151,7 @@ class AlarmService {
           intId,
           uuid,
           label: label,
+          description: desc,
           targetTime: targetDate,
           soundTone: tone,
           rampSeconds: rampSec,
@@ -174,6 +183,7 @@ class AlarmService {
               'id': uuid,
               'target_time': targetTimeStr,
               'label': label,
+              'description': desc,
               'repeat_days': repeatDaysStr,
               'sound_tone': tone,
               'ramp_seconds': rampSec.toString(),
@@ -182,32 +192,34 @@ class AlarmService {
         }
       }
 
-      // Prune local alarms whose backend counterpart does not exist or was deleted
+      // Prune local alarms whose backend counterpart does not exist or was deleted, or non-canonical IDs
       for (final local in localAlarms) {
         final uuid = await IdMapper.getUuid(local.id);
         if (uuid != null && uuid.startsWith('local_')) {
           continue;
         }
-        if (uuid == null || !remoteUuids.contains(uuid)) {
+        final isCanonical = uuid != null && local.id == IdMapper.uuidToInt(uuid);
+        if (uuid == null || !remoteUuids.contains(uuid) || !isCanonical) {
           await Alarm.stop(local.id);
           await IdMapper.removeMapping(local.id);
           // ignore: avoid_print
-          print('[AlarmService] Pruned local alarm ${local.id} ($uuid)');
+          print('[AlarmService] Pruned non-canonical or stale local alarm ${local.id} ($uuid)');
         }
       }
 
-      // Also prune any stored mappings that are no longer on server
+      // Also prune any stored mappings that are no longer on server or non-canonical IDs
       final allStoredIds = await IdMapper.getAllKnownIds();
       for (final id in allStoredIds) {
         final uuid = await IdMapper.getUuid(id);
         if (uuid != null && uuid.startsWith('local_')) {
           continue;
         }
-        if (uuid == null || !remoteUuids.contains(uuid)) {
+        final isCanonical = uuid != null && id == IdMapper.uuidToInt(uuid);
+        if (uuid == null || !remoteUuids.contains(uuid) || !isCanonical) {
           await Alarm.stop(id);
           await IdMapper.removeMapping(id);
           // ignore: avoid_print
-          print('[AlarmService] Purged stale stored mapping for $id ($uuid)');
+          print('[AlarmService] Purged non-canonical or stale stored mapping for $id ($uuid)');
         }
       }
 

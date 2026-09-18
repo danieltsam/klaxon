@@ -78,6 +78,7 @@ class BackendClient {
   static Future<String?> createRemoteAlarm({
     required DateTime targetTime,
     required String label,
+    String? description,
     List<int>? repeatDays,
     String? soundTone,
     int? rampSeconds,
@@ -98,6 +99,9 @@ class BackendClient {
         'target_time': alignedTarget.toUtc().toIso8601String(),
         'label': label,
       };
+      if (description != null && description.isNotEmpty) {
+        bodyMap['description'] = description;
+      }
       if (repeatDays != null && repeatDays.isNotEmpty) {
         bodyMap['repeat_days'] = repeatDays;
       }
