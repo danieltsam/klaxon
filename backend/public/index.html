@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html class="h-full bg-[#08090A]" lang="en">
+<html class="h-full bg-[#0a0c08]" lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-  <title>alarmcore // remote alarm dashboard</title>
-  <!-- Remote Alarm System -->
+  <title>alarmcore // Remote Alarm dashboard</title>
+  <!-- Tailwind CSS v3 with forms and container-queries plugins -->
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <script data-purpose="tailwind-config">
     tailwind.config = {
@@ -13,22 +13,20 @@
         extend: {
           colors: {
             surface: {
-              DEFAULT: '#121316',
-              dark: '#08090A',
-              card: '#16181C',
-              border: '#26282E',
-              hover: '#1B1E24'
+              DEFAULT: '#11140f',
+              dark: '#0a0c08',
+              card: '#161a14',
+              border: '#232820',
+              hover: '#1c2119'
             },
-            linear: {
-              indigo: '#5E6AD2',
-              'indigo-hover': '#4E5AC0',
-              muted: '#8A8F98',
-              border: '#26282E'
+            accent: {
+              DEFAULT: '#5E6AD2',
+              hover: '#4E5AC0'
             }
           },
           fontFamily: {
-            sans: ['-apple-system', 'BlinkMacSystemFont', '"Inter"', '"Helvetica Neue"', 'Helvetica', 'Arial', 'sans-serif'],
-            mono: ['SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace']
+            sans: ['Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif'],
+            mono: ['Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif']
           }
         }
       }
@@ -40,384 +38,556 @@
       height: 6px;
     }
     ::-webkit-scrollbar-track {
-      background: #08090A;
+      background: #0a0c08;
     }
     ::-webkit-scrollbar-thumb {
-      background: #26282E;
+      background: #232820;
       border-radius: 3px;
     }
     ::-webkit-scrollbar-thumb:hover {
-      background: #363942;
-    }
-    @keyframes pulse-fast {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.3; }
-    }
-    .animate-pulse-fast {
-      animation: pulse-fast 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      background: #2e352b;
     }
   </style>
 </head>
-<body class="h-full font-sans text-zinc-300 antialiased selection:bg-indigo-900 selection:text-indigo-100 bg-[#08090A]">
-  <div class="min-h-full flex flex-col pb-28">
-    <!-- Top Linear Header Bar -->
-    <header class="border-b border-[#26282E] bg-[#0E1013]/90 backdrop-blur-md px-6 sm:px-12 py-4 shrink-0 sticky top-0 z-30" data-purpose="top-header">
-      <div class="max-w-3xl mx-auto flex items-center justify-between">
-        <!-- Brand & Workspace -->
+<body class="h-full font-sans text-zinc-300 antialiased selection:bg-[#5E6AD2]/30 selection:text-zinc-100 bg-[#0a0c08]">
+  <!-- BEGIN: AppLayout (Single column, no sidebar) -->
+  <div class="flex h-full w-full flex-col overflow-hidden">
+    <!-- Top Header Bar -->
+    <header class="flex h-20 items-center justify-between border-b border-[#232820] px-8 lg:px-12 bg-[#0e110d] shrink-0" data-purpose="top-header">
+      <!-- Brand Header -->
+      <div class="flex items-center gap-6">
         <div class="flex items-center gap-3">
-          <div class="w-5 h-5 bg-[#5E6AD2] rounded flex items-center justify-center font-bold text-xs text-white">
-            A
-          </div>
-          <span class="text-xs font-semibold tracking-tight text-[#F7F8F8] lowercase">alarmcore / web</span>
-          <span class="text-xs text-zinc-600">//</span>
-          <span id="server-time" class="text-xs font-mono text-zinc-500">--:--:--</span>
+          <svg class="h-4 w-4 text-[#5E6AD2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+          </svg>
+          <span class="text-xs font-medium tracking-widest text-zinc-100 lowercase">alarmcore</span>
         </div>
 
-        <!-- Right Controls: Search, Battery, Settings -->
-        <div class="flex items-center gap-4">
-          <!-- Search input -->
-          <div class="relative hidden sm:block">
-            <input type="text" id="input-search" placeholder="search alarms..." class="bg-[#141619] border border-[#26282E] text-xs text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-1.5 pl-8 w-44 focus:w-60 focus:border-[#5E6AD2] focus:ring-0 transition-all font-mono">
-            <svg class="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-          </div>
-
-          <!-- Phone Telemetry Badge -->
-          <div class="flex items-center gap-1.5 text-xs font-mono px-2.5 py-1 rounded-md bg-[#141619] border border-[#26282E]">
-            <span id="header-device-dot" class="h-1.5 w-1.5 rounded-full bg-zinc-600"></span>
-            <span id="header-device-status" class="text-[#8A8F98]">syncing...</span>
-          </div>
-
-          <!-- Settings Button -->
-          <button id="btn-open-settings" class="text-xs font-mono text-[#8A8F98] hover:text-[#F7F8F8] transition-colors lowercase" type="button">
-            [ settings &amp; api ]
+        <!-- Navigation Tabs -->
+        <nav class="flex items-center gap-6 text-xs">
+          <button id="nav-btn-dashboard" onclick="switchView('dashboard')" class="text-xs font-medium text-[#5E6AD2] transition-colors lowercase" type="button">
+            dashboard
           </button>
+          <button id="nav-btn-settings" onclick="switchView('settings')" class="text-xs font-normal text-zinc-400 hover:text-zinc-200 transition-colors lowercase" type="button">
+            settings
+          </button>
+        </nav>
+      </div>
+
+      <!-- Header Controls: Telemetry, Clock, Calendar -->
+      <div class="flex items-center gap-4">
+        <!-- Live Search (visible in dashboard view) -->
+        <div id="header-search-container" class="relative hidden sm:block">
+          <input type="text" id="input-search" placeholder="search alarms..." class="rounded-none border border-[#232820] bg-transparent px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 focus:border-[#5E6AD2] focus:ring-0 w-44 transition-all" />
+        </div>
+
+        <!-- Phone Telemetry Badge -->
+        <div class="flex items-center gap-2 px-3 py-1.5 border border-[#232820] bg-[#11140f] text-xs">
+          <span id="header-device-dot" class="h-1.5 w-1.5 rounded-full bg-[#5E6AD2]"></span>
+          <span id="header-device-status" class="text-zinc-400 text-[11px]">phone online</span>
+        </div>
+
+        <!-- System Clock -->
+        <div class="text-[11px] font-mono text-zinc-500 hidden md:block" id="header-clock">
+          --:--:--
         </div>
       </div>
     </header>
 
-    <!-- Main Content Area (Single column centered, exactly matching mobile) -->
-    <main class="flex-1 px-6 sm:px-12 py-8 overflow-y-auto">
-      <div class="max-w-3xl mx-auto space-y-8">
-
-        <!-- EMERGENCY RINGING STRIP (DYNAMIC) -->
-        <div id="ringing-banner" class="hidden border border-rose-600/80 bg-rose-950/40 p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-2xl">
+    <!-- Scrollable Main View -->
+    <main class="flex-1 overflow-y-auto px-6 sm:px-12 py-12 pb-32">
+      <div class="max-w-4xl mx-auto space-y-12">
+        <!-- Ringing Banner (emergency alert) -->
+        <div id="ringing-banner" class="hidden p-5 border border-rose-900/60 bg-rose-950/20 text-xs flex items-center justify-between">
           <div class="flex items-center gap-3">
-            <span class="h-2 w-2 rounded-full bg-rose-500 animate-pulse-fast shrink-0"></span>
-            <div>
-              <span class="text-xs font-medium text-rose-200 tracking-wider lowercase">alarm ringing now:</span>
-              <span id="ringing-banner-label" class="ml-2 text-xs font-bold text-white"></span>
-              <span id="ringing-banner-time" class="ml-2 text-xs font-mono text-rose-300"></span>
-            </div>
+            <span class="h-2 w-2 bg-rose-500 animate-ping"></span>
+            <span class="text-rose-200 font-medium tracking-wide">alarm ringing now: <span id="ringing-banner-label" class="text-white font-bold"></span> at <span id="ringing-banner-time" class="font-mono"></span></span>
           </div>
-          <div class="flex items-center gap-3">
-            <button id="btn-silence-active" class="px-4 py-2 border border-rose-500 bg-rose-900/60 text-xs font-medium text-rose-100 hover:bg-rose-800 rounded-lg transition-colors lowercase tracking-wider">
-              [ silence ringer now ]
-            </button>
-          </div>
+          <button id="btn-silence-active" class="rounded-none border border-rose-700 bg-rose-900/40 px-4 py-1.5 text-xs font-medium text-rose-200 hover:bg-rose-800 transition-colors" type="button">
+            silence ringer now
+          </button>
         </div>
 
-        <!-- HERO NEXT UPCOMING ALARM CARD (Linear Active Cycle style) -->
-        <div id="hero-card-container">
-          <!-- Rendered dynamically -->
+        <!-- VIEW 1: DASHBOARD -->
+        <div id="view-dashboard" class="space-y-12">
+          <!-- Hero Upcoming Alarm Card -->
+          <div id="hero-card-container"></div>
+
+          <!-- Active Alarms Section -->
+          <section class="space-y-8" data-purpose="active-alarms-section">
+            <div class="flex items-center justify-between border-b border-[#232820] pb-6">
+              <div class="space-y-2">
+                <h2 class="text-xl font-light tracking-tight text-zinc-100">active alarms</h2>
+                <p class="text-xs text-zinc-500 font-light">currently armed trigger conditions and threshold parameters.</p>
+              </div>
+              <span id="alarms-count-badge" class="px-2 py-0.5 border border-[#232820] text-[11px] font-mono text-zinc-400">0</span>
+            </div>
+
+            <!-- List of Alarms -->
+            <div id="all-alarms-list" class="divide-y divide-[#232820]/40">
+              <!-- Dynamically rendered rows -->
+            </div>
+          </section>
         </div>
 
-        <!-- SECTION: ALL ALARMS (Renamed from active alarms) -->
-        <section class="space-y-4">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <h2 class="text-xs font-semibold tracking-wider text-[#8A8F98] uppercase">all alarms</h2>
-              <span id="alarms-count-badge" class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#1C1E24] text-[#8A8F98]">0</span>
+        <!-- VIEW 2: SETTINGS (Styled exactly like user snippet) -->
+        <div id="view-settings" class="hidden space-y-16">
+          <!-- Section 1: Active Configuration -->
+          <section class="space-y-8" data-purpose="active-alarms-settings">
+            <div class="space-y-2 border-b border-[#232820] pb-6">
+              <h2 class="text-xl font-light tracking-tight text-zinc-100">alarm settings &amp; configuration</h2>
+              <p class="text-xs text-zinc-500 font-light">device telemetry, sound preferences, calendar integration, and system parameters.</p>
             </div>
-            <button id="btn-refresh-alarms" class="text-xs text-zinc-500 hover:text-zinc-300 font-mono lowercase">[ sync ]</button>
-          </div>
+            <div class="divide-y divide-[#232820]/40">
+              <!-- Primary Phone Telemetry -->
+              <div class="py-6 flex items-center justify-between gap-12">
+                <div class="max-w-md">
+                  <label class="block text-xs font-medium text-zinc-200">connected android phone</label>
+                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">primary hardware target for native alarms and background execution</span>
+                </div>
+                <div class="w-72 space-y-2">
+                  <div id="device-info-card" class="p-3 border border-[#232820] bg-[#11140f] text-[11px] space-y-1 font-mono text-zinc-400">
+                    <div>syncing device details...</div>
+                  </div>
+                  <button id="btn-force-resync" class="w-full text-center border border-[#232820] bg-[#11140f] py-1.5 text-xs text-zinc-400 hover:text-zinc-200 hover:border-zinc-600 transition-colors" type="button">
+                    [ force resync ]
+                  </button>
+                </div>
+              </div>
 
-          <!-- All Alarms Feed -->
-          <div id="all-alarms-list" class="space-y-2.5">
-            <div class="py-12 text-xs text-zinc-600 font-mono text-center lowercase">loading alarms...</div>
-          </div>
-        </section>
+              <!-- Setting Item 1: Sound Profile -->
+              <div class="py-6 flex items-center justify-between gap-12">
+                <div class="max-w-md">
+                  <label class="block text-xs font-medium text-zinc-200">alarm sound profile</label>
+                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">audio feedback sequence played when threshold is breached</span>
+                </div>
+                <div class="flex items-center gap-2 w-72">
+                  <select id="settings-sound-select" class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
+                    <option value="alarm" class="bg-[#11140f]">ding (default alarm)</option>
+                    <option value="chime" class="bg-[#11140f]">chime (gentle)</option>
+                    <option value="digital" class="bg-[#11140f]">digital pulse</option>
+                  </select>
+                  <button id="btn-preview-sound" class="border border-[#232820] bg-transparent p-2 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors" title="test audio" type="button">
+                    <svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
 
+              <!-- Setting Item 2: Volume Ramp Duration -->
+              <div class="py-6 flex items-center justify-between gap-12">
+                <div class="max-w-md">
+                  <label class="block text-xs font-medium text-zinc-200">volume ramp duration</label>
+                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">gradual volume increase curve to prevent abrupt awakening</span>
+                </div>
+                <div class="w-72">
+                  <select id="settings-ramp-select" class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
+                    <option value="0" class="bg-[#11140f]">immediate (0s)</option>
+                    <option value="15" selected class="bg-[#11140f]">gentle (15s)</option>
+                    <option value="30" class="bg-[#11140f]">standard (30s)</option>
+                    <option value="60" class="bg-[#11140f]">deep sleep ramp (60s)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Setting Item 3: Minimum Trigger Priority -->
+              <div class="py-6 flex items-center justify-between gap-12">
+                <div class="max-w-md">
+                  <label class="block text-xs font-medium text-zinc-200">minimum trigger priority</label>
+                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">filter low-severity system events from broadcasting</span>
+                </div>
+                <div class="w-72">
+                  <select class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
+                    <option class="bg-[#11140f]">any priority</option>
+                    <option class="bg-[#11140f]">warning &amp; above</option>
+                    <option class="bg-[#11140f]">critical only</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Setting Item 4: Acknowledge Timeout -->
+              <div class="py-6 flex items-center justify-between gap-12">
+                <div class="max-w-md">
+                  <label class="block text-xs font-medium text-zinc-200">acknowledge timeout</label>
+                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">auto-clear unacknowledged non-critical alarms</span>
+                </div>
+                <div class="w-72">
+                  <select class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
+                    <option class="bg-[#11140f]">never (manual)</option>
+                    <option class="bg-[#11140f]">after 1 hour</option>
+                    <option class="bg-[#11140f]">after 24 hours</option>
+                    <option class="bg-[#11140f]">after one week</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Setting Item 5: Calendar Sync Feed -->
+              <div class="py-6 flex items-center justify-between gap-12">
+                <div class="max-w-md">
+                  <label class="block text-xs font-medium text-zinc-200">calendar subscription feed (rfc 5545)</label>
+                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">subscribe to alarms in google calendar, apple calendar, or outlook</span>
+                </div>
+                <div class="w-72 flex items-center gap-2">
+                  <button id="btn-copy-ical-modal" class="flex-1 rounded-none border border-[#232820] bg-transparent py-2 text-xs text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors" type="button">
+                    copy ical url
+                  </button>
+                  <button id="btn-open-gcal-modal" class="flex-1 rounded-none border border-[#232820] bg-transparent py-2 text-xs text-[#5E6AD2] hover:text-[#7A85E6] hover:border-[#5E6AD2] transition-colors" type="button">
+                    + google cal
+                  </button>
+                </div>
+              </div>
+
+              <!-- Setting Item 6: Remote Websocket Telemetry -->
+              <div class="py-6 flex items-center justify-between gap-12">
+                <div class="max-w-md">
+                  <label class="block text-xs font-medium text-zinc-200">remote websocket telemetry</label>
+                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">receive instant alarm feeds while remote web app is active</span>
+                </div>
+                <div class="w-72">
+                  <select class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
+                    <option class="bg-[#11140f]">enabled (instant sync)</option>
+                    <option class="bg-[#11140f]">disabled</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Section 2: Display & Appearance Rules (matches user snippet) -->
+          <section class="space-y-8" data-purpose="recurring-alarms-section">
+            <div class="space-y-2 border-b border-[#232820] pb-6">
+              <h2 class="text-xl font-light tracking-tight text-zinc-100">recurring alarms &amp; display rules</h2>
+              <p class="text-xs text-zinc-500 font-light">define system appearance, timestamp formats, and interface localization.</p>
+            </div>
+            <div class="divide-y divide-[#232820]/40">
+              <!-- Appearance -->
+              <div class="py-6 flex items-center justify-between gap-12">
+                <div class="max-w-md">
+                  <label class="block text-xs font-medium text-zinc-200">system theme &amp; appearance</label>
+                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">override ui color rendering profiles</span>
+                </div>
+                <div class="w-72">
+                  <select class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
+                    <option class="bg-[#11140f]">system default (dark mode)</option>
+                    <option class="bg-[#11140f]">force dark</option>
+                    <option class="bg-[#11140f]">high contrast mono</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Date Format -->
+              <div class="py-6 flex items-center justify-between gap-12">
+                <div class="max-w-md">
+                  <label class="block text-xs font-medium text-zinc-200">date format convention</label>
+                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">standard system timestamp display layout</span>
+                </div>
+                <div class="w-72">
+                  <select class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
+                    <option class="bg-[#11140f]">dd/mm/yyyy (26/04/2026)</option>
+                    <option class="bg-[#11140f]">mm-dd-yyyy</option>
+                    <option class="bg-[#11140f]">iso 8601 (yyyy-mm-dd)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Time Format -->
+              <div class="py-6 flex items-center justify-between gap-12">
+                <div class="max-w-md">
+                  <label class="block text-xs font-medium text-zinc-200">time format convention</label>
+                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">clock readout formatting rules</span>
+                </div>
+                <div class="w-72">
+                  <select class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
+                    <option class="bg-[#11140f]">24-hour (14:30)</option>
+                    <option class="bg-[#11140f]">12-hour am/pm (02:30 pm)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Language & Localization -->
+              <div class="py-6 flex items-center justify-between gap-12">
+                <div class="max-w-md">
+                  <label class="block text-xs font-medium text-zinc-200">language &amp; localization</label>
+                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">interface localization pack</span>
+                </div>
+                <div class="w-72">
+                  <select class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
+                    <option class="bg-[#11140f]">english (us)</option>
+                    <option class="bg-[#11140f]">deutsch</option>
+                    <option class="bg-[#11140f]">français</option>
+                    <option class="bg-[#11140f]">nihongo</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
     </main>
+
+    <!-- Centered Floating "+ new alarm" Pill -->
+    <div class="fixed bottom-8 left-1/2 -translate-x-1/2 z-40">
+      <button onclick="openCreateModal()" class="flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#5E6AD2] hover:bg-[#4E5AC0] text-white text-xs font-medium tracking-wide shadow-2xl transition-all cursor-pointer">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        <span>+ new alarm</span>
+      </button>
+    </div>
   </div>
 
-  <!-- CENTER FLOATING PILL BUTTON -->
-  <button id="btn-floating-add" class="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2 px-6 py-3 bg-[#5E6AD2] hover:bg-[#4E5AC0] text-white font-medium text-xs rounded-full shadow-2xl transition-all tracking-wider font-mono z-40 hover:scale-105 active:scale-95">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
-    <span>new alarm</span>
-  </button>
+  <!-- Audio preview element -->
+  <audio id="audio-preview"></audio>
 
-  <!-- ALARM DETAILS & ADJUSTMENTS MODAL -->
-  <div id="alarm-detail-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-    <div class="w-full max-w-lg border border-[#26282E] bg-[#0F1013] rounded-2xl shadow-2xl overflow-hidden divide-y divide-[#26282E]">
-      <!-- Header -->
-      <div class="flex items-center justify-between px-6 py-4 bg-[#141619]">
-        <span class="text-xs font-semibold text-[#F7F8F8] lowercase">alarm details &amp; adjustments</span>
-        <button id="btn-close-detail" class="text-xs font-mono text-zinc-500 hover:text-zinc-200 lowercase">[ close ]</button>
+  <!-- BEGIN: CREATE ALARM MODAL (Sharp Editorial Dark) -->
+  <div id="create-alarm-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-[#11140f] border border-[#232820] w-full max-w-lg p-6 space-y-6 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-[#232820] pb-4">
+        <h3 class="text-sm font-medium tracking-wide text-zinc-100 lowercase">schedule new alarm</h3>
+        <button onclick="closeCreateModal()" class="text-zinc-500 hover:text-zinc-200 text-xs font-mono lowercase">close</button>
       </div>
 
-      <!-- Form Body -->
-      <form id="form-edit-alarm" class="p-6 space-y-5">
-        <input type="hidden" id="edit-alarm-id">
+      <form id="create-alarm-form" class="space-y-4">
+        <!-- Title -->
+        <div>
+          <label class="block text-xs font-medium text-zinc-400 mb-1 lowercase">alarm label</label>
+          <input type="text" id="new-alarm-title" required placeholder="e.g. morning workout" class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0 placeholder:text-zinc-600" />
+        </div>
+
+        <!-- Description / Rich Notes -->
+        <div>
+          <label class="block text-xs font-medium text-zinc-400 mb-1 lowercase">description &amp; notes (rich text)</label>
+          <textarea id="new-alarm-desc" rows="2" placeholder="optional notes, checklist, or routine..." class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0 placeholder:text-zinc-600"></textarea>
+        </div>
+
+        <!-- Time & Date -->
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-zinc-400 mb-1 lowercase">trigger time</label>
+            <input type="time" id="new-alarm-time" required class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-zinc-400 mb-1 lowercase">trigger date</label>
+            <input type="date" id="new-alarm-date" required class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0" />
+          </div>
+        </div>
+
+        <!-- Weekday Recurrence -->
+        <div>
+          <label class="block text-xs font-medium text-zinc-400 mb-1.5 lowercase">repeat days</label>
+          <div class="flex items-center gap-1.5">
+            <button type="button" data-day="1" class="day-btn flex-1 py-1.5 border border-[#232820] bg-transparent text-[11px] text-zinc-500 font-mono hover:border-zinc-500 transition-colors">m</button>
+            <button type="button" data-day="2" class="day-btn flex-1 py-1.5 border border-[#232820] bg-transparent text-[11px] text-zinc-500 font-mono hover:border-zinc-500 transition-colors">t</button>
+            <button type="button" data-day="3" class="day-btn flex-1 py-1.5 border border-[#232820] bg-transparent text-[11px] text-zinc-500 font-mono hover:border-zinc-500 transition-colors">w</button>
+            <button type="button" data-day="4" class="day-btn flex-1 py-1.5 border border-[#232820] bg-transparent text-[11px] text-zinc-500 font-mono hover:border-zinc-500 transition-colors">t</button>
+            <button type="button" data-day="5" class="day-btn flex-1 py-1.5 border border-[#232820] bg-transparent text-[11px] text-zinc-500 font-mono hover:border-zinc-500 transition-colors">f</button>
+            <button type="button" data-day="6" class="day-btn flex-1 py-1.5 border border-[#232820] bg-transparent text-[11px] text-zinc-500 font-mono hover:border-zinc-500 transition-colors">s</button>
+            <button type="button" data-day="7" class="day-btn flex-1 py-1.5 border border-[#232820] bg-transparent text-[11px] text-zinc-500 font-mono hover:border-zinc-500 transition-colors">s</button>
+          </div>
+        </div>
+
+        <!-- Sound & Ramp Duration -->
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-zinc-400 mb-1 lowercase">tone profile</label>
+            <select id="new-alarm-tone" class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
+              <option value="alarm" class="bg-[#11140f]">ding (default alarm)</option>
+              <option value="chime" class="bg-[#11140f]">chime (gentle)</option>
+              <option value="digital" class="bg-[#11140f]">digital pulse</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-zinc-400 mb-1 lowercase">volume ramp</label>
+            <select id="new-alarm-ramp" class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
+              <option value="0" class="bg-[#11140f]">immediate (0s)</option>
+              <option value="15" selected class="bg-[#11140f]">gentle (15s)</option>
+              <option value="30" class="bg-[#11140f]">standard (30s)</option>
+              <option value="60" class="bg-[#11140f]">deep sleep (60s)</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="create-alarm-feedback" class="text-xs text-rose-400 min-h-[16px]"></div>
+
+        <div class="flex items-center justify-end gap-3 pt-3 border-t border-[#232820]">
+          <button type="button" onclick="closeCreateModal()" class="px-4 py-2 border border-[#232820] bg-transparent text-xs text-zinc-400 hover:text-zinc-200 transition-colors">cancel</button>
+          <button type="submit" class="px-5 py-2 bg-[#5E6AD2] hover:bg-[#4E5AC0] text-white text-xs font-medium transition-colors">
+            + arm alarm
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- BEGIN: EDIT ALARM MODAL -->
+  <div id="alarm-detail-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-[#11140f] border border-[#232820] w-full max-w-lg p-6 space-y-6 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-[#232820] pb-4">
+        <h3 class="text-sm font-medium tracking-wide text-zinc-100 lowercase">adjust alarm details</h3>
+        <button onclick="closeAlarmDetail()" class="text-zinc-500 hover:text-zinc-200 text-xs font-mono lowercase">close</button>
+      </div>
+
+      <form id="edit-alarm-form" class="space-y-4">
+        <input type="hidden" id="edit-alarm-id" />
 
         <!-- Title -->
         <div>
-          <label class="block text-xs font-semibold text-[#8A8F98] lowercase mb-1.5">alarm title</label>
-          <input type="text" id="edit-alarm-title" required class="w-full rounded-lg border border-[#26282E] bg-[#16181B] px-3.5 py-2 text-xs text-[#F7F8F8] focus:border-[#5E6AD2] focus:ring-0">
+          <label class="block text-xs font-medium text-zinc-400 mb-1 lowercase">alarm label</label>
+          <input type="text" id="edit-alarm-title" required class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0" />
         </div>
 
-        <!-- Free Rich Text Description / Notes -->
+        <!-- Description / Rich Notes -->
         <div>
-          <label class="block text-xs font-semibold text-[#8A8F98] lowercase mb-1.5">description &amp; notes (rich text)</label>
-          <textarea id="edit-alarm-desc" rows="3" placeholder="add routines, goals, checklists, or context notes..." class="w-full rounded-lg border border-[#26282E] bg-[#16181B] px-3.5 py-2 text-xs text-[#F7F8F8] placeholder-zinc-600 focus:border-[#5E6AD2] focus:ring-0 leading-relaxed"></textarea>
-          <span class="block text-[11px] text-zinc-500 mt-1">visible when clicked for details; hidden from main dashboard feed.</span>
+          <label class="block text-xs font-medium text-zinc-400 mb-1 lowercase">description &amp; notes (rich text)</label>
+          <textarea id="edit-alarm-desc" rows="3" class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0"></textarea>
         </div>
 
-        <!-- Trigger Time & Date -->
-        <div class="grid grid-cols-2 gap-3">
+        <!-- Time & Date -->
+        <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-semibold text-[#8A8F98] lowercase mb-1.5">time</label>
-            <input type="time" id="edit-alarm-time" required class="w-full rounded-lg border border-[#26282E] bg-[#16181B] px-3.5 py-2 text-xs text-[#F7F8F8] focus:border-[#5E6AD2] focus:ring-0 font-mono">
+            <label class="block text-xs font-medium text-zinc-400 mb-1 lowercase">trigger time</label>
+            <input type="time" id="edit-alarm-time" required class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0" />
           </div>
           <div>
-            <label class="block text-xs font-semibold text-[#8A8F98] lowercase mb-1.5">date</label>
-            <input type="date" id="edit-alarm-date" required class="w-full rounded-lg border border-[#26282E] bg-[#16181B] px-3.5 py-2 text-xs text-[#F7F8F8] focus:border-[#5E6AD2] focus:ring-0 font-mono">
+            <label class="block text-xs font-medium text-zinc-400 mb-1 lowercase">trigger date</label>
+            <input type="date" id="edit-alarm-date" required class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0" />
           </div>
         </div>
 
-        <!-- Tone & Ramp -->
-        <div class="grid grid-cols-2 gap-3">
+        <!-- Weekday Recurrence -->
+        <div>
+          <label class="block text-xs font-medium text-zinc-400 mb-1.5 lowercase">repeat days</label>
+          <div class="flex items-center gap-1.5">
+            <button type="button" data-day="1" class="edit-day-btn flex-1 py-1.5 border border-[#232820] bg-transparent text-[11px] text-zinc-500 font-mono hover:border-zinc-500 transition-colors">m</button>
+            <button type="button" data-day="2" class="edit-day-btn flex-1 py-1.5 border border-[#232820] bg-transparent text-[11px] text-zinc-500 font-mono hover:border-zinc-500 transition-colors">t</button>
+            <button type="button" data-day="3" class="edit-day-btn flex-1 py-1.5 border border-[#232820] bg-transparent text-[11px] text-zinc-500 font-mono hover:border-zinc-500 transition-colors">w</button>
+            <button type="button" data-day="4" class="edit-day-btn flex-1 py-1.5 border border-[#232820] bg-transparent text-[11px] text-zinc-500 font-mono hover:border-zinc-500 transition-colors">t</button>
+            <button type="button" data-day="5" class="edit-day-btn flex-1 py-1.5 border border-[#232820] bg-transparent text-[11px] text-zinc-500 font-mono hover:border-zinc-500 transition-colors">f</button>
+            <button type="button" data-day="6" class="edit-day-btn flex-1 py-1.5 border border-[#232820] bg-transparent text-[11px] text-zinc-500 font-mono hover:border-zinc-500 transition-colors">s</button>
+            <button type="button" data-day="7" class="edit-day-btn flex-1 py-1.5 border border-[#232820] bg-transparent text-[11px] text-zinc-500 font-mono hover:border-zinc-500 transition-colors">s</button>
+          </div>
+        </div>
+
+        <!-- Sound & Ramp -->
+        <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-semibold text-[#8A8F98] lowercase mb-1.5">tone profile</label>
-            <select id="edit-alarm-tone" class="w-full rounded-lg border border-[#26282E] bg-[#16181B] px-3 py-2 text-xs text-[#F7F8F8] focus:border-[#5E6AD2] focus:ring-0">
-              <option value="alarm">radar</option>
-              <option value="chime">chime</option>
-              <option value="digital">digital</option>
+            <label class="block text-xs font-medium text-zinc-400 mb-1 lowercase">tone profile</label>
+            <select id="edit-alarm-tone" class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
+              <option value="alarm" class="bg-[#11140f]">ding (default alarm)</option>
+              <option value="chime" class="bg-[#11140f]">chime (gentle)</option>
+              <option value="digital" class="bg-[#11140f]">digital pulse</option>
             </select>
           </div>
           <div>
-            <label class="block text-xs font-semibold text-[#8A8F98] lowercase mb-1.5">gentle ramp</label>
-            <select id="edit-alarm-ramp" class="w-full rounded-lg border border-[#26282E] bg-[#16181B] px-3 py-2 text-xs text-[#F7F8F8] focus:border-[#5E6AD2] focus:ring-0">
-              <option value="0">0s (instant)</option>
-              <option value="15">15s ramp</option>
-              <option value="30">30s ramp</option>
-              <option value="60">60s ramp</option>
+            <label class="block text-xs font-medium text-zinc-400 mb-1 lowercase">volume ramp</label>
+            <select id="edit-alarm-ramp" class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
+              <option value="0" class="bg-[#11140f]">immediate (0s)</option>
+              <option value="15" class="bg-[#11140f]">gentle (15s)</option>
+              <option value="30" class="bg-[#11140f]">standard (30s)</option>
+              <option value="60" class="bg-[#11140f]">deep sleep (60s)</option>
             </select>
           </div>
         </div>
 
-        <!-- Repeat Days -->
-        <div>
-          <label class="block text-xs font-semibold text-[#8A8F98] lowercase mb-1.5">repeat schedule</label>
-          <div class="flex items-center justify-between gap-1" id="edit-repeat-days">
-            <button type="button" data-day="1" class="edit-day-btn flex-1 py-1.5 rounded border border-[#26282E] text-center text-xs text-zinc-500 font-mono">m</button>
-            <button type="button" data-day="2" class="edit-day-btn flex-1 py-1.5 rounded border border-[#26282E] text-center text-xs text-zinc-500 font-mono">t</button>
-            <button type="button" data-day="3" class="edit-day-btn flex-1 py-1.5 rounded border border-[#26282E] text-center text-xs text-zinc-500 font-mono">w</button>
-            <button type="button" data-day="4" class="edit-day-btn flex-1 py-1.5 rounded border border-[#26282E] text-center text-xs text-zinc-500 font-mono">t</button>
-            <button type="button" data-day="5" class="edit-day-btn flex-1 py-1.5 rounded border border-[#26282E] text-center text-xs text-zinc-500 font-mono">f</button>
-            <button type="button" data-day="6" class="edit-day-btn flex-1 py-1.5 rounded border border-[#26282E] text-center text-xs text-zinc-500 font-mono">s</button>
-            <button type="button" data-day="7" class="edit-day-btn flex-1 py-1.5 rounded border border-[#26282E] text-center text-xs text-zinc-500 font-mono">s</button>
-          </div>
-        </div>
-
-        <!-- Buttons -->
-        <div class="pt-2 flex items-center justify-between gap-3">
-          <button type="button" id="btn-delete-alarm" class="px-4 py-2 text-xs font-mono text-rose-400 hover:text-rose-300 border border-rose-950/80 rounded-lg transition-colors lowercase">
-            delete
+        <div class="flex items-center justify-between pt-4 border-t border-[#232820]">
+          <button type="button" onclick="deleteCurrentAlarm()" class="text-xs text-rose-400 hover:text-rose-300 transition-colors">
+            delete alarm
           </button>
-          <div class="flex items-center gap-2">
-            <button type="submit" class="px-5 py-2 text-xs font-semibold bg-[#F7F8F8] text-[#08090A] rounded-lg hover:bg-white transition-colors lowercase">
-              save adjustments
-            </button>
+          <div class="flex items-center gap-3">
+            <button type="button" onclick="closeAlarmDetail()" class="px-4 py-2 border border-[#232820] bg-transparent text-xs text-zinc-400 hover:text-zinc-200 transition-colors">cancel</button>
+            <button type="submit" class="px-5 py-2 bg-[#5E6AD2] hover:bg-[#4E5AC0] text-white text-xs font-medium transition-colors">save</button>
           </div>
         </div>
       </form>
     </div>
   </div>
-
-  <!-- CREATE NEW ALARM MODAL -->
-  <div id="alarm-create-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-    <div class="w-full max-w-lg border border-[#26282E] bg-[#0F1013] rounded-2xl shadow-2xl overflow-hidden divide-y divide-[#26282E]">
-      <div class="flex items-center justify-between px-6 py-4 bg-[#141619]">
-        <span class="text-xs font-semibold text-[#F7F8F8] lowercase">schedule new alarm</span>
-        <button id="btn-close-create" class="text-xs font-mono text-zinc-500 hover:text-zinc-200 lowercase">[ close ]</button>
-      </div>
-
-      <form id="form-create-alarm" class="p-6 space-y-5">
-        <div>
-          <label class="block text-xs font-semibold text-[#8A8F98] lowercase mb-1.5">alarm title</label>
-          <input type="text" id="create-alarm-title" required placeholder="e.g. morning workout" class="w-full rounded-lg border border-[#26282E] bg-[#16181B] px-3.5 py-2 text-xs text-[#F7F8F8] focus:border-[#5E6AD2] focus:ring-0">
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-[#8A8F98] lowercase mb-1.5">description &amp; notes (rich text)</label>
-          <textarea id="create-alarm-desc" rows="2" placeholder="optional notes, routine checklist, or context..." class="w-full rounded-lg border border-[#26282E] bg-[#16181B] px-3.5 py-2 text-xs text-[#F7F8F8] placeholder-zinc-600 focus:border-[#5E6AD2] focus:ring-0 leading-relaxed"></textarea>
-        </div>
-
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-semibold text-[#8A8F98] lowercase mb-1.5">time</label>
-            <input type="time" id="create-alarm-time" required class="w-full rounded-lg border border-[#26282E] bg-[#16181B] px-3.5 py-2 text-xs text-[#F7F8F8] focus:border-[#5E6AD2] focus:ring-0 font-mono">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-[#8A8F98] lowercase mb-1.5">date</label>
-            <input type="date" id="create-alarm-date" required class="w-full rounded-lg border border-[#26282E] bg-[#16181B] px-3.5 py-2 text-xs text-[#F7F8F8] focus:border-[#5E6AD2] focus:ring-0 font-mono">
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-semibold text-[#8A8F98] lowercase mb-1.5">tone profile</label>
-            <select id="create-alarm-tone" class="w-full rounded-lg border border-[#26282E] bg-[#16181B] px-3 py-2 text-xs text-[#F7F8F8] focus:border-[#5E6AD2] focus:ring-0">
-              <option value="alarm">radar</option>
-              <option value="chime" selected>chime</option>
-              <option value="digital">digital</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-[#8A8F98] lowercase mb-1.5">gentle ramp</label>
-            <select id="create-alarm-ramp" class="w-full rounded-lg border border-[#26282E] bg-[#16181B] px-3 py-2 text-xs text-[#F7F8F8] focus:border-[#5E6AD2] focus:ring-0">
-              <option value="0">0s (instant)</option>
-              <option value="15" selected>15s ramp</option>
-              <option value="30">30s ramp</option>
-              <option value="60">60s ramp</option>
-            </select>
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-[#8A8F98] lowercase mb-1.5">repeat schedule</label>
-          <div class="flex items-center justify-between gap-1" id="create-repeat-days">
-            <button type="button" data-day="1" class="create-day-btn flex-1 py-1.5 rounded border border-[#26282E] text-center text-xs text-zinc-500 font-mono">m</button>
-            <button type="button" data-day="2" class="create-day-btn flex-1 py-1.5 rounded border border-[#26282E] text-center text-xs text-zinc-500 font-mono">t</button>
-            <button type="button" data-day="3" class="create-day-btn flex-1 py-1.5 rounded border border-[#26282E] text-center text-xs text-zinc-500 font-mono">w</button>
-            <button type="button" data-day="4" class="create-day-btn flex-1 py-1.5 rounded border border-[#26282E] text-center text-xs text-zinc-500 font-mono">t</button>
-            <button type="button" data-day="5" class="create-day-btn flex-1 py-1.5 rounded border border-[#26282E] text-center text-xs text-zinc-500 font-mono">f</button>
-            <button type="button" data-day="6" class="create-day-btn flex-1 py-1.5 rounded border border-[#26282E] text-center text-xs text-zinc-500 font-mono">s</button>
-            <button type="button" data-day="7" class="create-day-btn flex-1 py-1.5 rounded border border-[#26282E] text-center text-xs text-zinc-500 font-mono">s</button>
-          </div>
-        </div>
-
-        <div class="pt-2 flex items-center justify-between">
-          <span id="create-feedback" class="text-xs font-mono text-[#5E6AD2]"></span>
-          <button type="submit" class="px-6 py-2.5 text-xs font-semibold bg-[#5E6AD2] hover:bg-[#4E5AC0] text-white rounded-lg transition-colors lowercase">
-            arm alarm
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- SETTINGS MODAL -->
-  <div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-    <div class="w-full max-w-xl border border-[#26282E] bg-[#0F1013] rounded-2xl shadow-2xl overflow-hidden divide-y divide-[#26282E]">
-      <div class="flex items-center justify-between px-6 py-4 bg-[#141619]">
-        <span class="text-xs font-semibold text-[#F7F8F8] lowercase">settings &amp; backend api</span>
-        <button id="btn-close-settings" class="text-xs font-mono text-zinc-500 hover:text-zinc-200 lowercase">[ close ]</button>
-      </div>
-
-      <div class="p-6 space-y-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <h3 class="text-xs font-semibold text-[#F7F8F8] lowercase">primary phone telemetry</h3>
-            <p class="text-[11px] text-zinc-500 mt-0.5 lowercase">client synchronization state and hardware status.</p>
-          </div>
-          <button id="btn-force-resync" class="border border-[#26282E] bg-[#16181B] px-3 py-1.5 text-xs text-zinc-300 hover:text-white rounded-lg font-mono lowercase transition-colors">
-            [ force resync ]
-          </button>
-        </div>
-
-        <div id="device-info-card" class="border border-[#26282E] bg-[#141619] rounded-xl p-4 font-mono text-xs space-y-2">
-          <div class="text-zinc-500 lowercase">checking device telemetry...</div>
-        </div>
-      </div>
-
-      <div class="p-6 space-y-3">
-        <h3 class="text-xs font-semibold text-[#F7F8F8] lowercase">calendar feed &amp; ical</h3>
-        <div class="flex flex-wrap items-center gap-2">
-          <button id="btn-copy-ical-modal" class="border border-[#26282E] bg-[#16181B] px-3 py-1.5 text-xs text-zinc-300 hover:text-white rounded-lg font-mono lowercase transition-colors">
-            copy ical url
-          </button>
-          <button id="btn-open-gcal-modal" class="border border-indigo-900/60 bg-indigo-950/30 px-3 py-1.5 text-xs text-[#5E6AD2] hover:text-indigo-300 rounded-lg font-mono lowercase transition-colors">
-            + subscribe in google calendar
-          </button>
-        </div>
-      </div>
-
-      <div class="p-6 space-y-2">
-        <h3 class="text-xs font-semibold text-[#F7F8F8] lowercase">rest api endpoints</h3>
-        <div class="font-mono text-[11px] text-zinc-400 space-y-1 bg-[#141619] p-3 rounded-lg border border-[#26282E]">
-          <div><span class="text-[#5E6AD2]">get</span> /api/alarms?view=all <span class="text-zinc-600">// list all alarms</span></div>
-          <div><span class="text-[#5E6AD2]">get</span> /api/alarms?view=active <span class="text-zinc-600">// list active alarms</span></div>
-          <div><span class="text-[#E5A158]">post</span> /api/alarms <span class="text-zinc-600">// schedule new alarm</span></div>
-          <div><span class="text-rose-400">post</span> /api/alarms/:id/silence <span class="text-zinc-600">// silence ringing</span></div>
-          <div><span class="text-rose-400">delete</span> /api/alarms/:id <span class="text-zinc-600">// delete alarm</span></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <audio id="audio-preview" preload="none"></audio>
 
   <script>
     let allAlarms = [];
     let ringingAlarmId = null;
+    let selectedDays = [];
     let editSelectedDays = [];
-    let createSelectedDays = [];
     let currentSearchQuery = '';
+    let isPreviewPlaying = false;
+    let currentActiveView = 'dashboard';
 
-    // Clock
+    // View Switching: dashboard vs settings
+    function switchView(view) {
+      currentActiveView = view;
+      const dashView = document.getElementById('view-dashboard');
+      const settingsView = document.getElementById('view-settings');
+      const navDash = document.getElementById('nav-btn-dashboard');
+      const navSettings = document.getElementById('nav-btn-settings');
+      const searchContainer = document.getElementById('header-search-container');
+
+      if (view === 'dashboard') {
+        dashView.classList.remove('hidden');
+        settingsView.classList.add('hidden');
+        navDash.className = 'text-xs font-medium text-[#5E6AD2] transition-colors lowercase';
+        navSettings.className = 'text-xs font-normal text-zinc-400 hover:text-zinc-200 transition-colors lowercase';
+        if (searchContainer) searchContainer.classList.remove('hidden');
+      } else {
+        dashView.classList.add('hidden');
+        settingsView.classList.remove('hidden');
+        navDash.className = 'text-xs font-normal text-zinc-400 hover:text-zinc-200 transition-colors lowercase';
+        navSettings.className = 'text-xs font-medium text-[#5E6AD2] transition-colors lowercase';
+        if (searchContainer) searchContainer.classList.add('hidden');
+      }
+    }
+
+    // System Clock
     function updateClock() {
       const now = new Date();
-      document.getElementById('server-time').textContent = now.toLocaleTimeString([], { hour12: false });
-      updateHeroCountdown();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      const el = document.getElementById('header-clock');
+      if (el) el.textContent = `${hh}:${mm}:${ss}`;
+
+      // Update hero countdown
+      const countdownEl = document.getElementById('hero-countdown-text');
+      if (countdownEl && countdownEl.dataset.target) {
+        countdownEl.textContent = formatRelative(countdownEl.dataset.target);
+      }
     }
     setInterval(updateClock, 1000);
     updateClock();
 
-    function formatTime(isoString) {
-      if (!isoString) return '--:--';
-      const d = new Date(isoString);
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    // Formatters
+    function formatTime(isoStr) {
+      if (!isoStr) return '--:--';
+      const d = new Date(isoStr);
+      const h = String(d.getHours()).padStart(2, '0');
+      const m = String(d.getMinutes()).padStart(2, '0');
+      return `${h}:${m}`;
     }
 
-    function formatRelative(isoString) {
+    function formatRelative(targetIso) {
       const now = new Date();
-      const target = new Date(isoString);
+      const target = new Date(targetIso);
       const diffMs = target - now;
-
       if (diffMs <= 0) return 'due now';
 
       const totalMins = Math.floor(diffMs / (1000 * 60));
       const hours = Math.floor(totalMins / 60);
       const mins = totalMins % 60;
 
-      if (hours === 0 && mins === 0) return 'in less than a minute';
       if (hours === 0) return `in ${mins} mins`;
-      if (mins === 0) return `in ${hours} hours`;
       return `in ${hours} hours ${mins} mins`;
     }
 
-    const DAY_MAP = { 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 7: 'Sun' };
+    function formatRepeatDays(repeatDaysStr) {
+      if (!repeatDaysStr) return 'once';
+      const days = repeatDaysStr.split(',').map(s => parseInt(s.trim(), 10));
+      const isWeekdays = days.length === 5 && [1,2,3,4,5].every(d => days.includes(d));
+      if (isWeekdays) return 'mon, tue, wed, thu, fri';
+      const isDaily = days.length === 7;
+      if (isDaily) return 'daily';
 
-    function formatRepeatDays(repeatStr) {
-      if (!repeatStr) return 'Once';
-      const days = repeatStr.split(',').map(d => parseInt(d.trim(), 10)).filter(Boolean);
-      if (days.length === 7) return 'Every day';
-      if (days.length === 5 && [1,2,3,4,5].every(d => days.includes(d))) return 'Mon, Tue, Wed, Thu, Fri';
-      if (days.length === 2 && [6,7].every(d => days.includes(d))) return 'Sat, Sun';
-      return days.map(d => DAY_MAP[d] || d).join(', ');
+      const dayNames = {1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat', 7: 'sun'};
+      return days.map(d => dayNames[d] || d).join(', ');
     }
 
-    // Hero Countdown update
-    function updateHeroCountdown() {
-      const countdownEl = document.getElementById('hero-countdown-text');
-      if (countdownEl && countdownEl.dataset.target) {
-        countdownEl.textContent = formatRelative(countdownEl.dataset.target);
-      }
-    }
-
-    // Load alarms from backend (parity with mobile)
+    // Load Alarms from backend
     async function loadAlarms() {
       try {
         const res = await fetch('/api/alarms?view=all');
@@ -443,8 +613,8 @@
       }
     }
 
+    // Render Dashboard
     function renderDashboard() {
-      // Filter by search query
       const filtered = allAlarms.filter(a => {
         if (!currentSearchQuery) return true;
         const q = currentSearchQuery.toLowerCase();
@@ -453,8 +623,7 @@
 
       document.getElementById('alarms-count-badge').textContent = filtered.length;
 
-      // Determine upcoming alarm (hero alarm)
-      // Active alarms where status is pending or snoozed
+      // Determine upcoming active hero alarm
       const activeAlarms = allAlarms.filter(a => a.status === 'pending' || a.status === 'snoozed');
       activeAlarms.sort((a, b) => new Date(a.target_time) - new Date(b.target_time));
       const heroAlarm = activeAlarms.length > 0 ? activeAlarms[0] : null;
@@ -465,26 +634,26 @@
         const timeStr = formatTime(heroAlarm.target_time);
         const relativeStr = formatRelative(heroAlarm.target_time);
         const repeatStr = formatRepeatDays(heroAlarm.repeat_days);
-        const toneStr = heroAlarm.sound_tone || 'chime';
+        const toneStr = heroAlarm.sound_tone || 'alarm';
         const rampStr = heroAlarm.ramp_seconds || 15;
 
         heroContainer.innerHTML = `
-          <div onclick="openAlarmDetail('${heroAlarm.id}')" class="cursor-pointer group relative overflow-hidden p-6 rounded-2xl border border-[#2C2F36] bg-gradient-to-br from-[#1A1D22] to-[#121417] shadow-2xl hover:border-[#5E6AD2]/50 transition-all">
+          <div onclick="openAlarmDetail('${heroAlarm.id}')" class="cursor-pointer group relative p-6 border border-[#232820] bg-[#11140f] hover:border-[#5E6AD2]/50 transition-colors">
             <div class="flex items-center gap-2 mb-3">
               <span class="w-1.5 h-1.5 rounded-full bg-[#5E6AD2]"></span>
-              <span class="text-xs font-medium text-[#8A8F98]">next upcoming alarm &bull; <span id="hero-countdown-text" data-target="${heroAlarm.target_time}">${relativeStr}</span></span>
+              <span class="text-xs font-medium text-zinc-400">next upcoming alarm &bull; <span id="hero-countdown-text" data-target="${heroAlarm.target_time}">${relativeStr}</span></span>
             </div>
-            <div class="text-5xl font-semibold tracking-tight text-[#F7F8F8] font-mono mb-2">
+            <div class="text-5xl font-light tracking-tight text-zinc-100 font-mono mb-2">
               ${timeStr}
             </div>
-            <div class="text-base font-medium text-[#F7F8F8] mb-4">
+            <div class="text-base font-normal text-zinc-200 mb-4">
               ${escapeHtml(heroAlarm.label)}
             </div>
-            <div class="flex flex-wrap items-center gap-2 text-xs text-[#8A8F98]">
-              <span class="px-2.5 py-1 rounded-md bg-[#20232A] border border-[#2E323B]">${repeatStr}</span>
-              <span class="px-2.5 py-1 rounded-md bg-[#20232A] border border-[#2E323B] flex items-center gap-1.5">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
-                ${toneStr} &bull; ${rampStr}s gentle ramp
+            <div class="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+              <span class="px-2 py-1 border border-[#232820] bg-[#161a14]">${repeatStr}</span>
+              <span class="px-2 py-1 border border-[#232820] bg-[#161a14] flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
+                ${toneStr} &bull; ${rampStr}s ramp
               </span>
             </div>
           </div>
@@ -493,14 +662,13 @@
         heroContainer.innerHTML = '';
       }
 
-      // Render All Alarms Feed (including hero alarm, matching mobile!)
+      // Render All Alarms Feed (divide-y matching user snippet)
       const listContainer = document.getElementById('all-alarms-list');
       if (filtered.length === 0) {
         listContainer.innerHTML = `
-          <div class="py-16 text-center rounded-2xl border border-[#26282E] bg-[#121316]">
-            <svg class="w-8 h-8 text-zinc-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            <div class="text-xs font-medium text-[#8A8F98]">no alarms scheduled</div>
-            <div class="text-[11px] text-zinc-600 mt-0.5">tap the floating + new alarm button below to add one</div>
+          <div class="py-16 text-center border border-[#232820] bg-[#11140f]">
+            <div class="text-xs font-medium text-zinc-400 lowercase">no alarms scheduled</div>
+            <div class="text-[11px] text-zinc-600 mt-0.5 lowercase">tap the floating + new alarm button below to add one</div>
           </div>
         `;
         return;
@@ -513,34 +681,37 @@
         const repeatStr = formatRepeatDays(alarm.repeat_days);
         const toneStr = alarm.sound_tone || 'alarm';
 
-        const textColor = isEnabled ? 'text-[#F7F8F8]' : 'text-zinc-600';
-        const subColor = isEnabled ? 'text-[#8A8F98]' : 'text-zinc-600';
-        const dotColor = isEnabled ? (isSnoozed ? 'text-[#E5A158]' : 'text-[#5E6AD2]') : 'text-zinc-700';
+        const textColor = isEnabled ? 'text-zinc-100' : 'text-zinc-600';
+        const subColor = isEnabled ? 'text-zinc-400' : 'text-zinc-600';
+        const dotColor = isEnabled ? (isSnoozed ? 'bg-amber-500' : 'bg-[#5E6AD2]') : 'bg-zinc-700';
 
         return `
-          <div class="group relative flex items-center justify-between p-4 rounded-xl border ${isEnabled ? 'border-[#262930] bg-gradient-to-br from-[#16181C] to-[#121417] shadow-lg' : 'border-[#1C1D21] bg-[#0E1012] opacity-70'} hover:border-[#5E6AD2]/40 transition-all">
-            <!-- Clickable content -->
-            <div onclick="openAlarmDetail('${alarm.id}')" class="flex-1 cursor-pointer flex items-center gap-3.5 mr-4">
-              <svg class="w-4 h-4 ${dotColor} shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <div class="py-5 flex items-center justify-between gap-6 hover:bg-[#11140f]/40 transition-colors px-2">
+            <!-- Clickable content for detail modal -->
+            <div onclick="openAlarmDetail('${alarm.id}')" class="flex-1 cursor-pointer flex items-center gap-4">
+              <span class="h-1.5 w-1.5 rounded-full ${dotColor} shrink-0"></span>
               <div>
-                <div class="flex items-baseline gap-2.5">
-                  <span class="text-base font-semibold font-mono ${textColor}">${timeStr}</span>
-                  <span class="text-xs font-medium ${subColor}">${escapeHtml(alarm.label)}</span>
+                <div class="flex items-baseline gap-3">
+                  <span class="text-base font-medium font-mono ${textColor}">${timeStr}</span>
+                  <span class="text-xs font-normal ${subColor}">${escapeHtml(alarm.label)}</span>
                 </div>
                 <div class="flex items-center gap-2 mt-1">
-                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-[#1C1E24] text-[#8A8F98]">${repeatStr}</span>
+                  <span class="text-[10px] px-1.5 py-0.5 border border-[#232820] text-zinc-400">${repeatStr}</span>
                   <span class="text-[11px] text-zinc-600">${toneStr}</span>
-                  ${alarm.description ? `<svg class="w-3 h-3 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/></svg>` : ''}
+                  ${alarm.description ? `<span class="text-[10px] text-zinc-500 font-mono">[notes]</span>` : ''}
                 </div>
               </div>
             </div>
 
-            <!-- Smooth Slider Toggle -->
-            <div class="flex items-center gap-3 shrink-0">
+            <!-- Right Controls: Toggle switch and quick action -->
+            <div class="flex items-center gap-4 shrink-0">
               <label class="relative inline-flex items-center cursor-pointer">
                 <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleAlarmEnabled('${alarm.id}', this.checked)" class="sr-only peer">
-                <div class="w-10 h-5 bg-[#1E2024] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-[#565A61] peer-checked:after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#5E6AD2]"></div>
+                <div class="w-9 h-5 bg-[#1e231c] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-[#565A61] peer-checked:after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#5E6AD2]"></div>
               </label>
+              <button onclick="deleteAlarmDirect('${alarm.id}')" class="text-[11px] text-zinc-500 hover:text-rose-400 transition-colors" title="delete alarm">
+                cancel
+              </button>
             </div>
           </div>
         `;
@@ -559,6 +730,17 @@
         await loadAlarms();
       } catch (err) {
         console.error('Toggle failed:', err);
+      }
+    }
+
+    // Delete alarm directly
+    async function deleteAlarmDirect(id) {
+      if (!confirm('Cancel and remove this alarm?')) return;
+      try {
+        await fetch(`/api/alarms/${id}`, { method: 'DELETE' });
+        await loadAlarms();
+      } catch (err) {
+        console.error('Delete failed:', err);
       }
     }
 
@@ -590,6 +772,10 @@
       document.getElementById('alarm-detail-modal').classList.remove('hidden');
     };
 
+    function closeAlarmDetail() {
+      document.getElementById('alarm-detail-modal').classList.add('hidden');
+    }
+
     function updateEditDayButtons() {
       document.querySelectorAll('.edit-day-btn').forEach(btn => {
         const day = parseInt(btn.dataset.day, 10);
@@ -610,84 +796,87 @@
           editSelectedDays = editSelectedDays.filter(d => d !== day);
         } else {
           editSelectedDays.push(day);
-          editSelectedDays.sort((a, b) => a - b);
         }
         updateEditDayButtons();
       });
     });
 
-    document.getElementById('btn-close-detail').addEventListener('click', () => {
-      document.getElementById('alarm-detail-modal').classList.add('hidden');
-    });
-
-    // Save Adjustments
-    document.getElementById('form-edit-alarm').addEventListener('submit', async (e) => {
+    document.getElementById('edit-alarm-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const id = document.getElementById('edit-alarm-id').value;
       const title = document.getElementById('edit-alarm-title').value.trim();
       const desc = document.getElementById('edit-alarm-desc').value.trim();
-      const timeVal = document.getElementById('edit-alarm-time').value;
-      const dateVal = document.getElementById('edit-alarm-date').value;
+      const time = document.getElementById('edit-alarm-time').value;
+      const date = document.getElementById('edit-alarm-date').value;
       const tone = document.getElementById('edit-alarm-tone').value;
       const ramp = parseInt(document.getElementById('edit-alarm-ramp').value, 10);
 
-      const targetIso = new Date(`${dateVal}T${timeVal}:00`).toISOString();
+      const targetIso = new Date(`${date}T${time}:00`).toISOString();
+      const repeatDaysStr = editSelectedDays.length > 0 ? editSelectedDays.sort().join(',') : null;
 
-      // Delete old & recreate or update
-      await fetch(`/api/alarms/${id}`, { method: 'DELETE' });
-      await fetch('/api/alarms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          label: title,
-          target_time: targetIso,
-          tone,
-          volume_ramp_seconds: ramp,
-          repeat_days: editSelectedDays
-        })
-      });
+      try {
+        // Cancel old and recreate
+        await fetch(`/api/alarms/${id}`, { method: 'DELETE' });
+        await fetch('/api/alarms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            target_time: targetIso,
+            label: title,
+            description: desc,
+            repeat_days: repeatDaysStr,
+            sound_tone: tone,
+            ramp_seconds: ramp
+          })
+        });
 
-      document.getElementById('alarm-detail-modal').classList.add('hidden');
-      await loadAlarms();
+        closeAlarmDetail();
+        await loadAlarms();
+      } catch (err) {
+        console.error('Update failed:', err);
+      }
     });
 
-    // Delete Alarm
-    document.getElementById('btn-delete-alarm').addEventListener('click', async () => {
+    async function deleteCurrentAlarm() {
       const id = document.getElementById('edit-alarm-id').value;
-      await fetch(`/api/alarms/${id}`, { method: 'DELETE' });
-      document.getElementById('alarm-detail-modal').classList.add('hidden');
-      await loadAlarms();
-    });
+      if (!confirm('Are you sure you want to delete this alarm?')) return;
+      try {
+        await fetch(`/api/alarms/${id}`, { method: 'DELETE' });
+        closeAlarmDetail();
+        await loadAlarms();
+      } catch (err) {
+        console.error('Delete failed:', err);
+      }
+    }
 
-    // Floating + new alarm button
-    const createModal = document.getElementById('alarm-create-modal');
-    document.getElementById('btn-floating-add').addEventListener('click', () => {
-      // Default to now + 5 mins
-      const target = new Date(Date.now() + 5 * 60 * 1000);
-      const yyyy = target.getFullYear();
-      const mm = String(target.getMonth() + 1).padStart(2, '0');
-      const dd = String(target.getDate()).padStart(2, '0');
-      const hh = String(target.getHours()).padStart(2, '0');
-      const min = String(target.getMinutes()).padStart(2, '0');
+    // Create Modal
+    function openCreateModal() {
+      const now = new Date(Date.now() + 5 * 60 * 1000);
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const yyyy = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
 
-      document.getElementById('create-alarm-date').value = `${yyyy}-${mm}-${dd}`;
-      document.getElementById('create-alarm-time').value = `${hh}:${min}`;
-      document.getElementById('create-alarm-title').value = 'Morning workout';
-      document.getElementById('create-alarm-desc').value = '';
-      createSelectedDays = [];
-      updateCreateDayButtons();
+      document.getElementById('new-alarm-time').value = `${hh}:${mm}`;
+      document.getElementById('new-alarm-date').value = `${yyyy}-${m}-${dd}`;
+      document.getElementById('new-alarm-title').value = '';
+      document.getElementById('new-alarm-desc').value = '';
+      selectedDays = [];
+      updateDayButtons();
 
-      createModal.classList.remove('hidden');
-    });
+      document.getElementById('create-alarm-feedback').textContent = '';
+      document.getElementById('create-alarm-modal').classList.remove('hidden');
+    }
 
-    document.getElementById('btn-close-create').addEventListener('click', () => {
-      createModal.classList.add('hidden');
-    });
+    function closeCreateModal() {
+      document.getElementById('create-alarm-modal').classList.add('hidden');
+    }
 
-    function updateCreateDayButtons() {
-      document.querySelectorAll('.create-day-btn').forEach(btn => {
+    function updateDayButtons() {
+      document.querySelectorAll('.day-btn').forEach(btn => {
         const day = parseInt(btn.dataset.day, 10);
-        if (createSelectedDays.includes(day)) {
+        if (selectedDays.includes(day)) {
           btn.classList.add('border-[#5E6AD2]', 'text-[#5E6AD2]', 'bg-[#5E6AD2]/10');
           btn.classList.remove('text-zinc-500');
         } else {
@@ -697,45 +886,55 @@
       });
     }
 
-    document.querySelectorAll('.create-day-btn').forEach(btn => {
+    document.querySelectorAll('.day-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const day = parseInt(btn.dataset.day, 10);
-        if (createSelectedDays.includes(day)) {
-          createSelectedDays = createSelectedDays.filter(d => d !== day);
+        if (selectedDays.includes(day)) {
+          selectedDays = selectedDays.filter(d => d !== day);
         } else {
-          createSelectedDays.push(day);
-          createSelectedDays.sort((a, b) => a - b);
+          selectedDays.push(day);
         }
-        updateCreateDayButtons();
+        updateDayButtons();
       });
     });
 
-    // Create alarm form submit
-    document.getElementById('form-create-alarm').addEventListener('submit', async (e) => {
+    document.getElementById('create-alarm-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const title = document.getElementById('create-alarm-title').value.trim();
-      const desc = document.getElementById('create-alarm-desc').value.trim();
-      const dateVal = document.getElementById('create-alarm-date').value;
-      const timeVal = document.getElementById('create-alarm-time').value;
-      const tone = document.getElementById('create-alarm-tone').value;
-      const ramp = parseInt(document.getElementById('create-alarm-ramp').value, 10);
+      const title = document.getElementById('new-alarm-title').value.trim();
+      const desc = document.getElementById('new-alarm-desc').value.trim();
+      const time = document.getElementById('new-alarm-time').value;
+      const date = document.getElementById('new-alarm-date').value;
+      const tone = document.getElementById('new-alarm-tone').value;
+      const ramp = parseInt(document.getElementById('new-alarm-ramp').value, 10);
+      const feedback = document.getElementById('create-alarm-feedback');
 
-      const targetIso = new Date(`${dateVal}T${timeVal}:00`).toISOString();
+      const targetIso = new Date(`${date}T${time}:00`).toISOString();
+      const repeatDaysStr = selectedDays.length > 0 ? selectedDays.sort().join(',') : null;
 
-      await fetch('/api/alarms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          label: title,
-          target_time: targetIso,
-          tone,
-          volume_ramp_seconds: ramp,
-          repeat_days: createSelectedDays
-        })
-      });
+      try {
+        const res = await fetch('/api/alarms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            target_time: targetIso,
+            label: title,
+            description: desc,
+            repeat_days: repeatDaysStr,
+            sound_tone: tone,
+            ramp_seconds: ramp
+          })
+        });
 
-      createModal.classList.add('hidden');
-      await loadAlarms();
+        if (res.ok) {
+          closeCreateModal();
+          await loadAlarms();
+        } else {
+          const err = await res.json();
+          feedback.textContent = `error: ${err.error || 'could not create'}`;
+        }
+      } catch (err) {
+        feedback.textContent = 'network error';
+      }
     });
 
     // Search input
@@ -744,35 +943,11 @@
       renderDashboard();
     });
 
-    // Silence button
-    document.getElementById('btn-silence-active').addEventListener('click', async () => {
-      if (ringingAlarmId) {
-        await fetch(`/api/alarms/${ringingAlarmId}/silence`, { method: 'POST' });
-        await loadAlarms();
-      }
-    });
-
-    // Refresh sync
-    document.getElementById('btn-refresh-alarms').addEventListener('click', () => {
-      loadAlarms();
-    });
-
-    // Settings Modal
-    const settingsModal = document.getElementById('settings-modal');
-    document.getElementById('btn-open-settings').addEventListener('click', () => {
-      settingsModal.classList.remove('hidden');
-      loadDeviceTelemetry();
-    });
-    document.getElementById('btn-close-settings').addEventListener('click', () => {
-      settingsModal.classList.add('hidden');
-    });
-
+    // Device Telemetry
     async function loadDeviceTelemetry() {
       try {
         const res = await fetch('/api/devices');
-        const data = await res.json();
-        const devices = data.devices || [];
-
+        const devices = await res.json();
         const dotEl = document.getElementById('header-device-dot');
         const statusEl = document.getElementById('header-device-status');
         const infoCard = document.getElementById('device-info-card');
@@ -793,7 +968,6 @@
         infoCard.innerHTML = `
           <div class="flex justify-between"><span class="text-zinc-500">model:</span><span class="text-zinc-200">${escapeHtml(dev.device_name || 'android device')}</span></div>
           <div class="flex justify-between"><span class="text-zinc-500">battery:</span><span class="text-[#5E6AD2]">${battText}</span></div>
-          <div class="flex justify-between"><span class="text-zinc-500">push token:</span><span class="text-zinc-500">${dev.token_masked || 'present'}</span></div>
           <div class="flex justify-between"><span class="text-zinc-500">last ping:</span><span class="text-zinc-500">${dev.updated_at || 'recent'}</span></div>
         `;
       } catch (err) {
@@ -809,6 +983,40 @@
       setTimeout(() => { btn.textContent = '[ force resync ]'; }, 1000);
     });
 
+    // Audio preview player
+    const audioEl = document.getElementById('audio-preview');
+    document.getElementById('btn-preview-sound').addEventListener('click', () => {
+      const sound = document.getElementById('settings-sound-select').value;
+      if (isPreviewPlaying) {
+        audioEl.pause();
+        audioEl.currentTime = 0;
+        isPreviewPlaying = false;
+        document.getElementById('btn-preview-sound').innerHTML = '<svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>';
+      } else {
+        audioEl.src = `/sounds/${sound}.mp3`;
+        audioEl.play().catch(e => console.log('Audio playback error:', e));
+        isPreviewPlaying = true;
+        document.getElementById('btn-preview-sound').innerHTML = '<svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>';
+        audioEl.onended = () => {
+          isPreviewPlaying = false;
+          document.getElementById('btn-preview-sound').innerHTML = '<svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>';
+        };
+      }
+    });
+
+    // Emergency silence ringer button
+    document.getElementById('btn-silence-active').addEventListener('click', async () => {
+      if (ringingAlarmId) {
+        try {
+          await fetch(`/api/alarms/${ringingAlarmId}/silence`, { method: 'POST' });
+          await loadAlarms();
+        } catch (err) {
+          console.error('Silence error:', err);
+        }
+      }
+    });
+
+    // iCal copy
     document.getElementById('btn-copy-ical-modal').addEventListener('click', () => {
       const icalUrl = `${window.location.origin}/api/calendar.ics`;
       navigator.clipboard.writeText(icalUrl).then(() => {
@@ -818,6 +1026,7 @@
       });
     });
 
+    // Google Calendar
     document.getElementById('btn-open-gcal-modal').addEventListener('click', () => {
       const icalUrl = `${window.location.origin}/api/calendar.ics`;
       const webcalUrl = icalUrl.replace(/^https?:\/\//, 'webcal://');
@@ -832,11 +1041,11 @@
         '<': '&lt;',
         '>': '&gt;',
         '"': '&quot;',
-        "'": '&#39;'
+        "'": '&#039;'
       }[m]));
     }
 
-    // Initial load & poll
+    // Initial load & 4s polling
     loadAlarms();
     loadDeviceTelemetry();
     setInterval(() => {
