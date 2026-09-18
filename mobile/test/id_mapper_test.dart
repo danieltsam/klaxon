@@ -66,6 +66,28 @@ void main() {
       expect(await IdMapper.getRepeatDays(intId), isEmpty);
     });
 
+    test('setEnabled and isEnabled persist toggle state without deleting mapping', () async {
+      const uuid = 'persist-toggle-uuid';
+      final intId = IdMapper.uuidToInt(uuid);
+
+      await IdMapper.saveMapping(intId, uuid, label: 'Evening Routine');
+      expect(await IdMapper.isEnabled(intId), isTrue);
+
+      // Disable alarm via slider toggle
+      await IdMapper.setEnabled(intId, false);
+      expect(await IdMapper.isEnabled(intId), isFalse);
+
+      // Verify mapping, label, and known IDs are fully preserved
+      expect(await IdMapper.getUuid(intId), equals(uuid));
+      expect(await IdMapper.getLabel(intId), equals('Evening Routine'));
+      final known = await IdMapper.getAllKnownIds();
+      expect(known.contains(intId), isTrue);
+
+      // Re-enable alarm
+      await IdMapper.setEnabled(intId, true);
+      expect(await IdMapper.isEnabled(intId), isTrue);
+    });
+
     test('removeMapping clears all associated metadata', () async {
       const uuid = 'temp-uuid-999';
       final intId = IdMapper.uuidToInt(uuid);

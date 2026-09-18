@@ -261,7 +261,7 @@ app.post<{
 
   let fcmResult;
   if (status === 'disabled') {
-    fcmResult = await sendFcmDataMessage('CANCEL', { id });
+    fcmResult = await sendFcmDataMessage('DISABLE', { id });
   } else if (status === 'pending') {
     const fcmPayload: Record<string, string> = {
       id: existing.id,

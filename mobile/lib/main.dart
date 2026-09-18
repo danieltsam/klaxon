@@ -60,7 +60,12 @@ class AlarmApp extends StatelessWidget {
           surface: Color(0xFF141619),
           error: Color(0xFFEB5757),
         ),
-        fontFamily: 'Roboto',
+        fontFamily: 'Helvetica Neue',
+        fontFamilyFallback: const [
+          'Helvetica',
+          'Arial',
+          'sans-serif',
+        ],
       ),
       home: const AlarmHomeScreen(),
     );
@@ -1756,14 +1761,14 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
             ),
             const SizedBox(height: 12),
 
-            // Large Clock
+            // Large Clock (Swiss editorial light)
             Text(
               '$hourStr:$minuteStr',
               style: const TextStyle(
-                fontSize: 48,
-                fontWeight: FontWeight.w600,
+                fontSize: 52,
+                fontWeight: FontWeight.w300,
                 color: Color(0xFFF7F8F8),
-                letterSpacing: -1.0,
+                letterSpacing: -1.5,
                 fontFeatures: [FontFeature.tabularFigures()],
               ),
             ),
@@ -1883,9 +1888,10 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       Text(
                         timeStr,
                         style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w400,
                           color: textColor,
+                          letterSpacing: -0.4,
                           fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       ),

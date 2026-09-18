@@ -90,8 +90,15 @@ class AlarmService {
       );
 
       await Alarm.set(alarmSettings: alarmSettings);
+      onRemoteDismissed.add(intId);
       // ignore: avoid_print
       print('[AlarmService] Successfully scheduled alarm $intId ($uuid) tone=$tone ramp=${rampSec}s for $parsedDateTime');
+    } else if (action == 'DISABLE') {
+      await Alarm.stop(intId);
+      await IdMapper.setEnabled(intId, false);
+      onRemoteDismissed.add(intId);
+      // ignore: avoid_print
+      print('[AlarmService] Disabled alarm $intId ($uuid)');
     } else if (action == 'CANCEL') {
       await Alarm.stop(intId);
       await IdMapper.removeMapping(intId);
@@ -178,6 +185,9 @@ class AlarmService {
       // Prune local alarms whose backend counterpart does not exist or was deleted
       for (final local in localAlarms) {
         final uuid = await IdMapper.getUuid(local.id);
+        if (uuid != null && uuid.startsWith('local_')) {
+          continue;
+        }
         if (uuid == null || !remoteUuids.contains(uuid)) {
           await Alarm.stop(local.id);
           await IdMapper.removeMapping(local.id);
@@ -190,6 +200,9 @@ class AlarmService {
       final allStoredIds = await IdMapper.getAllKnownIds();
       for (final id in allStoredIds) {
         final uuid = await IdMapper.getUuid(id);
+        if (uuid != null && uuid.startsWith('local_')) {
+          continue;
+        }
         if (uuid == null || !remoteUuids.contains(uuid)) {
           await Alarm.stop(id);
           await IdMapper.removeMapping(id);
