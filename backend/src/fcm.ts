@@ -42,10 +42,13 @@ export interface FcmPayload {
   id: string;
   target_time?: string;
   label?: string;
+  repeat_days?: string;
+  sound_tone?: string;
+  ramp_seconds?: number | string;
 }
 
 export async function sendFcmDataMessage(
-  action: 'CREATE' | 'CANCEL',
+  action: 'CREATE' | 'CANCEL' | 'DISMISS',
   payload: FcmPayload
 ): Promise<{ sent: number; failed: number }> {
   const tokens = DeviceRepo.getAllTokens();
@@ -65,6 +68,15 @@ export async function sendFcmDataMessage(
   }
   if (payload.label) {
     dataPayload.label = payload.label;
+  }
+  if (payload.repeat_days) {
+    dataPayload.repeat_days = payload.repeat_days;
+  }
+  if (payload.sound_tone) {
+    dataPayload.sound_tone = payload.sound_tone;
+  }
+  if (payload.ramp_seconds !== undefined) {
+    dataPayload.ramp_seconds = String(payload.ramp_seconds);
   }
 
   console.log(`[FCM] Dispatching ${action} data payload to ${tokens.length} device(s):`, dataPayload);

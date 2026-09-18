@@ -16,6 +16,7 @@ class _RingScreenState extends State<RingScreen> with SingleTickerProviderStateM
   late AnimationController _animController;
   late Animation<double> _pulseAnim;
   late Timer _clockTimer;
+  StreamSubscription<int>? _remoteDismissSub;
   DateTime _now = DateTime.now();
   bool _isProcessing = false;
 
@@ -39,10 +40,18 @@ class _RingScreenState extends State<RingScreen> with SingleTickerProviderStateM
         });
       }
     });
+
+    // Automatically pop when silenced remotely from dashboard
+    _remoteDismissSub = AlarmService.onRemoteDismissed.stream.listen((dismissedId) {
+      if (dismissedId == widget.alarmSettings.id && mounted) {
+        Navigator.of(context).pop();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _remoteDismissSub?.cancel();
     _animController.dispose();
     _clockTimer.cancel();
     super.dispose();

@@ -18,15 +18,33 @@ class BackendClient {
     await prefs.setString(_prefBackendUrlKey, cleanUrl);
   }
 
-  /// Register device FCM token with backend
-  static Future<bool> registerDeviceToken(String token) async {
+  /// Register device FCM token with backend along with battery/hardware telemetry
+  static Future<bool> registerDeviceToken(
+    String token, {
+    int? batteryLevel,
+    bool? isCharging,
+    String? deviceName,
+  }) async {
     try {
       final baseUrl = await getBaseUrl();
       final uri = Uri.parse('$baseUrl/api/devices/register');
+      final bodyMap = <String, dynamic>{
+        'token': token,
+      };
+      if (batteryLevel != null) {
+        bodyMap['battery_level'] = batteryLevel;
+      }
+      if (isCharging != null) {
+        bodyMap['is_charging'] = isCharging;
+      }
+      if (deviceName != null) {
+        bodyMap['device_name'] = deviceName;
+      }
+
       final response = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'token': token}),
+        body: jsonEncode(bodyMap),
       ).timeout(const Duration(seconds: 10));
 
       return response.statusCode == 200;
@@ -61,6 +79,8 @@ class BackendClient {
     required DateTime targetTime,
     required String label,
     List<int>? repeatDays,
+    String? soundTone,
+    int? rampSeconds,
   }) async {
     try {
       final baseUrl = await getBaseUrl();
@@ -81,6 +101,12 @@ class BackendClient {
       if (repeatDays != null && repeatDays.isNotEmpty) {
         bodyMap['repeat_days'] = repeatDays;
       }
+      if (soundTone != null) {
+        bodyMap['sound_tone'] = soundTone;
+      }
+      if (rampSeconds != null) {
+        bodyMap['ramp_seconds'] = rampSeconds;
+      }
 
       final response = await http.post(
         uri,
@@ -97,6 +123,25 @@ class BackendClient {
       // ignore: avoid_print
       print('[BackendClient] createRemoteAlarm error: $e');
       return null;
+    }
+  }
+
+  /// Fetch active remote alarms from backend for bidirectional sync
+  static Future<List<Map<String, dynamic>>> fetchActiveAlarms() async {
+    try {
+      final baseUrl = await getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/alarms?view=active');
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+      return [];
+    } catch (e) {
+      // ignore: avoid_print
+      print('[BackendClient] fetchActiveAlarms error: $e');
+      return [];
     }
   }
 

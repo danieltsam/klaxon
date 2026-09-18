@@ -97,11 +97,13 @@ On first launch, grant notification and exact alarm permissions. The device regi
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET` | `/api/alarms?view=active\|history` | List active or past dismissed alarms |
-| `POST` | `/api/alarms` | Schedule new alarm (`{ target_time, label, repeat_days }`) |
-| `DELETE` | `/api/alarms/:id` | Cancel alarm and remove from phone via FCM |
+| `POST` | `/api/alarms` | Schedule new alarm (`{ target_time, label, repeat_days, sound_tone, ramp_seconds }`) |
+| `DELETE` | `/api/alarms/:id` | Cancel alarm and remove from phone via FCM `CANCEL` |
+| `POST` | `/api/alarms/:id/silence` | Remotely silence active ringing phone ringer via FCM `DISMISS` |
 | `POST` | `/api/alarms/:id/state` | Update state (`ringing`, `snoozed`, `dismissed`) |
-| `GET` | `/api/calendar.ics` | Live iCal feed for Google/Apple Calendar |
-| `POST` | `/api/devices/register` | Register phone's FCM token |
+| `GET` | `/api/calendar.ics` | Live RFC 5545 iCal feed for Google/Apple Calendar |
+| `POST` | `/api/devices/register` | Register phone's FCM token with battery/charging telemetry |
+| `GET` | `/api/devices` | Query connected devices, battery percentage, and charging state |
 
 ---
 
@@ -115,6 +117,6 @@ Run the full automated test suite (backend API + Flutter client):
 
 ---
 
-## What's Next?
+## Features & Roadmap
 
-See [docs/ROADMAP.md](file:///Users/dsam/Documents/remotealarm/docs/ROADMAP.md) for future ideas (gradual volume ramp, custom sounds, math dismissal challenges, remote kill from dashboard).
+See [docs/ROADMAP.md](file:///Users/dsam/Documents/remotealarm/docs/ROADMAP.md) for full architecture details and future expansions (calendar auto-ingest, mission dismissal challenges, morning TTS briefings).

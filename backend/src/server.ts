@@ -116,9 +116,15 @@ app.get('/api/calendar.ics', async (_request, reply) => {
 
 // 2. POST /api/alarms: Create new alarm and broadcast FCM CREATE
 app.post<{
-  Body: { target_time: string; label: string; repeat_days?: string | number[] }
+  Body: {
+    target_time: string;
+    label: string;
+    repeat_days?: string | number[];
+    sound_tone?: string;
+    ramp_seconds?: number;
+  }
 }>('/api/alarms', async (request, reply) => {
-  const { target_time, label, repeat_days } = request.body || {};
+  const { target_time, label, repeat_days, sound_tone, ramp_seconds } = request.body || {};
 
   if (!target_time || !label) {
     return reply.status(400).send({
@@ -146,12 +152,19 @@ app.post<{
   }
 
   const id = uuidv4();
+  const normalizedTone = sound_tone && ['alarm', 'chime', 'digital'].includes(sound_tone.trim().toLowerCase())
+    ? sound_tone.trim().toLowerCase()
+    : 'alarm';
+  const normalizedRamp = typeof ramp_seconds === 'number' && ramp_seconds >= 0 ? ramp_seconds : 30;
+
   const newAlarm: AlarmRecord = {
     id,
     target_time: dateObj.toISOString(),
     label: label.trim(),
     status: 'pending',
-    repeat_days: repeatDaysStr
+    repeat_days: repeatDaysStr,
+    sound_tone: normalizedTone,
+    ramp_seconds: normalizedRamp
   };
 
   AlarmRepo.create(newAlarm);
@@ -160,7 +173,9 @@ app.post<{
   const fcmPayload: Record<string, string> = {
     id: newAlarm.id,
     target_time: newAlarm.target_time,
-    label: newAlarm.label
+    label: newAlarm.label,
+    sound_tone: normalizedTone,
+    ramp_seconds: String(normalizedRamp)
   };
   if (repeatDaysStr) {
     fcmPayload.repeat_days = repeatDaysStr;
@@ -198,6 +213,30 @@ app.delete<{
   });
 });
 
+// 3b. POST /api/alarms/:id/silence: Remotely silence a ringing alarm and broadcast FCM DISMISS
+app.post<{
+  Params: { id: string }
+}>('/api/alarms/:id/silence', async (request, reply) => {
+  const { id } = request.params;
+  const existing = AlarmRepo.getById(id);
+
+  if (!existing) {
+    return reply.status(404).send({ error: 'Alarm not found' });
+  }
+
+  AlarmRepo.updateStatus(id, 'dismissed');
+
+  // Broadcast remote silence/dismiss event to phone
+  const dispatchResult = await sendFcmDataMessage('DISMISS', { id });
+
+  return reply.send({
+    success: true,
+    id,
+    status: 'dismissed',
+    fcm_dispatch: dispatchResult
+  });
+});
+
 // 4. POST /api/alarms/:id/state: Update status ('ringing' | 'dismissed' | 'snoozed')
 app.post<{
   Params: { id: string };
@@ -226,11 +265,16 @@ app.post<{
   });
 });
 
-// 5. POST /api/devices/register: Upsert device token
+// 5. POST /api/devices/register: Upsert device token with battery and status metadata
 app.post<{
-  Body: { token: string }
+  Body: {
+    token: string;
+    battery_level?: number | null;
+    is_charging?: boolean | number | null;
+    device_name?: string | null;
+  }
 }>('/api/devices/register', async (request, reply) => {
-  const { token } = request.body || {};
+  const { token, battery_level, is_charging, device_name } = request.body || {};
 
   if (!token || typeof token !== 'string') {
     return reply.status(400).send({
@@ -238,19 +282,31 @@ app.post<{
     });
   }
 
-  DeviceRepo.upsert(token.trim());
+  DeviceRepo.upsert(token.trim(), {
+    battery_level,
+    is_charging,
+    device_name
+  });
+
   return reply.send({
     success: true,
     message: 'Device registered successfully'
   });
 });
 
-// 6. GET /api/devices: List count and masked tokens for dashboard
+// 6. GET /api/devices: List count, devices with battery telemetry, and masked tokens
 app.get('/api/devices', async (_request, reply) => {
-  const tokens = DeviceRepo.getAllTokens();
+  const devices = DeviceRepo.getAllDevices();
   return reply.send({
-    count: tokens.length,
-    tokens: tokens.map(t => `${t.slice(0, 10)}...${t.slice(-6)}`)
+    count: devices.length,
+    tokens: devices.map(d => `${d.token.slice(0, 10)}...${d.token.slice(-6)}`),
+    devices: devices.map(d => ({
+      token_masked: `${d.token.slice(0, 10)}...${d.token.slice(-6)}`,
+      device_name: d.device_name || 'Android Phone',
+      battery_level: d.battery_level,
+      is_charging: d.is_charging === 1 || d.is_charging === true,
+      updated_at: d.updated_at
+    }))
   });
 });
 

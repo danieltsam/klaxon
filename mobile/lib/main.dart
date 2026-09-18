@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:alarm/alarm.dart';
+import 'package:battery_plus/battery_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -87,7 +88,7 @@ class AlarmHomeScreen extends StatefulWidget {
   State<AlarmHomeScreen> createState() => _AlarmHomeScreenState();
 }
 
-class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
+class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingObserver {
   List<AlarmSettings> _alarms = [];
   Map<int, bool> _snoozeMap = {};
   Map<int, List<int>> _repeatMap = {};
@@ -98,13 +99,19 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
   late Timer _clockTimer;
   DateTime _currentTime = DateTime.now();
   StreamSubscription<AlarmSettings>? _ringSubscription;
+  StreamSubscription<int>? _remoteDismissSubscription;
+  final Battery _battery = Battery();
+  int? _batteryLevel;
+  bool _isCharging = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadAlarms();
     _initFCM();
     _loadBackendUrl();
+    _syncWithBackend(silent: true);
 
     // Live clock ticker
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -118,13 +125,61 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
     _ringSubscription = Alarm.ringStream.stream.listen((alarmSettings) {
       _navigateToRingScreen(alarmSettings);
     });
+
+    // Refresh list when alarm is remotely dismissed/canceled
+    _remoteDismissSubscription = AlarmService.onRemoteDismissed.stream.listen((_) {
+      _loadAlarms();
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _clockTimer.cancel();
     _ringSubscription?.cancel();
+    _remoteDismissSubscription?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _syncWithBackend(silent: true);
+      _reportBatteryTelemetry();
+    }
+  }
+
+  Future<void> _reportBatteryTelemetry() async {
+    if (_fcmToken == null || _fcmToken!.startsWith('Firebase unavailable')) return;
+    try {
+      final level = await _battery.batteryLevel;
+      final state = await _battery.batteryState;
+      final charging = state == BatteryState.charging || state == BatteryState.full;
+      if (mounted) {
+        setState(() {
+          _batteryLevel = level;
+          _isCharging = charging;
+        });
+      }
+      await BackendClient.registerDeviceToken(
+        _fcmToken!,
+        batteryLevel: level,
+        isCharging: charging,
+        deviceName: 'Android Device',
+      );
+    } catch (e) {
+      // ignore: avoid_print
+      print('[Battery] Error collecting battery telemetry: $e');
+    }
+  }
+
+  Future<void> _syncWithBackend({bool silent = false}) async {
+    final count = await AlarmService.syncWithBackend();
+    await _loadAlarms();
+    await _reportBatteryTelemetry();
+    if (!silent && mounted) {
+      _showToast('Synced with server ($count active alarms)');
+    }
   }
 
   void _navigateToRingScreen(AlarmSettings alarmSettings) async {
@@ -214,6 +269,10 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
         });
       }
 
+      if (token != null) {
+        _reportBatteryTelemetry();
+      }
+
       // Foreground message handler
       FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
         await AlarmService.handleAlarmPayload(message.data);
@@ -236,7 +295,20 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
     }
 
     setState(() => _isRegisteringDevice = true);
-    final success = await BackendClient.registerDeviceToken(_fcmToken!);
+    int? batteryLevel;
+    bool? isCharging;
+    try {
+      batteryLevel = await _battery.batteryLevel;
+      final state = await _battery.batteryState;
+      isCharging = state == BatteryState.charging || state == BatteryState.full;
+    } catch (_) {}
+
+    final success = await BackendClient.registerDeviceToken(
+      _fcmToken!,
+      batteryLevel: batteryLevel,
+      isCharging: isCharging,
+      deviceName: 'Android Device',
+    );
     if (!mounted) return;
     setState(() => _isRegisteringDevice = false);
 
@@ -336,6 +408,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
       0,
     ).add(const Duration(minutes: 5));
     List<int> selectedRepeatDays = [];
+    String selectedTone = 'alarm';
+    int selectedRampSeconds = 30;
     final labelController = TextEditingController(text: 'Morning Alarm');
 
     showModalBottomSheet(
@@ -591,6 +665,55 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                     ),
+                    const SizedBox(height: 14),
+
+                    // Audio Tone & Gentle Wake Ramp Selectors
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: selectedTone,
+                            decoration: InputDecoration(
+                              labelText: 'Tone',
+                              filled: true,
+                              fillColor: const Color(0xFF0F1222),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                            dropdownColor: const Color(0xFF161B30),
+                            items: const [
+                              DropdownMenuItem(value: 'alarm', child: Text('🔔 Bell', style: TextStyle(fontSize: 13))),
+                              DropdownMenuItem(value: 'chime', child: Text('✨ Chime', style: TextStyle(fontSize: 13))),
+                              DropdownMenuItem(value: 'digital', child: Text('⚡ Pulse', style: TextStyle(fontSize: 13))),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) setModalState(() => selectedTone = val);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: DropdownButtonFormField<int>(
+                            value: selectedRampSeconds,
+                            decoration: InputDecoration(
+                              labelText: 'Gentle Wake',
+                              filled: true,
+                              fillColor: const Color(0xFF0F1222),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                            dropdownColor: const Color(0xFF161B30),
+                            items: const [
+                              DropdownMenuItem(value: 30, child: Text('30s ramp', style: TextStyle(fontSize: 13))),
+                              DropdownMenuItem(value: 15, child: Text('15s ramp', style: TextStyle(fontSize: 13))),
+                              DropdownMenuItem(value: 60, child: Text('60s ramp', style: TextStyle(fontSize: 13))),
+                              DropdownMenuItem(value: 0, child: Text('Instant', style: TextStyle(fontSize: 13))),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) setModalState(() => selectedRampSeconds = val);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 22),
 
                     // Schedule button
@@ -627,6 +750,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
                             targetTime: alignedTime,
                             label: label,
                             repeatDays: selectedRepeatDays,
+                            soundTone: selectedTone,
+                            rampSeconds: selectedRampSeconds,
                           );
 
                           await AlarmService.scheduleLocalAlarm(
@@ -634,6 +759,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
                             label: label,
                             customUuid: remoteId,
                             repeatDays: selectedRepeatDays,
+                            soundTone: selectedTone,
+                            rampSeconds: selectedRampSeconds,
                           );
                           if (!bottomSheetContext.mounted) return;
                           Navigator.pop(bottomSheetContext);
@@ -779,21 +906,46 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> {
           ],
         ),
         actions: [
+          if (_batteryLevel != null)
+            Container(
+              margin: const EdgeInsets.only(right: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E243E),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _isCharging ? Icons.battery_charging_full_rounded : Icons.battery_std_rounded,
+                    size: 14,
+                    color: _isCharging ? const Color(0xFF10B981) : const Color(0xFF06B6D4),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '$_batteryLevel%${_isCharging ? ' ⚡' : ''}',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+          IconButton(
+            icon: const Icon(Icons.sync_rounded, color: Color(0xFF6366F1)),
+            tooltip: 'Sync with server',
+            onPressed: () => _syncWithBackend(silent: false),
+          ),
           IconButton(
             icon: const Icon(Icons.dns_outlined, color: Colors.white70),
             tooltip: 'Server Settings',
             onPressed: _showServerSettingsDialog,
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white70),
-            tooltip: 'Refresh',
-            onPressed: _loadAlarms,
-          ),
         ],
       ),
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: _loadAlarms,
+          onRefresh: () => _syncWithBackend(silent: false),
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),

@@ -207,7 +207,7 @@ describe('Fastify Alarm API & Persistence Test Suite', () => {
     });
   });
 
-  describe('Alarm Cancellation', () => {
+  describe('Alarm Cancellation & Remote Silence', () => {
     it('DELETE /api/alarms/:id should cancel an existing alarm', async () => {
       // Create fresh alarm to cancel
       const createRes = await app.inject({
@@ -238,6 +238,69 @@ describe('Fastify Alarm API & Persistence Test Suite', () => {
         url: '/api/alarms/non-existent-uuid-999'
       });
       assert.strictEqual(response.statusCode, 404);
+    });
+
+    it('POST /api/alarms/:id/silence should silence ringing alarm and dispatch FCM DISMISS', async () => {
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/api/alarms',
+        payload: {
+          target_time: '2026-11-01T09:00:00.000Z',
+          label: 'To Silence',
+          sound_tone: 'chime',
+          ramp_seconds: 15
+        }
+      });
+      const created = JSON.parse(createRes.body);
+      assert.strictEqual(created.sound_tone, 'chime');
+      assert.strictEqual(created.ramp_seconds, 15);
+
+      const silenceRes = await app.inject({
+        method: 'POST',
+        url: `/api/alarms/${created.id}/silence`
+      });
+      assert.strictEqual(silenceRes.statusCode, 200);
+      const data = JSON.parse(silenceRes.body);
+      assert.strictEqual(data.status, 'dismissed');
+      assert.strictEqual(data.success, true);
+
+      // Verify in DB
+      const record = AlarmRepo.getById(created.id);
+      assert.strictEqual(record?.status, 'dismissed');
+
+      // Cleanup
+      db.prepare('DELETE FROM alarms WHERE id = ?').run(created.id);
+    });
+  });
+
+  describe('Device Battery & Telemetry API', () => {
+    it('POST /api/devices/register should store battery, charging, and device name metadata', async () => {
+      const testToken = 'test_device_token_battery_telemetry';
+      const registerRes = await app.inject({
+        method: 'POST',
+        url: '/api/devices/register',
+        payload: {
+          token: testToken,
+          battery_level: 84,
+          is_charging: true,
+          device_name: 'Google Pixel 8 Pro'
+        }
+      });
+      assert.strictEqual(registerRes.statusCode, 200);
+
+      const listRes = await app.inject({
+        method: 'GET',
+        url: '/api/devices'
+      });
+      assert.strictEqual(listRes.statusCode, 200);
+      const data = JSON.parse(listRes.body);
+      const dev = data.devices.find((d: any) => d.device_name === 'Google Pixel 8 Pro');
+      assert.ok(dev, 'Device with telemetry must be returned');
+      assert.strictEqual(dev.battery_level, 84);
+      assert.strictEqual(dev.is_charging, true);
+
+      // Cleanup
+      DeviceRepo.remove(testToken);
     });
   });
 });

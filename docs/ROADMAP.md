@@ -1,72 +1,53 @@
-# Remote Alarm System — Future Ideas & Architecture Roadmap
+# Remote Alarm System — Features & Roadmap
 
-This document captures high-value features, architectural concepts, and future expansions planned for upcoming iterations of the Remote Alarm System.
-
----
-
-## 1. Core Alarm & Audio Features
-
-### 1.1 Custom Sound Selection (Mobile)
-- **Local Sound Library:** Offer a curated set of alarm sounds in `mobile/assets/sounds/` (e.g., Gentle Chimes, Digital Pulse, Classic Bell, Energetic Synth).
-- **Custom Ringtone Picker:** Integrate native Android `RingtoneManager` or system sound picker to allow users to select their favorite phone ringtone or local MP3 file.
-- **Sound Preview:** In-app audio player in the alarm creation sheet to test volume and sound before saving.
-
-### 1.2 Gentle Wake Engine (Universal Volume Ramp)
-- **Smooth Exponential / Linear Ramp:** Gradual increase from mute/5% volume to 100% volume over a configurable ramp period (e.g., 30s, 60s, 2m, 5m).
-- **Screen Brightness Fade:** Synchronize display brightness on `RingScreen` to slowly ramp from dark to warm morning light.
-- **Pre-Alarm Chime:** Optional soft single chime 10 minutes prior to main alarm time.
+This document tracks implemented features and future enhancements for the Remote Alarm System.
 
 ---
 
-## 2. Advanced Scheduling & Recurrence
+## 1. Implemented Features ✅
 
-### 2.1 Extended Recurrence Patterns
-- **Fortnightly (Bi-weekly):** Alarms that trigger every two weeks on specified days (common for shift work and alternating schedules).
-- **Monthly / Day-of-Month:** Alarms scheduled on specific days of the month (e.g., 1st and 15th for billing or medication).
-- **Custom Skip / Holiday Exceptions:** Option to mute or skip recurring alarms on national holidays or vacation dates.
+### 1.1 Remote Silence & Kill from Web Dashboard
+- **Live Ringing Alert Banner:** Real-time flashing notification on the web dashboard when an alarm transitions to `ringing`.
+- **FCM `DISMISS` Payload:** 1-click **"🔕 Silence Alarm Now"** button on the web dashboard broadcasts a high-priority FCM `DISMISS` command, silencing the phone ringer immediately and closing `RingScreen`.
+- **Dedicated Endpoint:** `POST /api/alarms/:id/silence` transitions status to `dismissed` and dispatches kill command.
 
-### 2.2 Calendar Synchronization and Event Management
-- **RFC 5545 iCalendar Export (Implemented):** The backend serves `GET /api/calendar.ics`. Users can subscribe to this live URL from Google Calendar, Apple Calendar, or Microsoft Outlook. Active alarms automatically appear as calendar events with recurrence rules (`RRULE`).
-- **Google Calendar API Push Integration:** Backend service can authenticate with Google Calendar via OAuth 2.0 or Service Account. When an alarm is created or modified, the backend automatically inserts or updates a corresponding Google Calendar event.
-- **Upstream Calendar Event Ingestion:** A background polling worker inspects the user's primary work calendar. The worker automatically creates a remote alarm (for example, 45 minutes before the first meeting of the day) and dispatches it through FCM.
-- **CalDAV Server Synchronization:** Support standard CalDAV synchronization for Nextcloud and Fastmail users who prefer self-hosted calendar backends.
+### 1.2 Reconnection & Bi-directional Sync
+- **Local <-> Server Reconciliation:** When the Android app starts, resumes from the background (`WidgetsBindingObserver`), or on manual pull-to-refresh, `AlarmService.syncWithBackend()` reconciles local `AlarmManager` schedules against `GET /api/alarms?view=active`.
+- **Automatic Pruning:** Local alarms canceled or silenced on the server are automatically removed on reconnect.
+- **Offline Recovery:** Alarms dispatched while the device was sleeping or disconnected are automatically pulled and scheduled.
 
----
+### 1.3 Device Telemetry & Battery Indicator
+- **Hardware Telemetry:** Mobile client collects battery percentage (`battery_plus`) and charging status (⚡) and sends it with registration pings to `POST /api/devices/register`.
+- **Dashboard Telemetry Pill:** Web dashboard displays connected device model, battery percentage, charging state, and last ping timestamp in the header.
 
-## 3. Dismissal Challenges ("Mission Alarms")
+### 1.4 Gentle Wake Engine (Universal Volume Ramp)
+- **Smooth Fade-In:** Audio gradually ramps from mute to full volume over configurable durations: Instant (0s), Quick (15s), Gradual (30s default), or Deep Sleep (60s).
+- **Supported Everywhere:** Selectable in the web dashboard creation form and the Android local alarm creation sheet.
 
-To prevent accidental shutoffs or oversleeping:
-- **Math Challenge:** Solve 2–3 arithmetic problems (easy, medium, hard) before the dismiss button becomes active.
-- **Shake Mission:** Vigorously shake the phone 20–50 times (measured via accelerometer).
-- **QR / Barcode Scan:** Require scanning a specific QR code taped in the bathroom or kitchen to shut off the alarm.
-- **Typing Challenge:** Type a motivational quote or sentence with 100% accuracy.
+### 1.5 Sound Tone Selection
+- **Curated Tone Library:** Select between Classic Bell (`alarm`), Gentle Chimes (`chime`), and Digital Pulse (`digital`).
+- **Persisted & Dispatched:** Configured per-alarm in SQLite, included in FCM payloads, and resolved to dedicated audio assets on mobile.
 
----
-
-## 4. Multi-Device & Remote Control
-
-### 4.1 Multi-Device Remote Kill
-- **Web Dashboard Dismiss:** If your phone is ringing in another room, the web dashboard displays a glowing red **"Ring Active: [Phone Name] — Click to Silence / Dismiss"** button that broadcasts an immediate `KILL` / `DISMISS` FCM command.
-- **Multi-Device Sync:** Ring multiple registered devices (e.g. bedside phone + tablet or smart speaker) simultaneously with unified dismiss.
+### 1.6 Google Calendar Export & Viewing
+- **1-Click Direct Event Link:** Each alarm in the web table includes a `📅 +GCal` link that opens Google Calendar with date, time, title, and recurrence pre-filled.
+- **RFC 5545 iCalendar Subscription:** Web dashboard provides a **"📋 Copy iCal Feed"** button with quick instructions to subscribe to `GET /api/calendar.ics` directly in Google Calendar, Apple Calendar, or Outlook.
 
 ---
 
-## 5. Post-Alarm Smart Briefing
+## 2. Future Backlog (Roadmap) ⏳
 
-### 5.1 Text-to-Speech (TTS) Morning Briefing
-- When the alarm is dismissed, a soothing voice reads out:
-  - Current time and greeting.
-  - Local weather conditions and forecast temperature.
-  - Top 3 calendar events or reminders for the day.
-  - Commute traffic conditions.
+### 2.1 Google Calendar Upstream Auto-Ingest
+- A background polling worker inspects the user's primary work/personal calendar via Google Calendar API or CalDAV.
+- Automatically schedules an alarm (e.g. 45 minutes before the first morning meeting) and dispatches it through FCM.
 
----
+### 2.2 Dismissal Challenges ("Mission Alarms")
+- Optional challenges to prevent accidental dismissals:
+  - Arithmetic problems (easy/medium/hard).
+  - Accelerometer shake count (e.g. shake 20 times).
+  - QR / Barcode scan requirement.
 
-## 6. Backend Control & Settings Panel
+### 2.3 Post-Alarm Smart Morning Briefing
+- When alarm is dismissed, text-to-speech (TTS) reads greeting, current weather, and first calendar events.
 
-### 6.1 Server Configuration Dashboard
-- Web UI settings panel to view and modify:
-  - Active FCM credentials and connection health.
-  - Registered device list with ping / test-signal button.
-  - Configurable port, host, and database retention policies.
-  - Webhook endpoints for Home Assistant / smart home integrations.
+### 2.4 CLI Companion & Raycast Extension
+- Rapid terminal command (`alarm 25m "Oven"`) or Raycast extension for zero-friction scheduling without opening the browser.
