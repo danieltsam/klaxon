@@ -1338,10 +1338,20 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             ),
                           );
 
+                          // First create on backend to establish sync with dashboard
+                          String? remoteId = await BackendClient.createRemoteAlarm(
+                            targetTime: cleanTime,
+                            label: title,
+                            soundTone: selectedTone,
+                            rampSeconds: selectedRampSeconds,
+                          );
+
+                          final assignedUuid = remoteId ?? 'local_$id';
+
                           await Alarm.set(alarmSettings: settings);
                           await IdMapper.saveMapping(
                             id,
-                            'local_$id',
+                            assignedUuid,
                             label: title,
                             description: desc,
                             targetTime: cleanTime,
@@ -1645,18 +1655,40 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           ],
         ),
       ),
-      // Floating Action Button
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color(0xFF5E6AD2),
-        foregroundColor: const Color(0xFFFFFFFF),
-        elevation: 6,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        icon: const Icon(Icons.add_rounded, size: 20),
-        label: const Text(
-          'new alarm',
-          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, letterSpacing: 0.2),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: GestureDetector(
+        onTap: _showCreateAlarmModal,
+        child: Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 22),
+          decoration: BoxDecoration(
+            color: const Color(0xFF5E6AD2),
+            borderRadius: BorderRadius.circular(21),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x66000000),
+                blurRadius: 16,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.add_rounded, size: 18, color: Color(0xFFF7F8F8)),
+              SizedBox(width: 8),
+              Text(
+                'new alarm',
+                style: TextStyle(
+                  color: Color(0xFFF7F8F8),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
         ),
-        onPressed: _showCreateAlarmModal,
       ),
     );
   }

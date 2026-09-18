@@ -176,6 +176,18 @@ class AlarmService {
         }
       }
 
+      // Also prune any stored mappings for remote UUIDs that are no longer active on server
+      final allStoredIds = await IdMapper.getAllKnownIds();
+      for (final id in allStoredIds) {
+        final uuid = await IdMapper.getUuid(id);
+        if (uuid != null && !uuid.startsWith('local_') && !remoteUuids.contains(uuid)) {
+          await Alarm.stop(id);
+          await IdMapper.removeMapping(id);
+          // ignore: avoid_print
+          print('[AlarmService] Purged stale stored mapping for $id ($uuid)');
+        }
+      }
+
       return remoteAlarms.length;
     } catch (e) {
       // ignore: avoid_print
