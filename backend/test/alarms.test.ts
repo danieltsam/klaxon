@@ -11,6 +11,9 @@ describe('Fastify Alarm API & Persistence Test Suite', () => {
   });
 
   after(async () => {
+    // Clean up test fixtures so test runs do not pollute alarms.db
+    db.prepare("DELETE FROM alarms WHERE label IN ('Standup Sync', 'To Cancel')").run();
+    db.prepare("DELETE FROM devices WHERE token LIKE 'test_device_token_%'").run();
     await app.close();
   });
 
