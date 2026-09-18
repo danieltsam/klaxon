@@ -107,13 +107,26 @@ On first launch, grant notification and exact alarm permissions. The device regi
 
 ---
 
-## Tests
+## Tests & Verification
 
-Run the full automated test suite (backend API + Flutter client):
-
+### 1. Automated Test Suites (CI / Local Offline)
+Run the full in-memory backend suite and mobile Flutter test harness:
 ```bash
 ./run_tests.sh
 ```
+- **Backend (`backend/test/`):** 24 tests across 11 suites verifying REST APIs, iCalendar feeds, state transitions, FCM dispatch payloads, disabled/pending slider states, and isolated in-memory persistence.
+- **Mobile (`mobile/test/`):** 22 tests verifying recurrence calculations, payload sanitization, audio tone mappings, rich text notes storage, reconnection catch-up reconciliation, and offline safety.
+
+### 2. Live Physical Device E2E Verification (via ADB)
+When an Android device is plugged in via USB:
+```bash
+# Run standalone on-device sync test
+./scripts/test_live_device_sync.sh
+
+# Or run full suite including device test
+./run_tests.sh --with-device
+```
+This automated runner verifies live FCM push delivery, remote toggle synchronization, network disconnection resilience, and automatic catch-up reconciliation directly on hardware.
 
 ---
 
