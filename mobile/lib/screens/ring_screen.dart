@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:alarm/alarm.dart';
 import '../services/alarm_service.dart';
+import '../utils/id_mapper.dart';
 
 class RingScreen extends StatefulWidget {
   final AlarmSettings alarmSettings;
@@ -13,33 +14,41 @@ class RingScreen extends StatefulWidget {
 }
 
 class _RingScreenState extends State<RingScreen> with SingleTickerProviderStateMixin {
-  late AnimationController _animController;
-  late Animation<double> _pulseAnim;
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
   late Timer _clockTimer;
   StreamSubscription<int>? _remoteDismissSub;
   DateTime _now = DateTime.now();
   bool _isProcessing = false;
+  int _elapsedRampSeconds = 0;
+  int _rampDurationSeconds = 30;
+  String _soundTone = 'alarm';
 
   @override
   void initState() {
     super.initState();
 
-    _animController = AnimationController(
+    _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1000),
+      duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
 
-    _pulseAnim = Tween<double>(begin: 0.9, end: 1.15).animate(
-      CurvedAnimation(parent: _animController, curve: Curves.easeInOut),
+    _pulseAnimation = Tween<double>(begin: 0.85, end: 1.15).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         setState(() {
           _now = DateTime.now();
+          if (_elapsedRampSeconds < _rampDurationSeconds) {
+            _elapsedRampSeconds++;
+          }
         });
       }
     });
+
+    _loadToneAndRamp();
 
     // Automatically pop when silenced remotely from dashboard
     _remoteDismissSub = AlarmService.onRemoteDismissed.stream.listen((dismissedId) {
@@ -49,10 +58,21 @@ class _RingScreenState extends State<RingScreen> with SingleTickerProviderStateM
     });
   }
 
+  Future<void> _loadToneAndRamp() async {
+    final ramp = await IdMapper.getRampSeconds(widget.alarmSettings.id);
+    final tone = await IdMapper.getSoundTone(widget.alarmSettings.id);
+    if (mounted) {
+      setState(() {
+        _rampDurationSeconds = ramp;
+        _soundTone = tone;
+      });
+    }
+  }
+
   @override
   void dispose() {
     _remoteDismissSub?.cancel();
-    _animController.dispose();
+    _pulseController.dispose();
     _clockTimer.cancel();
     super.dispose();
   }
@@ -75,12 +95,6 @@ class _RingScreenState extends State<RingScreen> with SingleTickerProviderStateM
     await AlarmService.snoozeAlarm(widget.alarmSettings);
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Alarm snoozed for 9 minutes'),
-          duration: Duration(seconds: 2),
-        ),
-      );
       Navigator.of(context).pop();
     }
   }
@@ -89,180 +103,230 @@ class _RingScreenState extends State<RingScreen> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     final title = widget.alarmSettings.notificationSettings.title.isNotEmpty
         ? widget.alarmSettings.notificationSettings.title
-        : 'Alarm Ringing';
+        : 'Alarm';
 
-    final hours = _now.hour.toString().padLeft(2, '0');
-    final minutes = _now.minute.toString().padLeft(2, '0');
-    final seconds = _now.second.toString().padLeft(2, '0');
+    final hourStr = _now.hour.toString().padLeft(2, '0');
+    final minuteStr = _now.minute.toString().padLeft(2, '0');
+    final amPmStr = _now.hour >= 12 ? 'PM' : 'AM';
+
+    final rampProgress = _rampDurationSeconds > 0
+        ? (_elapsedRampSeconds / _rampDurationSeconds).clamp(0.0, 1.0)
+        : 1.0;
+    final rampPercentage = (rampProgress * 100).toInt();
 
     return PopScope(
-      canPop: false, // Prevent accidental dismissal with back gesture
+      canPop: false, // Prevent accidental back gesture
       child: Scaffold(
-        backgroundColor: const Color(0xFF0B0E1B),
+        backgroundColor: const Color(0xFF08090A),
         body: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Top status
-                Column(
-                  children: [
-                    const SizedBox(height: 20),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.redAccent.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
+                // Top Status Pill (Linear style)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF121316),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFF222326)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ScaleTransition(
+                        scale: _pulseAnimation,
+                        child: Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFEB5757),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
                       ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
+                      const SizedBox(width: 8),
+                      const Text(
+                        'alarm active • listening for remote silence',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF8A8F98),
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const Spacer(),
+
+                // Giant Digital Clock (Linear high contrast)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      '$hourStr:$minuteStr',
+                      style: const TextStyle(
+                        fontSize: 64,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFF7F8F8),
+                        letterSpacing: -1.5,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      amPmStr,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                // Alarm Title
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFFF7F8F8),
+                    letterSpacing: -0.3,
+                  ),
+                ),
+
+                const SizedBox(height: 32),
+
+                // Gentle Wake Ramp Progress Card (Linear style)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF121316),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF222326)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Icon(Icons.alarm, color: Colors.redAccent, size: 18),
-                          SizedBox(width: 8),
                           Text(
-                            'ALARM RINGING',
-                            style: TextStyle(
-                              color: Colors.redAccent,
-                              fontWeight: FontWeight.bold,
+                            '$_soundTone sound',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFFF7F8F8),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            _rampDurationSeconds > 0
+                                ? '$_rampDurationSeconds' 's gentle wake ramp'
+                                : 'immediate full volume',
+                            style: const TextStyle(
                               fontSize: 12,
-                              letterSpacing: 1.2,
+                              color: Color(0xFF8A8F98),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      title,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                  ],
-                ),
-
-                // Center animated pulse and clock
-                Column(
-                  children: [
-                    ScaleTransition(
-                      scale: _pulseAnim,
-                      child: Container(
-                        width: 140,
-                        height: 140,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.redAccent.withValues(alpha: 0.12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.redAccent.withValues(alpha: 0.25),
-                              blurRadius: 40,
-                              spreadRadius: 10,
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.notifications_active,
-                          color: Colors.redAccent,
-                          size: 64,
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: LinearProgressIndicator(
+                          value: rampProgress,
+                          minHeight: 4,
+                          backgroundColor: const Color(0xFF1C1D21),
+                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF5E6AD2)),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 36),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text(
-                          '$hours:$minutes',
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          '$rampPercentage%',
                           style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 68,
-                            fontWeight: FontWeight.w200,
-                            letterSpacing: -2,
+                            fontSize: 11,
+                            color: Color(0xFF8A8F98),
                             fontFeatures: [FontFeature.tabularFigures()],
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          seconds,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.6),
-                            fontSize: 26,
-                            fontWeight: FontWeight.w300,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
 
-                // Bottom action buttons (Dismiss & Snooze)
+                const Spacer(),
+
+                // Action Buttons (Linear style: Stark White Primary + Border Ghost Secondary)
                 Column(
                   children: [
-                    // Snooze Button (+9 min)
                     SizedBox(
                       width: double.infinity,
-                      height: 56,
-                      child: OutlinedButton.icon(
-                        onPressed: _isProcessing ? null : _handleSnooze,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.amberAccent,
-                          side: const BorderSide(color: Colors.amberAccent, width: 1.5),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          backgroundColor: Colors.amberAccent.withValues(alpha: 0.08),
-                        ),
-                        icon: const Icon(Icons.snooze, size: 22),
-                        label: const Text(
-                          'SNOOZE (+9 MIN)',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1.0,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Dismiss Button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 60,
-                      child: ElevatedButton.icon(
-                        onPressed: _isProcessing ? null : _handleDismiss,
+                      height: 52,
+                      child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.redAccent,
-                          foregroundColor: Colors.white,
-                          elevation: 8,
-                          shadowColor: Colors.redAccent.withValues(alpha: 0.5),
+                          backgroundColor: const Color(0xFFF7F8F8),
+                          foregroundColor: const Color(0xFF08090A),
+                          elevation: 0,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                         ),
-                        icon: const Icon(Icons.stop_circle_outlined, size: 24),
-                        label: const Text(
-                          'DISMISS ALARM',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.0,
-                          ),
-                        ),
+                        onPressed: _isProcessing ? null : _handleDismiss,
+                        child: _isProcessing
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text(
+                                '[ Dismiss ]',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
                       ),
                     ),
                     const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: const Color(0xFF121316),
+                          foregroundColor: const Color(0xFFF7F8F8),
+                          side: const BorderSide(color: Color(0xFF222326)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        onPressed: _isProcessing ? null : _handleSnooze,
+                        child: const Text(
+                          '[ Snooze +9m ]',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF8A8F98),
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
+                const SizedBox(height: 12),
               ],
             ),
           ),
