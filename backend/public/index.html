@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Remote Alarm Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090b14;
+      --surface: #111526;
+      --surface-elevated: #161c33;
+      --surface-border: rgba(255, 255, 255, 0.08);
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.25);
+      --accent-hover: #4f46e5;
+      --cyan: #06b6d4;
+      --amber: #f59e0b;
+      --emerald: #10b981;
+      --rose: #f43f5e;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-subtle: #475569;
+      --radius-lg: 16px;
+      --radius-md: 10px;
+      --radius-sm: 6px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text-main);
+      min-height: 100vh;
+      padding: 2.5rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 920px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.75rem;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--surface-border);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+    }
+
+    .logo-badge {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+      box-shadow: 0 0 15px var(--accent-glow);
+    }
+
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .device-pill {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      padding: 0.4rem 0.8rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      color: var(--text-muted);
+    }
+
+    .dot-live {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--emerald);
+      box-shadow: 0 0 8px var(--emerald);
+    }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.25rem;
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* Form */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 1rem;
+      align-items: end;
+    }
+
+    @media (max-width: 768px) {
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    input[type="datetime-local"],
+    input[type="text"] {
+      background: var(--surface-elevated);
+      border: 1px solid var(--surface-border);
+      color: var(--text-main);
+      padding: 0.7rem 0.9rem;
+      border-radius: var(--radius-md);
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+      filter: invert(1);
+      cursor: pointer;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+    }
+
+    .recurrence-box {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.04);
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .days-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .day-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 1px solid var(--surface-border);
+      background: var(--surface-elevated);
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+    }
+
+    .day-btn.selected {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+      box-shadow: 0 0 10px var(--accent-glow);
+    }
+
+    .day-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-left: 0.5rem;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 0.7rem 1.25rem;
+      border-radius: var(--radius-md);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      transition: all 0.15s ease;
+      font-family: inherit;
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--surface-border);
+      color: var(--text-muted);
+      padding: 0.35rem 0.7rem;
+      font-size: 0.75rem;
+    }
+
+    .btn-ghost:hover {
+      background: var(--surface-elevated);
+      color: var(--text-main);
+    }
+
+    .btn-danger {
+      background: rgba(244, 63, 94, 0.12);
+      border: 1px solid rgba(244, 63, 94, 0.25);
+      color: #fda4af;
+      padding: 0.35rem 0.7rem;
+      font-size: 0.75rem;
+    }
+
+    .btn-danger:hover {
+      background: var(--rose);
+      color: white;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      border-bottom: 1px solid var(--surface-border);
+      padding-bottom: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.4rem 0.85rem;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .tab-btn.active {
+      background: var(--surface-elevated);
+      color: var(--text-main);
+    }
+
+    .tab-count {
+      background: rgba(255, 255, 255, 0.08);
+      padding: 0.15rem 0.45rem;
+      border-radius: 9999px;
+      font-size: 0.7rem;
+    }
+
+    /* Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.85rem;
+    }
+
+    th {
+      padding: 0.75rem 1rem;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-subtle);
+      border-bottom: 1px solid var(--surface-border);
+    }
+
+    td {
+      padding: 0.9rem 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      vertical-align: middle;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .alarm-time {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      font-size: 1.05rem;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .badge-date {
+      font-size: 0.68rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: var(--radius-sm);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 600;
+    }
+
+    .date-today {
+      background: rgba(6, 182, 212, 0.15);
+      color: var(--cyan);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+    }
+
+    .date-tomorrow {
+      background: rgba(99, 102, 241, 0.15);
+      color: #a5b4fc;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+    }
+
+    .date-future {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-muted);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .badge-status {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.2rem 0.55rem;
+      border-radius: 9999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .status-pending {
+      background: rgba(99, 102, 241, 0.12);
+      color: #a5b4fc;
+    }
+
+    .status-snoozed {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--amber);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    .status-ringing {
+      background: rgba(244, 63, 94, 0.2);
+      color: var(--rose);
+      border: 1px solid rgba(244, 63, 94, 0.4);
+      animation: blink 1s infinite alternate;
+    }
+
+    .status-dismissed {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--emerald);
+    }
+
+    .status-canceled {
+      background: rgba(148, 163, 184, 0.08);
+      color: var(--text-muted);
+    }
+
+    .repeat-tag {
+      font-size: 0.7rem;
+      color: #818cf8;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      margin-top: 2px;
+    }
+
+    .empty-state {
+      padding: 3rem 1rem;
+      text-align: center;
+      color: var(--text-subtle);
+      font-size: 0.85rem;
+    }
+
+    /* Footer diagnostics */
+    footer {
+      font-size: 0.75rem;
+      color: var(--text-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 0.5rem;
+    }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: var(--surface-elevated);
+      border: 1px solid var(--accent);
+      color: white;
+      padding: 0.75rem 1.25rem;
+      border-radius: var(--radius-md);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.25s ease;
+      z-index: 999;
+      font-size: 0.8rem;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="brand">
+        <div class="logo-badge">⏰</div>
+        <div>
+          <h1>Remote Alarm</h1>
+          <div class="subtitle">Cloud Dispatcher & Control Center</div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="device-pill">
+          <span class="dot-live"></span>
+          <span id="device-count">0 Devices</span>
+        </div>
+        <a href="/api/calendar.ics" target="_blank" class="btn btn-ghost" title="Download or subscribe to iCalendar (.ics) feed">📅 Calendar Feed</a>
+        <button class="btn btn-ghost" onclick="fetchData()">↻ Refresh</button>
+      </div>
+    </header>
+
+    <!-- Schedule Card -->
+    <section class="card">
+      <div class="card-title">Schedule Alarm</div>
+      <form id="alarm-form" onsubmit="handleCreateAlarm(event)">
+        <div class="form-grid">
+          <div class="field">
+            <label for="alarm-time">Target Time</label>
+            <input type="datetime-local" id="alarm-time" required>
+          </div>
+          <div class="field">
+            <label for="alarm-label">Label / Name</label>
+            <input type="text" id="alarm-label" placeholder="e.g. Morning Wakeup" required>
+          </div>
+          <button type="submit" class="btn btn-primary" id="submit-btn">
+            <span>+ Schedule</span>
+          </button>
+        </div>
+
+        <div class="recurrence-box">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label>Repeat Days (Optional)</label>
+            <button type="button" class="btn btn-ghost" style="padding: 0.2rem 0.5rem;" onclick="clearRepeatDays()">Clear</button>
+          </div>
+          <div class="days-row">
+            <button type="button" class="day-btn" data-day="1" onclick="toggleDay(1)">M</button>
+            <button type="button" class="day-btn" data-day="2" onclick="toggleDay(2)">T</button>
+            <button type="button" class="day-btn" data-day="3" onclick="toggleDay(3)">W</button>
+            <button type="button" class="day-btn" data-day="4" onclick="toggleDay(4)">T</button>
+            <button type="button" class="day-btn" data-day="5" onclick="toggleDay(5)">F</button>
+            <button type="button" class="day-btn" data-day="6" onclick="toggleDay(6)">S</button>
+            <button type="button" class="day-btn" data-day="7" onclick="toggleDay(7)">S</button>
+            <span id="repeat-summary" class="day-label">One-off alarm</span>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <!-- Alarms View Card with Tabs -->
+    <section class="card">
+      <div class="tabs">
+        <button class="tab-btn active" id="tab-active" onclick="switchTab('active')">
+          Active Alarms <span class="tab-count" id="count-active">0</span>
+        </button>
+        <button class="tab-btn" id="tab-history" onclick="switchTab('history')">
+          History <span class="tab-count" id="count-history">0</span>
+        </button>
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Time & Date</th>
+              <th>Label</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="alarms-body">
+            <tr>
+              <td colspan="4" class="empty-state">Loading alarms...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Diagnostics Footer -->
+    <footer>
+      <div id="device-tokens">Devices: None</div>
+      <div>Fastify API v1.0 • Android AlarmManager</div>
+    </footer>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    let currentTab = 'active';
+    let selectedDays = [];
+
+    function toggleDay(day) {
+      const idx = selectedDays.indexOf(day);
+      if (idx > -1) {
+        selectedDays.splice(idx, 1);
+      } else {
+        selectedDays.push(day);
+      }
+      selectedDays.sort((a, b) => a - b);
+      updateDayButtons();
+    }
+
+    function clearRepeatDays() {
+      selectedDays = [];
+      updateDayButtons();
+    }
+
+    function updateDayButtons() {
+      document.querySelectorAll('.day-btn').forEach(btn => {
+        const d = parseInt(btn.getAttribute('data-day'), 10);
+        btn.classList.toggle('selected', selectedDays.includes(d));
+      });
+
+      const summary = document.getElementById('repeat-summary');
+      if (selectedDays.length === 0) {
+        summary.textContent = 'One-off alarm';
+      } else if (selectedDays.length === 7) {
+        summary.textContent = 'Repeats: Every day';
+      } else if (selectedDays.length === 5 && selectedDays.join(',') === '1,2,3,4,5') {
+        summary.textContent = 'Repeats: Weekdays (Mon-Fri)';
+      } else if (selectedDays.length === 2 && selectedDays.join(',') === '6,7') {
+        summary.textContent = 'Repeats: Weekends (Sat-Sun)';
+      } else {
+        const names = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        summary.textContent = 'Repeats: ' + selectedDays.map(d => names[d]).join(', ');
+      }
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      document.getElementById('tab-active').classList.toggle('active', tab === 'active');
+      document.getElementById('tab-history').classList.toggle('active', tab === 'history');
+      loadAlarms();
+    }
+
+    function initDefaultTime() {
+      const now = new Date();
+      now.setSeconds(0, 0);
+      const target = new Date(now.getTime() + 10 * 60000);
+      target.setMinutes(target.getMinutes() - target.getTimezoneOffset());
+      document.getElementById('alarm-time').value = target.toISOString().slice(0, 16);
+    }
+
+    function formatAlarmDate(isoStr) {
+      const d = new Date(isoStr);
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const targetDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const diffDays = Math.round((targetDay - today) / (1000 * 60 * 60 * 24));
+
+      const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      if (diffDays === 0) {
+        return { timeStr, dateLabel: 'Today', dateClass: 'date-today' };
+      } else if (diffDays === 1) {
+        return { timeStr, dateLabel: 'Tomorrow', dateClass: 'date-tomorrow' };
+      } else {
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const dateLabel = `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]}`;
+        return { timeStr, dateLabel, dateClass: 'date-future' };
+      }
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3500);
+    }
+
+    async function loadAlarms() {
+      try {
+        const res = await fetch(`/api/alarms?view=${currentTab}`);
+        const alarms = await res.json();
+        const tbody = document.getElementById('alarms-body');
+
+        // Update active tab count
+        if (currentTab === 'active') {
+          document.getElementById('count-active').textContent = alarms.length;
+        } else {
+          document.getElementById('count-history').textContent = alarms.length;
+        }
+
+        if (!alarms || alarms.length === 0) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="4" class="empty-state">
+                ${currentTab === 'active' ? 'No active alarms scheduled.' : 'No past alarms recorded.'}
+              </td>
+            </tr>
+          `;
+          return;
+        }
+
+        tbody.innerHTML = alarms.map(alarm => {
+          const { timeStr, dateLabel, dateClass } = formatAlarmDate(alarm.target_time);
+          const isCancelable = alarm.status === 'pending' || alarm.status === 'snoozed';
+          
+          let repeatInfo = '';
+          if (alarm.repeat_days) {
+            const names = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            const daysArr = alarm.repeat_days.split(',').map(Number);
+            repeatInfo = `<div class="repeat-tag">↻ ${daysArr.map(d => names[d]).join(', ')}</div>`;
+          }
+
+          return `
+            <tr>
+              <td>
+                <div class="alarm-time">
+                  ${timeStr}
+                  <span class="badge-date ${dateClass}">${dateLabel}</span>
+                </div>
+              </td>
+              <td>
+                <div style="font-weight: 500;">${escapeHtml(alarm.label)}</div>
+                ${repeatInfo}
+              </td>
+              <td>
+                <span class="badge-status status-${alarm.status}">
+                  ● ${alarm.status}
+                </span>
+              </td>
+              <td>
+                ${isCancelable ? `
+                  <button class="btn btn-danger" onclick="cancelAlarm('${alarm.id}')">
+                    Cancel
+                  </button>
+                ` : `<span style="color: var(--text-subtle);">—</span>`}
+              </td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        console.error('Error fetching alarms:', err);
+      }
+    }
+
+    async function loadDevices() {
+      try {
+        const res = await fetch('/api/devices');
+        const data = await res.json();
+        document.getElementById('device-count').textContent = `${data.count} Device${data.count === 1 ? '' : 's'}`;
+        const tokensEl = document.getElementById('device-tokens');
+        if (data.tokens && data.tokens.length > 0) {
+          tokensEl.textContent = `Devices: ${data.tokens.join(', ')}`;
+        } else {
+          tokensEl.textContent = 'Devices: None registered';
+        }
+      } catch (err) {
+        console.error('Error fetching devices:', err);
+      }
+    }
+
+    async function handleCreateAlarm(e) {
+      e.preventDefault();
+      const timeInput = document.getElementById('alarm-time').value;
+      const labelInput = document.getElementById('alarm-label').value;
+      const submitBtn = document.getElementById('submit-btn');
+
+      if (!timeInput || !labelInput) return;
+
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Dispatching...';
+
+      try {
+        const targetIso = new Date(timeInput).toISOString();
+        const payload = {
+          target_time: targetIso,
+          label: labelInput
+        };
+        if (selectedDays.length > 0) {
+          payload.repeat_days = selectedDays.join(',');
+        }
+
+        const res = await fetch('/api/alarms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to create alarm');
+        }
+
+        const data = await res.json();
+        showToast(`Alarm dispatched to ${data.fcm_dispatch?.sent ?? 0} device(s)!`);
+        document.getElementById('alarm-label').value = '';
+        clearRepeatDays();
+        initDefaultTime();
+        await loadAlarms();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<span>+ Schedule</span>';
+      }
+    }
+
+    async function cancelAlarm(id) {
+      if (!confirm('Are you sure you want to cancel this alarm?')) return;
+      try {
+        const res = await fetch(`/api/alarms/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('Alarm canceled and dispatched to devices');
+          await loadAlarms();
+        }
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    function escapeHtml(text) {
+      const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+      return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    function fetchData() {
+      loadAlarms();
+      loadDevices();
+    }
+
+    initDefaultTime();
+    fetchData();
+    setInterval(fetchData, 8000);
+  </script>
+</body>
+</html>

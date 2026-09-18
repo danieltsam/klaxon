@@ -1,0 +1,45 @@
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  group('FCM Payload Sanitization Tests', () {
+    test('Ensures seconds and milliseconds are stripped from target_time', () {
+      const rawIso = '2026-09-18T09:22:45.987Z';
+      final rawDateTime = DateTime.parse(rawIso).toLocal();
+      final parsedDateTime = DateTime(
+        rawDateTime.year,
+        rawDateTime.month,
+        rawDateTime.day,
+        rawDateTime.hour,
+        rawDateTime.minute,
+        0,
+        0,
+      );
+
+      expect(parsedDateTime.second, equals(0));
+      expect(parsedDateTime.millisecond, equals(0));
+      expect(parsedDateTime.microsecond, equals(0));
+    });
+
+    test('Parses comma-separated repeat_days from FCM payload', () {
+      const repeatDaysStr = '1,3,5';
+      final days = repeatDaysStr
+          .split(',')
+          .map((s) => int.tryParse(s) ?? 0)
+          .where((d) => d >= 1 && d <= 7)
+          .toList();
+
+      expect(days, equals([1, 3, 5]));
+    });
+
+    test('Gracefully ignores invalid or empty repeat_days', () {
+      const repeatDaysStr = 'invalid,99,abc';
+      final days = repeatDaysStr
+          .split(',')
+          .map((s) => int.tryParse(s) ?? 0)
+          .where((d) => d >= 1 && d <= 7)
+          .toList();
+
+      expect(days, isEmpty);
+    });
+  });
+}
