@@ -57,16 +57,8 @@ class AlarmApp extends StatelessWidget {
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF5E6AD2),
           secondary: Color(0xFF8A8F98),
-          surface: Color(0xFF121316),
+          surface: Color(0xFF141619),
           error: Color(0xFFEB5757),
-        ),
-        cardTheme: CardThemeData(
-          color: const Color(0xFF121316),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: const BorderSide(color: Color(0xFF222326), width: 1),
-          ),
-          elevation: 0,
         ),
         fontFamily: 'Roboto',
       ),
@@ -82,15 +74,36 @@ class AlarmHomeScreen extends StatefulWidget {
   State<AlarmHomeScreen> createState() => _AlarmHomeScreenState();
 }
 
+class _AlarmItem {
+  final int id;
+  DateTime dateTime;
+  String title;
+  String description;
+  bool isEnabled;
+  bool isSnoozed;
+  List<int> repeatDays;
+  String soundTone;
+  int rampSeconds;
+  String? uuid;
+
+  _AlarmItem({
+    required this.id,
+    required this.dateTime,
+    required this.title,
+    required this.description,
+    required this.isEnabled,
+    required this.isSnoozed,
+    required this.repeatDays,
+    required this.soundTone,
+    required this.rampSeconds,
+    this.uuid,
+  });
+}
+
 class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingObserver {
-  List<AlarmSettings> _alarms = [];
-  Map<int, bool> _snoozeMap = {};
-  Map<int, List<int>> _repeatMap = {};
-  Map<int, String> _toneMap = {};
-  Map<int, int> _rampMap = {};
+  List<_AlarmItem> _allAlarms = [];
   String? _fcmToken;
   String _backendUrl = 'http://127.0.0.1:3000';
-  bool _isLoadingToken = true;
   late Timer _clockTimer;
   DateTime _currentTime = DateTime.now();
   StreamSubscription<AlarmSettings>? _ringSubscription;
@@ -99,12 +112,15 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   int? _batteryLevel;
   bool _isCharging = false;
   bool _isSyncing = false;
+  bool _isSearchVisible = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadAlarms();
+    _loadAllAlarms();
     _initFCM();
     _loadBackendUrl();
     _syncWithBackend(silent: true);
@@ -121,7 +137,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     });
 
     _remoteDismissSubscription = AlarmService.onRemoteDismissed.stream.listen((_) {
-      _loadAlarms();
+      _loadAllAlarms();
     });
   }
 
@@ -131,6 +147,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     _clockTimer.cancel();
     _ringSubscription?.cancel();
     _remoteDismissSubscription?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -170,7 +187,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     if (_isSyncing) return;
     setState(() => _isSyncing = true);
     final count = await AlarmService.syncWithBackend();
-    await _loadAlarms();
+    await _loadAllAlarms();
     await _reportBatteryTelemetry();
     if (mounted) {
       setState(() => _isSyncing = false);
@@ -190,32 +207,170 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       MaterialPageRoute(
         builder: (context) => RingScreen(alarmSettings: alarmSettings),
       ),
-    ).then((_) => _loadAlarms());
+    ).then((_) => _loadAllAlarms());
   }
 
-  Future<void> _loadAlarms() async {
-    final alarms = await Alarm.getAlarms();
-    alarms.sort((a, b) => a.dateTime.compareTo(b.dateTime));
-    final snoozeMap = <int, bool>{};
-    final repeatMap = <int, List<int>>{};
-    final toneMap = <int, String>{};
-    final rampMap = <int, int>{};
+  Future<void> _loadAllAlarms() async {
+    // 1. Get active alarms from Alarm plugin
+    final scheduledAlarms = await Alarm.getAlarms();
+    final scheduledMap = {for (var a in scheduledAlarms) a.id: a};
 
-    for (final a in alarms) {
-      snoozeMap[a.id] = await IdMapper.isSnoozed(a.id);
-      repeatMap[a.id] = await IdMapper.getRepeatDays(a.id);
-      toneMap[a.id] = await IdMapper.getSoundTone(a.id);
-      rampMap[a.id] = await IdMapper.getRampSeconds(a.id);
+    // 2. Get all known IDs from IdMapper storage
+    final allKnownIds = await IdMapper.getAllKnownIds();
+    final combinedIds = {...scheduledMap.keys, ...allKnownIds};
+
+    final items = <_AlarmItem>[];
+
+    for (final id in combinedIds) {
+      final isScheduled = scheduledMap.containsKey(id);
+      final isStoredEnabled = await IdMapper.isEnabled(id);
+      final isEnabled = isScheduled && isStoredEnabled;
+
+      DateTime dt;
+      String label;
+
+      if (isScheduled) {
+        dt = scheduledMap[id]!.dateTime;
+        label = scheduledMap[id]!.notificationSettings.title;
+        if (label.isEmpty) {
+          label = await IdMapper.getLabel(id) ?? 'Alarm';
+        }
+      } else {
+        dt = await IdMapper.getTargetTime(id) ?? DateTime.now().add(const Duration(hours: 8));
+        label = await IdMapper.getLabel(id) ?? 'Alarm';
+      }
+
+      final desc = await IdMapper.getDescription(id);
+      final isSnoozed = await IdMapper.isSnoozed(id);
+      final repeatDays = await IdMapper.getRepeatDays(id);
+      final tone = await IdMapper.getSoundTone(id);
+      final ramp = await IdMapper.getRampSeconds(id);
+      final uuid = await IdMapper.getUuid(id);
+
+      items.add(_AlarmItem(
+        id: id,
+        dateTime: dt,
+        title: label,
+        description: desc,
+        isEnabled: isEnabled,
+        isSnoozed: isSnoozed,
+        repeatDays: repeatDays,
+        soundTone: tone,
+        rampSeconds: ramp,
+        uuid: uuid,
+      ));
     }
+
+    // Sort: enabled upcoming first, then disabled
+    items.sort((a, b) {
+      if (a.isEnabled && !b.isEnabled) return -1;
+      if (!a.isEnabled && b.isEnabled) return 1;
+      return a.dateTime.compareTo(b.dateTime);
+    });
+
     if (mounted) {
       setState(() {
-        _alarms = alarms;
-        _snoozeMap = snoozeMap;
-        _repeatMap = repeatMap;
-        _toneMap = toneMap;
-        _rampMap = rampMap;
+        _allAlarms = items;
       });
     }
+  }
+
+  Future<void> _toggleAlarmEnabled(_AlarmItem item, bool enable) async {
+    if (enable) {
+      // Re-enable and schedule
+      DateTime target = item.dateTime;
+      if (target.isBefore(DateTime.now())) {
+        // Move to next day at the same hour and minute
+        final now = DateTime.now();
+        target = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          item.dateTime.hour,
+          item.dateTime.minute,
+          0,
+          0,
+        );
+        if (target.isBefore(now)) {
+          target = target.add(const Duration(days: 1));
+        }
+      }
+
+      final audioPath = AlarmService.getAudioPathForTone(item.soundTone);
+      final settings = AlarmSettings(
+        id: item.id,
+        dateTime: target,
+        assetAudioPath: audioPath,
+        loopAudio: true,
+        vibrate: true,
+        volumeSettings: item.rampSeconds > 0
+            ? VolumeSettings.fade(
+                volume: 1.0,
+                fadeDuration: Duration(seconds: item.rampSeconds),
+              )
+            : VolumeSettings.fixed(volume: 1.0),
+        notificationSettings: NotificationSettings(
+          title: item.title,
+          body: 'Tap to dismiss or snooze',
+          stopButton: 'Stop',
+        ),
+      );
+
+      await Alarm.set(alarmSettings: settings);
+      await IdMapper.setEnabled(item.id, true);
+      await IdMapper.setTargetTime(item.id, target);
+      _showToast('Alarm armed for ${target.hour.toString().padLeft(2, '0')}:${target.minute.toString().padLeft(2, '0')}');
+    } else {
+      // Disable / deactivate without deleting
+      await Alarm.stop(item.id);
+      await IdMapper.setEnabled(item.id, false);
+      _showToast('Alarm deactivated');
+    }
+
+    await _loadAllAlarms();
+  }
+
+  Future<void> _deleteAlarmItem(_AlarmItem item) async {
+    await Alarm.stop(item.id);
+    if (item.uuid != null && !item.uuid!.startsWith('local_')) {
+      await BackendClient.deleteRemoteAlarm(item.uuid!);
+    }
+    await IdMapper.removeMapping(item.id);
+    _showToast('Alarm deleted');
+    _loadAllAlarms();
+  }
+
+  String _getRelativeCountdown(DateTime target) {
+    final now = DateTime.now();
+    final diff = target.difference(now);
+
+    if (diff.isNegative) return 'due now';
+
+    final hours = diff.inHours;
+    final mins = diff.inMinutes % 60;
+
+    if (hours == 0 && mins == 0) return 'in less than a minute';
+    if (hours == 0) return 'in $mins mins';
+    if (mins == 0) return 'in $hours hours';
+    return 'in $hours hours $mins mins';
+  }
+
+  String _formatRepeatDays(List<int> days) {
+    if (days.isEmpty) return 'Once';
+    if (days.length == 7) return 'Every day';
+    if (days.length == 5 &&
+        days.contains(1) &&
+        days.contains(2) &&
+        days.contains(3) &&
+        days.contains(4) &&
+        days.contains(5)) {
+      return 'Mon, Tue, Wed, Thu, Fri';
+    }
+    if (days.length == 2 && days.contains(6) && days.contains(7)) {
+      return 'Sat, Sun';
+    }
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return days.map((d) => names[d - 1]).join(', ');
   }
 
   Future<void> _loadBackendUrl() async {
@@ -237,10 +392,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
       final token = await messaging.getToken();
       if (mounted) {
-        setState(() {
-          _fcmToken = token;
-          _isLoadingToken = false;
-        });
+        setState(() => _fcmToken = token);
       }
 
       if (token != null) {
@@ -249,14 +401,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
       FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
         await AlarmService.handleAlarmPayload(message.data);
-        _loadAlarms();
+        _loadAllAlarms();
       });
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _fcmToken = 'Firebase unavailable: $e';
-          _isLoadingToken = false;
-        });
+        setState(() => _fcmToken = 'Firebase unavailable: $e');
       }
     }
   }
@@ -270,283 +419,32 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           style: const TextStyle(fontSize: 13, color: Color(0xFFF7F8F8)),
         ),
         behavior: SnackBarBehavior.floating,
-        backgroundColor: const Color(0xFF121316),
+        backgroundColor: const Color(0xFF16181B),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: const BorderSide(color: Color(0xFF222326)),
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: Color(0xFF26282E)),
         ),
         duration: const Duration(seconds: 3),
       ),
     );
   }
 
-  Future<void> _deleteAlarm(AlarmSettings settings) async {
-    await Alarm.stop(settings.id);
-    final uuid = await IdMapper.getUuid(settings.id);
-    if (uuid != null && !uuid.startsWith('local_')) {
-      await BackendClient.deleteRemoteAlarm(uuid);
-    }
-    await IdMapper.removeMapping(settings.id);
-    _showToast('Alarm canceled');
-    _loadAlarms();
-  }
-
-  String _formatRepeatDays(List<int> days) {
-    if (days.isEmpty) return 'Once';
-    if (days.length == 7) return 'Every day';
-    if (days.length == 5 &&
-        days.contains(1) &&
-        days.contains(2) &&
-        days.contains(3) &&
-        days.contains(4) &&
-        days.contains(5)) {
-      return 'Mon, Tue, Wed, Thu, Fri';
-    }
-    if (days.length == 2 && days.contains(6) && days.contains(7)) {
-      return 'Sat, Sun';
-    }
-    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return days.map((d) => names[d - 1]).join(', ');
-  }
-
-  void _showSettingsModal() {
-    final controller = TextEditingController(text: _backendUrl);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF08090A),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        side: BorderSide(color: Color(0xFF222326)),
-      ),
-      builder: (bottomSheetContext) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 16,
-            bottom: MediaQuery.of(bottomSheetContext).viewInsets.bottom + 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF222326),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Settings & Backend Sync',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFFF7F8F8),
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 18, color: Color(0xFF8A8F98)),
-                    onPressed: () => Navigator.pop(bottomSheetContext),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Server URL Section
-              const Text(
-                'BACKEND SERVER URL',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF8A8F98),
-                  letterSpacing: 1.0,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF121316),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF222326)),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: TextField(
-                  controller: controller,
-                  style: const TextStyle(fontSize: 13, color: Color(0xFFF7F8F8)),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    hintText: 'http://127.0.0.1:3000',
-                    hintStyle: TextStyle(color: Color(0xFF565A61)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: const Color(0xFF121316),
-                        foregroundColor: const Color(0xFFF7F8F8),
-                        side: const BorderSide(color: Color(0xFF222326)),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      onPressed: () async {
-                        final newUrl = controller.text.trim();
-                        if (newUrl.isNotEmpty) {
-                          await BackendClient.setBaseUrl(newUrl);
-                          setState(() => _backendUrl = newUrl);
-                          await _syncWithBackend();
-                          if (bottomSheetContext.mounted) {
-                            Navigator.pop(bottomSheetContext);
-                          }
-                        }
-                      },
-                      child: const Text('Save & Resync', style: TextStyle(fontSize: 13)),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              // Hardware & Sync Telemetry
-              const Text(
-                'DEVICE TELEMETRY',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF8A8F98),
-                  letterSpacing: 1.0,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF121316),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF222326)),
-                ),
-                child: Column(
-                  children: [
-                    _telemetryRow('Phone Model', 'Android Device'),
-                    const Divider(color: Color(0xFF1C1D21), height: 16),
-                    _telemetryRow(
-                      'Battery',
-                      _batteryLevel != null
-                          ? '$_batteryLevel% (${_isCharging ? 'Charging' : 'On Battery'})'
-                          : 'Checking...',
-                    ),
-                    const Divider(color: Color(0xFF1C1D21), height: 16),
-                    _telemetryRow(
-                      'Push Token',
-                      _fcmToken != null && _fcmToken!.length > 16
-                          ? '${_fcmToken!.substring(0, 8)}...${_fcmToken!.substring(_fcmToken!.length - 6)}'
-                          : 'Acquiring...',
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Audio Previews
-              const Text(
-                'SOUND PREVIEWS',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF8A8F98),
-                  letterSpacing: 1.0,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  _previewToneButton('Radar', 'assets/alarm.mp3'),
-                  const SizedBox(width: 8),
-                  _previewToneButton('Chime', 'assets/chime.mp3'),
-                  const SizedBox(width: 8),
-                  _previewToneButton('Digital', 'assets/digital.mp3'),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _previewToneButton(String name, String asset) {
-    return Expanded(
-      child: OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          backgroundColor: const Color(0xFF121316),
-          foregroundColor: const Color(0xFFF7F8F8),
-          side: const BorderSide(color: Color(0xFF222326)),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-        onPressed: () async {
-          _showToast('Playing $name tone');
-        },
-        child: Text(name, style: const TextStyle(fontSize: 12)),
-      ),
-    );
-  }
-
-  Widget _telemetryRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF8A8F98))),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Color(0xFFF7F8F8),
-            fontFeatures: [FontFeature.tabularFigures()],
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _showCreateAlarmModal() {
-    final now = DateTime.now();
-    DateTime selectedTime = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      now.hour,
-      now.minute,
-      0,
-      0,
-    ).add(const Duration(minutes: 5));
-    List<int> selectedRepeatDays = [];
-    String selectedTone = 'alarm';
-    int selectedRampSeconds = 15;
-    final labelController = TextEditingController(text: 'Morning workout');
+  // ALARM DETAIL & ADJUSTMENTS MODAL
+  void _showAlarmDetailModal(_AlarmItem item) {
+    final titleController = TextEditingController(text: item.title);
+    final descController = TextEditingController(text: item.description);
+    DateTime selectedTime = item.dateTime;
+    List<int> repeatDays = List.from(item.repeatDays);
+    String tone = item.soundTone;
+    int ramp = item.rampSeconds;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF08090A),
+      backgroundColor: const Color(0xFF0F1013),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        side: BorderSide(color: Color(0xFF222326)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        side: BorderSide(color: Color(0xFF26282E)),
       ),
       builder: (bottomSheetContext) {
         return StatefulBuilder(
@@ -571,7 +469,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         width: 36,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF222326),
+                          color: const Color(0xFF26282E),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -581,7 +479,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          'Schedule Alarm',
+                          'Alarm Details & Adjustments',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -590,52 +488,84 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.close, size: 18, color: Color(0xFF8A8F98)),
+                          icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF8A8F98)),
                           onPressed: () => Navigator.pop(bottomSheetContext),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
 
-                    // Label Input
+                    // Title
                     const Text(
-                      'ALARM LABEL',
+                      'TITLE',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF8A8F98),
-                        letterSpacing: 1.0,
+                        letterSpacing: 0.8,
                       ),
                     ),
                     const SizedBox(height: 8),
                     Container(
                       decoration: BoxDecoration(
-                        color: const Color(0xFF121316),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFF222326)),
+                        color: const Color(0xFF16181B),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFF26282E)),
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
                       child: TextField(
-                        controller: labelController,
+                        controller: titleController,
                         style: const TextStyle(fontSize: 14, color: Color(0xFFF7F8F8)),
                         decoration: const InputDecoration(
                           border: InputBorder.none,
-                          hintText: 'e.g. Quick catchup',
+                          hintText: 'Alarm Title',
                           hintStyle: TextStyle(color: Color(0xFF565A61)),
                         ),
                       ),
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 18),
 
-                    // Trigger Time Picker
+                    // Free Rich Text Description
                     const Text(
-                      'TRIGGER TIME',
+                      'DESCRIPTION & NOTES (RICH TEXT)',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF8A8F98),
-                        letterSpacing: 1.0,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF16181B),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFF26282E)),
+                      ),
+                      padding: const EdgeInsets.all(12),
+                      child: TextField(
+                        controller: descController,
+                        maxLines: 3,
+                        style: const TextStyle(fontSize: 13, color: Color(0xFFF7F8F8), height: 1.4),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          hintText: 'Add rich details, checklists, wake goals, or routine notes...',
+                          hintStyle: TextStyle(color: Color(0xFF565A61)),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    // Time Picker
+                    const Text(
+                      'TIME',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: 0.8,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -660,11 +590,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         }
                       },
                       child: Container(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF121316),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFF222326)),
+                          color: const Color(0xFF16181B),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF26282E)),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -672,21 +602,21 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             Text(
                               formattedTime,
                               style: const TextStyle(
-                                fontSize: 20,
+                                fontSize: 24,
                                 fontWeight: FontWeight.w600,
                                 color: Color(0xFFF7F8F8),
                                 fontFeatures: [FontFeature.tabularFigures()],
                               ),
                             ),
-                            const Icon(Icons.access_time_rounded, size: 18, color: Color(0xFF8A8F98)),
+                            const Icon(Icons.access_time_rounded, size: 20, color: Color(0xFF8A8F98)),
                           ],
                         ),
                       ),
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 18),
 
-                    // Sound Profile & Gentle Ramp
+                    // Sound Tone & Gentle Ramp Row
                     Row(
                       children: [
                         Expanded(
@@ -699,22 +629,606 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
                                   color: Color(0xFF8A8F98),
-                                  letterSpacing: 1.0,
+                                  letterSpacing: 0.8,
                                 ),
                               ),
                               const SizedBox(height: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 12),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF121316),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: const Color(0xFF222326)),
+                                  color: const Color(0xFF16181B),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: const Color(0xFF26282E)),
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: tone,
+                                    isExpanded: true,
+                                    dropdownColor: const Color(0xFF16181B),
+                                    items: const [
+                                      DropdownMenuItem(value: 'alarm', child: Text('Radar')),
+                                      DropdownMenuItem(value: 'chime', child: Text('Chime')),
+                                      DropdownMenuItem(value: 'digital', child: Text('Digital')),
+                                    ],
+                                    onChanged: (val) {
+                                      if (val != null) setModalState(() => tone = val);
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'GENTLE RAMP',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF8A8F98),
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF16181B),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: const Color(0xFF26282E)),
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<int>(
+                                    value: ramp,
+                                    isExpanded: true,
+                                    dropdownColor: const Color(0xFF16181B),
+                                    items: const [
+                                      DropdownMenuItem(value: 0, child: Text('0s (Instant)')),
+                                      DropdownMenuItem(value: 15, child: Text('15s Ramp')),
+                                      DropdownMenuItem(value: 30, child: Text('30s Ramp')),
+                                      DropdownMenuItem(value: 60, child: Text('60s Ramp')),
+                                    ],
+                                    onChanged: (val) {
+                                      if (val != null) setModalState(() => ramp = val);
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Actions Row (Save + Delete)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 48,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFF7F8F8),
+                                foregroundColor: const Color(0xFF08090A),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              onPressed: () async {
+                                final updatedTitle = titleController.text.trim().isNotEmpty
+                                    ? titleController.text.trim()
+                                    : 'Alarm';
+                                final updatedDesc = descController.text.trim();
+
+                                item.title = updatedTitle;
+                                item.description = updatedDesc;
+                                item.dateTime = selectedTime;
+                                item.soundTone = tone;
+                                item.rampSeconds = ramp;
+
+                                await IdMapper.saveMapping(
+                                  item.id,
+                                  item.uuid ?? 'local_${item.id}',
+                                  label: updatedTitle,
+                                  description: updatedDesc,
+                                  targetTime: selectedTime,
+                                );
+                                await IdMapper.setSoundTone(item.id, tone);
+                                await IdMapper.setRampSeconds(item.id, ramp);
+
+                                if (item.isEnabled) {
+                                  // Reschedule
+                                  await _toggleAlarmEnabled(item, true);
+                                } else {
+                                  await _loadAllAlarms();
+                                }
+
+                                if (bottomSheetContext.mounted) {
+                                  Navigator.pop(bottomSheetContext);
+                                }
+                                _showToast('Adjustments saved');
+                              },
+                              child: const Text(
+                                'Save Adjustments',
+                                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          height: 48,
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFFEB5757),
+                              side: const BorderSide(color: Color(0xFF381F22)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            onPressed: () async {
+                              Navigator.pop(bottomSheetContext);
+                              await _deleteAlarmItem(item);
+                            },
+                            child: const Text('Delete'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // SETTINGS & BACKEND CONFIG MODAL
+  void _showSettingsModal() {
+    final controller = TextEditingController(text: _backendUrl);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0F1013),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        side: BorderSide(color: Color(0xFF26282E)),
+      ),
+      builder: (bottomSheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 16,
+            bottom: MediaQuery.of(bottomSheetContext).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF26282E),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Settings & Diagnostics',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFF7F8F8),
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF8A8F98)),
+                    onPressed: () => Navigator.pop(bottomSheetContext),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Server URL Section
+              const Text(
+                'BACKEND SERVER URL',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF8A8F98),
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF16181B),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF26282E)),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: TextField(
+                  controller: controller,
+                  style: const TextStyle(fontSize: 13, color: Color(0xFFF7F8F8)),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    hintText: 'http://127.0.0.1:3000',
+                    hintStyle: TextStyle(color: Color(0xFF565A61)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: const Color(0xFF16181B),
+                    foregroundColor: const Color(0xFFF7F8F8),
+                    side: const BorderSide(color: const Color(0xFF26282E)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () async {
+                    final newUrl = controller.text.trim();
+                    if (newUrl.isNotEmpty) {
+                      await BackendClient.setBaseUrl(newUrl);
+                      setState(() => _backendUrl = newUrl);
+                      await _syncWithBackend();
+                      if (bottomSheetContext.mounted) {
+                        Navigator.pop(bottomSheetContext);
+                      }
+                    }
+                  },
+                  child: const Text('Save & Resync', style: TextStyle(fontSize: 13)),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Telemetry Info
+              const Text(
+                'DEVICE TELEMETRY',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF8A8F98),
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF16181B),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF26282E)),
+                ),
+                child: Column(
+                  children: [
+                    _telemetryRow('Phone Model', 'Android Device'),
+                    const Divider(color: Color(0xFF26282E), height: 16),
+                    _telemetryRow(
+                      'Battery',
+                      _batteryLevel != null
+                          ? '$_batteryLevel% (${_isCharging ? 'Charging' : 'On Battery'})'
+                          : 'Checking...',
+                    ),
+                    const Divider(color: Color(0xFF26282E), height: 16),
+                    _telemetryRow(
+                      'Push Token',
+                      _fcmToken != null && _fcmToken!.length > 16
+                          ? '${_fcmToken!.substring(0, 8)}...${_fcmToken!.substring(_fcmToken!.length - 6)}'
+                          : 'Acquiring...',
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Audio Tone Test
+              const Text(
+                'SOUND TEST',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF8A8F98),
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  _previewToneButton('Radar'),
+                  const SizedBox(width: 8),
+                  _previewToneButton('Chime'),
+                  const SizedBox(width: 8),
+                  _previewToneButton('Digital'),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _previewToneButton(String name) {
+    return Expanded(
+      child: OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          backgroundColor: const Color(0xFF16181B),
+          foregroundColor: const Color(0xFFF7F8F8),
+          side: const BorderSide(color: Color(0xFF26282E)),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+        onPressed: () {
+          _showToast('Playing $name tone');
+        },
+        child: Text(name, style: const TextStyle(fontSize: 12)),
+      ),
+    );
+  }
+
+  Widget _telemetryRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF8A8F98))),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Color(0xFFF7F8F8),
+            fontFeatures: [FontFeature.tabularFigures()],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // CREATE NEW ALARM MODAL
+  void _showCreateAlarmModal() {
+    final now = DateTime.now();
+    DateTime selectedTime = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      now.hour,
+      now.minute,
+      0,
+      0,
+    ).add(const Duration(minutes: 5));
+    String selectedTone = 'alarm';
+    int selectedRampSeconds = 15;
+    final labelController = TextEditingController(text: 'Morning workout');
+    final descController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0F1013),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        side: BorderSide(color: Color(0xFF26282E)),
+      ),
+      builder: (bottomSheetContext) {
+        return StatefulBuilder(
+          builder: (builderContext, setModalState) {
+            final formattedTime =
+                '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
+
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 16,
+                bottom: MediaQuery.of(builderContext).viewInsets.bottom + 24,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF26282E),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Schedule New Alarm',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFF7F8F8),
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF8A8F98)),
+                          onPressed: () => Navigator.pop(bottomSheetContext),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Label Input
+                    const Text(
+                      'ALARM TITLE',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF16181B),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFF26282E)),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: TextField(
+                        controller: labelController,
+                        style: const TextStyle(fontSize: 14, color: Color(0xFFF7F8F8)),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          hintText: 'e.g. Quick catchup',
+                          hintStyle: TextStyle(color: Color(0xFF565A61)),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    // Description / Rich Notes
+                    const Text(
+                      'DESCRIPTION & NOTES (RICH TEXT)',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF16181B),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFF26282E)),
+                      ),
+                      padding: const EdgeInsets.all(12),
+                      child: TextField(
+                        controller: descController,
+                        maxLines: 2,
+                        style: const TextStyle(fontSize: 13, color: Color(0xFFF7F8F8), height: 1.4),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          hintText: 'Optional notes, checklist, or routine...',
+                          hintStyle: TextStyle(color: Color(0xFF565A61)),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    // Time Picker
+                    const Text(
+                      'TRIGGER TIME',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: () async {
+                        final picked = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(selectedTime),
+                        );
+                        if (picked != null) {
+                          setModalState(() {
+                            selectedTime = DateTime(
+                              selectedTime.year,
+                              selectedTime.month,
+                              selectedTime.day,
+                              picked.hour,
+                              picked.minute,
+                              0,
+                              0,
+                            );
+                          });
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF16181B),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF26282E)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              formattedTime,
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFFF7F8F8),
+                                fontFeatures: [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                            const Icon(Icons.access_time_rounded, size: 20, color: Color(0xFF8A8F98)),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    // Tone & Ramp
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'TONE',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF8A8F98),
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF16181B),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: const Color(0xFF26282E)),
                                 ),
                                 child: DropdownButtonHideUnderline(
                                   child: DropdownButton<String>(
                                     value: selectedTone,
                                     isExpanded: true,
-                                    dropdownColor: const Color(0xFF121316),
+                                    dropdownColor: const Color(0xFF16181B),
                                     items: const [
                                       DropdownMenuItem(value: 'alarm', child: Text('Radar')),
                                       DropdownMenuItem(value: 'chime', child: Text('Chime')),
@@ -740,22 +1254,22 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
                                   color: Color(0xFF8A8F98),
-                                  letterSpacing: 1.0,
+                                  letterSpacing: 0.8,
                                 ),
                               ),
                               const SizedBox(height: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 12),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF121316),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: const Color(0xFF222326)),
+                                  color: const Color(0xFF16181B),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: const Color(0xFF26282E)),
                                 ),
                                 child: DropdownButtonHideUnderline(
                                   child: DropdownButton<int>(
                                     value: selectedRampSeconds,
                                     isExpanded: true,
-                                    dropdownColor: const Color(0xFF121316),
+                                    dropdownColor: const Color(0xFF16181B),
                                     items: const [
                                       DropdownMenuItem(value: 0, child: Text('0s (Instant)')),
                                       DropdownMenuItem(value: 15, child: Text('15s Ramp')),
@@ -776,16 +1290,16 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
                     const SizedBox(height: 24),
 
-                    // Submit Button
+                    // Arm Button
                     SizedBox(
                       width: double.infinity,
-                      height: 48,
+                      height: 50,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFF7F8F8),
                           foregroundColor: const Color(0xFF08090A),
                           elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         onPressed: () async {
                           final id = DateTime.now().millisecondsSinceEpoch % 100000;
@@ -799,9 +1313,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             0,
                           );
 
-                          String assetAudio = 'assets/alarm.mp3';
-                          if (selectedTone == 'chime') assetAudio = 'assets/chime.mp3';
-                          if (selectedTone == 'digital') assetAudio = 'assets/digital.mp3';
+                          String assetAudio = AlarmService.getAudioPathForTone(selectedTone);
+                          final title = labelController.text.trim().isNotEmpty
+                              ? labelController.text.trim()
+                              : 'Alarm';
+                          final desc = descController.text.trim();
 
                           final settings = AlarmSettings(
                             id: id,
@@ -816,24 +1332,29 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                   )
                                 : VolumeSettings.fixed(volume: 1.0),
                             notificationSettings: NotificationSettings(
-                              title: labelController.text.trim().isNotEmpty
-                                  ? labelController.text.trim()
-                                  : 'Alarm',
+                              title: title,
                               body: 'Tap to open alarm',
                               stopButton: 'Stop',
                             ),
                           );
 
                           await Alarm.set(alarmSettings: settings);
-                          await IdMapper.saveMapping(id, 'local_$id', label: labelController.text.trim());
+                          await IdMapper.saveMapping(
+                            id,
+                            'local_$id',
+                            label: title,
+                            description: desc,
+                            targetTime: cleanTime,
+                          );
                           await IdMapper.setSoundTone(id, selectedTone);
                           await IdMapper.setRampSeconds(id, selectedRampSeconds);
+                          await IdMapper.setEnabled(id, true);
 
                           if (bottomSheetContext.mounted) {
                             Navigator.pop(bottomSheetContext);
                           }
-                          _showToast('Alarm scheduled for $formattedTime');
-                          _loadAlarms();
+                          _showToast('Alarm armed for $formattedTime');
+                          _loadAllAlarms();
                         },
                         child: const Text(
                           'Arm Alarm',
@@ -853,9 +1374,17 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
   @override
   Widget build(BuildContext context) {
-    // Determine upcoming alarm (hero card)
-    final upcomingAlarm = _alarms.isNotEmpty ? _alarms.first : null;
-    final otherAlarms = _alarms;
+    // Filtered list based on search query
+    final filteredAlarms = _allAlarms.where((item) {
+      if (_searchQuery.isEmpty) return true;
+      final query = _searchQuery.toLowerCase();
+      return item.title.toLowerCase().contains(query) ||
+          item.description.toLowerCase().contains(query);
+    }).toList();
+
+    // Hero alarm: earliest upcoming enabled alarm
+    final enabledAlarms = _allAlarms.where((a) => a.isEnabled).toList();
+    final upcomingHeroAlarm = enabledAlarms.isNotEmpty ? enabledAlarms.first : null;
 
     return Scaffold(
       backgroundColor: const Color(0xFF08090A),
@@ -872,21 +1401,21 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Workspace Switcher
+                  // Workspace Picker
                   Row(
                     children: [
                       Container(
-                        width: 18,
-                        height: 18,
+                        width: 20,
+                        height: 20,
                         decoration: BoxDecoration(
                           color: const Color(0xFF5E6AD2),
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: BorderRadius.circular(5),
                         ),
                         child: const Center(
                           child: Text(
                             'A',
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: FontWeight.w700,
                               color: Color(0xFFF7F8F8),
                             ),
@@ -908,16 +1437,34 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                     ],
                   ),
 
-                  // Actions: Battery Telemetry & Settings
+                  // Actions: Search, Battery Telemetry, Settings
                   Row(
                     children: [
+                      // Search Toggle
+                      IconButton(
+                        icon: Icon(
+                          _isSearchVisible ? Icons.close_rounded : Icons.search_rounded,
+                          size: 19,
+                          color: _isSearchVisible ? const Color(0xFFF7F8F8) : const Color(0xFF8A8F98),
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _isSearchVisible = !_isSearchVisible;
+                            if (!_isSearchVisible) {
+                              _searchQuery = '';
+                              _searchController.clear();
+                            }
+                          });
+                        },
+                      ),
+
                       // Battery Badge (no emoji)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF121316),
+                          color: const Color(0xFF141619),
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: const Color(0xFF222326)),
+                          border: Border.all(color: const Color(0xFF26282E)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -944,8 +1491,9 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           ],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      // Settings Action
+                      const SizedBox(width: 4),
+
+                      // Settings
                       IconButton(
                         icon: const Icon(Icons.tune_rounded, size: 18, color: Color(0xFF8A8F98)),
                         onPressed: _showSettingsModal,
@@ -956,29 +1504,71 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
               ),
             ),
 
+            // Search Bar Input (Expands when toggled)
+            if (_isSearchVisible)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF101215),
+                  border: Border(bottom: BorderSide(color: Color(0xFF222326))),
+                ),
+                child: Container(
+                  height: 38,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF16181B),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF26282E)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.search_rounded, size: 16, color: Color(0xFF8A8F98)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          autofocus: true,
+                          style: const TextStyle(fontSize: 13, color: Color(0xFFF7F8F8)),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            hintText: 'Search alarms by title or notes...',
+                            hintStyle: TextStyle(color: Color(0xFF565A61), fontSize: 13),
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          onChanged: (val) {
+                            setState(() => _searchQuery = val.trim());
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
             // Scrollable Content
             Expanded(
               child: RefreshIndicator(
                 color: const Color(0xFF5E6AD2),
-                backgroundColor: const Color(0xFF121316),
+                backgroundColor: const Color(0xFF141619),
                 onRefresh: () => _syncWithBackend(),
                 child: ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   children: [
-                    // Hero Upcoming Cycle Card (Linear style)
-                    if (upcomingAlarm != null) ...[
-                      _buildUpcomingCycleCard(upcomingAlarm),
+                    // Hero Upcoming Alarm Card (Linear Active Cycle style with soft shadows & textures)
+                    if (upcomingHeroAlarm != null && _searchQuery.isEmpty) ...[
+                      _buildUpcomingHeroCard(upcomingHeroAlarm),
                       const SizedBox(height: 24),
                     ],
 
-                    // Section Header: ACTIVE ALARMS (matches test assertion)
+                    // Section Header: ALL ALARMS (Renamed from active alarms)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Row(
                           children: [
                             const Text(
-                              'ACTIVE ALARMS',
+                              'ALL ALARMS',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
@@ -994,7 +1584,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Text(
-                                '${_alarms.length}',
+                                '${filteredAlarms.length}',
                                 style: const TextStyle(
                                   fontSize: 10,
                                   color: Color(0xFF8A8F98),
@@ -1004,169 +1594,50 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             ),
                           ],
                         ),
-                        TextButton(
-                          onPressed: _showCreateAlarmModal,
-                          style: TextButton.styleFrom(
-                            foregroundColor: const Color(0xFF5E6AD2),
-                            padding: EdgeInsets.zero,
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          child: const Text(
-                            '+ new alarm',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                          ),
-                        ),
                       ],
                     ),
 
                     const SizedBox(height: 12),
 
-                    // Alarms Issue-List Feed
-                    if (otherAlarms.isEmpty)
+                    // List of All Alarms
+                    if (filteredAlarms.isEmpty)
                       Container(
                         padding: const EdgeInsets.symmetric(vertical: 40),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF121316),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFF222326)),
+                          color: const Color(0xFF141619),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFF26282E)),
                         ),
                         child: const Center(
                           child: Column(
                             children: [
-                              Icon(Icons.check_circle_outline, size: 28, color: Color(0xFF565A61)),
+                              Icon(Icons.check_circle_outline_rounded, size: 28, color: Color(0xFF565A61)),
                               SizedBox(height: 8),
                               Text(
-                                'no alarms scheduled',
+                                'no alarms found',
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w500,
                                   color: Color(0xFF8A8F98),
                                 ),
                               ),
-                              SizedBox(height: 2),
-                              Text(
-                                'all quiet for now',
-                                style: TextStyle(fontSize: 11, color: Color(0xFF565A61)),
-                              ),
                             ],
                           ),
                         ),
                       )
                     else
-                      Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF121316),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFF222326)),
-                        ),
-                        child: ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: otherAlarms.length,
-                          separatorBuilder: (context, index) => const Divider(
-                            color: Color(0xFF1C1D21),
-                            height: 1,
-                          ),
-                          itemBuilder: (context, index) {
-                            final alarm = otherAlarms[index];
-                            final isSnoozed = _snoozeMap[alarm.id] == true;
-                            final repeatDays = _repeatMap[alarm.id] ?? [];
-                            final tone = _toneMap[alarm.id] ?? 'alarm';
-                            final timeStr =
-                                '${alarm.dateTime.hour.toString().padLeft(2, '0')}:${alarm.dateTime.minute.toString().padLeft(2, '0')}';
-                            final title = alarm.notificationSettings.title.isNotEmpty
-                                ? alarm.notificationSettings.title
-                                : 'Alarm';
-
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.access_time_rounded,
-                                    size: 16,
-                                    color: isSnoozed
-                                        ? const Color(0xFFE5A158)
-                                        : const Color(0xFF5E6AD2),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Text(
-                                              timeStr,
-                                              style: const TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w600,
-                                                color: Color(0xFFF7F8F8),
-                                                fontFeatures: [FontFeature.tabularFigures()],
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Flexible(
-                                              child: Text(
-                                                title,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w500,
-                                                  color: Color(0xFF8A8F98),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 6,
-                                                vertical: 2,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFF1C1E24),
-                                                borderRadius: BorderRadius.circular(4),
-                                              ),
-                                              child: Text(
-                                                _formatRepeatDays(repeatDays),
-                                                style: const TextStyle(
-                                                  fontSize: 10,
-                                                  color: Color(0xFF8A8F98),
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Text(
-                                              tone,
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                                color: Color(0xFF565A61),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.close_rounded,
-                                      size: 16,
-                                      color: Color(0xFF565A61),
-                                    ),
-                                    onPressed: () => _deleteAlarm(alarm),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
+                      ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: filteredAlarms.length,
+                        separatorBuilder: (context, index) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final alarm = filteredAlarms[index];
+                          return _buildAlarmRowCard(alarm);
+                        },
                       ),
+
+                    const SizedBox(height: 80), // Space for FAB
                   ],
                 ),
               ),
@@ -1174,111 +1645,274 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           ],
         ),
       ),
+      // Floating Action Button
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: const Color(0xFF5E6AD2),
+        foregroundColor: const Color(0xFFFFFFFF),
+        elevation: 6,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        icon: const Icon(Icons.add_rounded, size: 20),
+        label: const Text(
+          'new alarm',
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, letterSpacing: 0.2),
+        ),
+        onPressed: _showCreateAlarmModal,
+      ),
     );
   }
 
-  Widget _buildUpcomingCycleCard(AlarmSettings alarm) {
+  // Hero Upcoming Alarm Card with rich textured styling & relative countdown
+  Widget _buildUpcomingHeroCard(_AlarmItem alarm) {
     final hourStr = alarm.dateTime.hour.toString().padLeft(2, '0');
     final minuteStr = alarm.dateTime.minute.toString().padLeft(2, '0');
-    final title = alarm.notificationSettings.title.isNotEmpty
-        ? alarm.notificationSettings.title
-        : 'Alarm';
-    final repeatDays = _repeatMap[alarm.id] ?? [];
-    final tone = _toneMap[alarm.id] ?? 'alarm';
-    final ramp = _rampMap[alarm.id] ?? 0;
-    final isSnoozed = _snoozeMap[alarm.id] == true;
+    final countdown = _getRelativeCountdown(alarm.dateTime);
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF121316),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF222326)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '$hourStr:$minuteStr',
-                style: const TextStyle(
-                  fontSize: 44,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFFF7F8F8),
-                  letterSpacing: -1.0,
-                  fontFeatures: [FontFeature.tabularFigures()],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isSnoozed ? const Color(0xFF2E2419) : const Color(0xFF1B261F),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(
-                    color: isSnoozed ? const Color(0xFFE5A158) : const Color(0xFF4CB782),
-                  ),
-                ),
-                child: Text(
-                  isSnoozed ? 'Snoozed' : 'Armed',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: isSnoozed ? const Color(0xFFE5A158) : const Color(0xFF4CB782),
-                  ),
-                ),
-              ),
-            ],
+    return InkWell(
+      onTap: () => _showAlarmDetailModal(alarm),
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF1A1D22), Color(0xFF121417)],
           ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFFF7F8F8),
-              letterSpacing: -0.2,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFF2C2F36), width: 1),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x66000000),
+              blurRadius: 20,
+              spreadRadius: -2,
+              offset: Offset(0, 8),
             ),
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1C1E24),
-                  borderRadius: BorderRadius.circular(4),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header: next upcoming alarm • in x hours x mins
+            Row(
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF5E6AD2),
+                    shape: BoxShape.circle,
+                  ),
                 ),
-                child: Text(
-                  _formatRepeatDays(repeatDays),
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF8A8F98)),
+                const SizedBox(width: 8),
+                Text(
+                  'next upcoming alarm • $countdown',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF8A8F98),
+                    letterSpacing: 0.2,
+                  ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Large Clock
+            Text(
+              '$hourStr:$minuteStr',
+              style: const TextStyle(
+                fontSize: 48,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFFF7F8F8),
+                letterSpacing: -1.0,
+                fontFeatures: [FontFeature.tabularFigures()],
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1C1E24),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.volume_up_outlined, size: 12, color: Color(0xFF8A8F98)),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$tone • ${ramp}s gentle ramp',
-                      style: const TextStyle(fontSize: 11, color: Color(0xFF8A8F98)),
-                    ),
-                  ],
-                ),
+            ),
+            const SizedBox(height: 4),
+
+            // Title
+            Text(
+              alarm.title,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFFF7F8F8),
+                letterSpacing: -0.2,
               ),
-            ],
+            ),
+            const SizedBox(height: 14),
+
+            // Tags Row
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF20232A),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFF2E323B)),
+                  ),
+                  child: Text(
+                    _formatRepeatDays(alarm.repeatDays),
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF8A8F98)),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF20232A),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFF2E323B)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.volume_up_outlined, size: 12, color: Color(0xFF8A8F98)),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${alarm.soundTone} • ${alarm.rampSeconds}s gentle ramp',
+                        style: const TextStyle(fontSize: 11, color: Color(0xFF8A8F98)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Individual Alarm Row Card with smooth slider & click for rich details
+  Widget _buildAlarmRowCard(_AlarmItem alarm) {
+    final timeStr =
+        '${alarm.dateTime.hour.toString().padLeft(2, '0')}:${alarm.dateTime.minute.toString().padLeft(2, '0')}';
+    final textColor = alarm.isEnabled ? const Color(0xFFF7F8F8) : const Color(0xFF565A61);
+    final subtextColor = alarm.isEnabled ? const Color(0xFF8A8F98) : const Color(0xFF45484F);
+
+    return InkWell(
+      onTap: () => _showAlarmDetailModal(alarm),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: alarm.isEnabled
+                ? [const Color(0xFF16181C), const Color(0xFF121417)]
+                : [const Color(0xFF111215), const Color(0xFF0D0E10)],
           ),
-        ],
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: alarm.isEnabled ? const Color(0xFF262930) : const Color(0xFF1C1D21),
+            width: 1,
+          ),
+          boxShadow: alarm.isEnabled
+              ? const [
+                  BoxShadow(
+                    color: Color(0x40000000),
+                    blurRadius: 12,
+                    spreadRadius: -2,
+                    offset: Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          children: [
+            // Left Status Icon
+            Icon(
+              Icons.access_time_rounded,
+              size: 18,
+              color: alarm.isEnabled
+                  ? (alarm.isSnoozed ? const Color(0xFFE5A158) : const Color(0xFF5E6AD2))
+                  : const Color(0xFF45484F),
+            ),
+            const SizedBox(width: 14),
+
+            // Middle Column: Time + Title (Only title is shown from dashboard view)
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        timeStr,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: textColor,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          alarm.title,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: subtextColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: alarm.isEnabled ? const Color(0xFF1E2128) : const Color(0xFF16171A),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          _formatRepeatDays(alarm.repeatDays),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: subtextColor,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        alarm.soundTone,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: subtextColor,
+                        ),
+                      ),
+                      if (alarm.description.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Icon(Icons.notes_rounded, size: 12, color: subtextColor),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // Smooth Slider Switch (Linear style)
+            Switch.adaptive(
+              value: alarm.isEnabled,
+              activeColor: const Color(0xFFFFFFFF),
+              activeTrackColor: const Color(0xFF5E6AD2),
+              inactiveThumbColor: const Color(0xFF565A61),
+              inactiveTrackColor: const Color(0xFF1E2024),
+              onChanged: (val) {
+                _toggleAlarmEnabled(alarm, val);
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

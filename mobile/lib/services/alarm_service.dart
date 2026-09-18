@@ -57,8 +57,11 @@ class AlarmService {
       );
 
       // Ensure mapping is preserved
-      await IdMapper.saveMapping(intId, uuid.toString(), label: label.toString());
+      await IdMapper.saveMapping(intId, uuid.toString(), label: label.toString(), targetTime: parsedDateTime);
       await IdMapper.setSnoozed(intId, false);
+      await IdMapper.setSoundTone(intId, tone);
+      await IdMapper.setRampSeconds(intId, rampSec);
+      await IdMapper.setEnabled(intId, true);
 
       final repeatDaysStr = data['repeat_days'];
       if (repeatDaysStr != null && repeatDaysStr.toString().isNotEmpty) {
