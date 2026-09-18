@@ -319,11 +319,17 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       await Alarm.set(alarmSettings: settings);
       await IdMapper.setEnabled(item.id, true);
       await IdMapper.setTargetTime(item.id, target);
+      if (item.uuid != null && !item.uuid!.startsWith('local_')) {
+        BackendClient.updateAlarmState(item.uuid!, 'pending');
+      }
       _showToast('Alarm armed for ${target.hour.toString().padLeft(2, '0')}:${target.minute.toString().padLeft(2, '0')}');
     } else {
       // Disable / deactivate without deleting
       await Alarm.stop(item.id);
       await IdMapper.setEnabled(item.id, false);
+      if (item.uuid != null && !item.uuid!.startsWith('local_')) {
+        BackendClient.updateAlarmState(item.uuid!, 'disabled');
+      }
       _showToast('Alarm deactivated');
     }
 

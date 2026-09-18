@@ -145,6 +145,25 @@ class BackendClient {
     }
   }
 
+  /// Fetch all alarms (both active and inactive) from backend
+  static Future<List<Map<String, dynamic>>> fetchAllAlarms() async {
+    try {
+      final baseUrl = await getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/alarms?view=all');
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+      return [];
+    } catch (e) {
+      // ignore: avoid_print
+      print('[BackendClient] fetchAllAlarms error: $e');
+      return [];
+    }
+  }
+
   /// Fetch remote alarms from backend
   static Future<List<Map<String, dynamic>>> fetchRemoteAlarms() async {
     try {

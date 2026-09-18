@@ -550,7 +550,7 @@
     // Toggle alarm active / inactive
     async function toggleAlarmEnabled(id, enable) {
       try {
-        const newStatus = enable ? 'pending' : 'dismissed';
+        const newStatus = enable ? 'pending' : 'disabled';
         await fetch(`/api/alarms/${id}/state`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -19,7 +19,16 @@ class IdMapper {
   }
 
   /// Store the UUID and label associated with the generated intId
-  static Future<void> saveMapping(int intId, String uuid, {String? label, String? description, DateTime? targetTime}) async {
+  static Future<void> saveMapping(
+    int intId,
+    String uuid, {
+    String? label,
+    String? description,
+    DateTime? targetTime,
+    String? soundTone,
+    int? rampSeconds,
+    List<int>? repeatDays,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('$_prefPrefix$intId', uuid);
     if (label != null) {
@@ -30,6 +39,19 @@ class IdMapper {
     }
     if (targetTime != null) {
       await prefs.setString('$_timePrefix$intId', targetTime.toIso8601String());
+    }
+    if (soundTone != null) {
+      await prefs.setString('$_tonePrefix$intId', soundTone);
+    }
+    if (rampSeconds != null) {
+      await prefs.setInt('$_rampPrefix$intId', rampSeconds);
+    }
+    if (repeatDays != null) {
+      if (repeatDays.isEmpty) {
+        await prefs.remove('$_repeatDaysPrefix$intId');
+      } else {
+        await prefs.setString('$_repeatDaysPrefix$intId', repeatDays.join(','));
+      }
     }
     // Default to enabled
     if (!prefs.containsKey('$_enabledPrefix$intId')) {

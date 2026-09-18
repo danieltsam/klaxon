@@ -237,17 +237,18 @@ app.post<{
   });
 });
 
-// 4. POST /api/alarms/:id/state: Update status ('ringing' | 'dismissed' | 'snoozed')
+// 4. POST /api/alarms/:id/state: Update status ('ringing' | 'dismissed' | 'snoozed' | 'pending' | 'disabled')
 app.post<{
   Params: { id: string };
-  Body: { status: 'ringing' | 'dismissed' | 'snoozed' }
+  Body: { status: 'ringing' | 'dismissed' | 'snoozed' | 'pending' | 'disabled' }
 }>('/api/alarms/:id/state', async (request, reply) => {
   const { id } = request.params;
   const { status } = request.body || {};
 
-  if (!status || !['ringing', 'dismissed', 'snoozed'].includes(status)) {
+  const validStatuses = ['ringing', 'dismissed', 'snoozed', 'pending', 'disabled'];
+  if (!status || !validStatuses.includes(status)) {
     return reply.status(400).send({
-      error: 'Invalid status. Must be "ringing", "dismissed", or "snoozed".'
+      error: `Invalid status. Must be one of: ${validStatuses.join(', ')}.`
     });
   }
 
@@ -258,10 +259,28 @@ app.post<{
 
   AlarmRepo.updateStatus(id, status);
 
+  let fcmResult;
+  if (status === 'disabled') {
+    fcmResult = await sendFcmDataMessage('CANCEL', { id });
+  } else if (status === 'pending') {
+    const fcmPayload: Record<string, string> = {
+      id: existing.id,
+      target_time: existing.target_time,
+      label: existing.label,
+      sound_tone: existing.sound_tone || 'alarm',
+      ramp_seconds: String(existing.ramp_seconds ?? 30)
+    };
+    if (existing.repeat_days) {
+      fcmPayload.repeat_days = existing.repeat_days;
+    }
+    fcmResult = await sendFcmDataMessage('CREATE', fcmPayload);
+  }
+
   return reply.send({
     success: true,
     id,
-    status
+    status,
+    fcm_dispatch: fcmResult
   });
 });
 

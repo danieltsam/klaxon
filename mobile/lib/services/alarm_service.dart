@@ -110,11 +110,7 @@ class AlarmService {
   /// Bidirectional sync: reconciles local alarms with the backend server
   static Future<int> syncWithBackend() async {
     try {
-      final remoteAlarms = await BackendClient.fetchActiveAlarms();
-      if (remoteAlarms.isEmpty) {
-        return 0;
-      }
-
+      final remoteAlarms = await BackendClient.fetchAllAlarms();
       final localAlarms = await Alarm.getAlarms();
       final remoteUuids = <String>{};
 
@@ -125,62 +121,76 @@ class AlarmService {
         final repeatDaysStr = remote['repeat_days']?.toString();
         final tone = remote['sound_tone']?.toString() ?? 'alarm';
         final rampSec = int.tryParse(remote['ramp_seconds']?.toString() ?? '30') ?? 30;
+        final status = remote['status']?.toString() ?? 'pending';
 
         if (uuid == null || targetTimeStr == null) continue;
         remoteUuids.add(uuid);
 
         final intId = IdMapper.uuidToInt(uuid);
         final targetDate = DateTime.parse(targetTimeStr).toLocal();
-        final now = DateTime.now();
+        final repeatDays = repeatDaysStr != null && repeatDaysStr.isNotEmpty
+            ? repeatDaysStr.split(',').map((s) => int.tryParse(s.trim()) ?? 0).where((d) => d >= 1 && d <= 7).toList()
+            : <int>[];
 
-        // If target is in the past and has no repeat days, skip
-        final hasRepeat = repeatDaysStr != null && repeatDaysStr.isNotEmpty;
-        if (targetDate.isBefore(now) && !hasRepeat) {
-          continue;
-        }
-
-        // If not scheduled or time changed, schedule it
-        final existingLocal = localAlarms.cast<AlarmSettings?>().firstWhere(
-          (a) => a?.id == intId,
-          orElse: () => null,
+        await IdMapper.saveMapping(
+          intId,
+          uuid,
+          label: label,
+          targetTime: targetDate,
+          soundTone: tone,
+          rampSeconds: rampSec,
+          repeatDays: repeatDays,
         );
 
-        final isSameTime = existingLocal != null &&
-            existingLocal.dateTime.year == targetDate.year &&
-            existingLocal.dateTime.month == targetDate.month &&
-            existingLocal.dateTime.day == targetDate.day &&
-            existingLocal.dateTime.hour == targetDate.hour &&
-            existingLocal.dateTime.minute == targetDate.minute;
+        if (status == 'disabled' || status == 'canceled' || status == 'dismissed') {
+          await Alarm.stop(intId);
+          await IdMapper.setEnabled(intId, false);
+        } else {
+          await IdMapper.setEnabled(intId, true);
 
-        if (!isSameTime) {
-          await handleAlarmPayload({
-            'action': 'CREATE',
-            'id': uuid,
-            'target_time': targetTimeStr,
-            'label': label,
-            'repeat_days': repeatDaysStr,
-            'sound_tone': tone,
-            'ramp_seconds': rampSec.toString(),
-          });
+          // If not scheduled or time changed, schedule it
+          final existingLocal = localAlarms.cast<AlarmSettings?>().firstWhere(
+            (a) => a?.id == intId,
+            orElse: () => null,
+          );
+
+          final isSameTime = existingLocal != null &&
+              existingLocal.dateTime.year == targetDate.year &&
+              existingLocal.dateTime.month == targetDate.month &&
+              existingLocal.dateTime.day == targetDate.day &&
+              existingLocal.dateTime.hour == targetDate.hour &&
+              existingLocal.dateTime.minute == targetDate.minute;
+
+          if (!isSameTime) {
+            await handleAlarmPayload({
+              'action': 'CREATE',
+              'id': uuid,
+              'target_time': targetTimeStr,
+              'label': label,
+              'repeat_days': repeatDaysStr,
+              'sound_tone': tone,
+              'ramp_seconds': rampSec.toString(),
+            });
+          }
         }
       }
 
-      // Prune local alarms whose backend counterpart was canceled/dismissed remotely
+      // Prune local alarms whose backend counterpart does not exist or was deleted
       for (final local in localAlarms) {
         final uuid = await IdMapper.getUuid(local.id);
-        if (uuid != null && !uuid.startsWith('local_') && !remoteUuids.contains(uuid)) {
+        if (uuid == null || !remoteUuids.contains(uuid)) {
           await Alarm.stop(local.id);
           await IdMapper.removeMapping(local.id);
           // ignore: avoid_print
-          print('[AlarmService] Pruned local alarm ${local.id} ($uuid) as it is no longer active on server');
+          print('[AlarmService] Pruned local alarm ${local.id} ($uuid)');
         }
       }
 
-      // Also prune any stored mappings for remote UUIDs that are no longer active on server
+      // Also prune any stored mappings that are no longer on server
       final allStoredIds = await IdMapper.getAllKnownIds();
       for (final id in allStoredIds) {
         final uuid = await IdMapper.getUuid(id);
-        if (uuid != null && !uuid.startsWith('local_') && !remoteUuids.contains(uuid)) {
+        if (uuid == null || !remoteUuids.contains(uuid)) {
           await Alarm.stop(id);
           await IdMapper.removeMapping(id);
           // ignore: avoid_print

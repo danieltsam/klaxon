@@ -8,7 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "NODE_ENV=test tsx --test test/**/*.test.ts"
+    "test": "NODE_ENV=test DB_PATH=:memory: tsx --test test/**/*.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

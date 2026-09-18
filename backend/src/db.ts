@@ -5,7 +5,7 @@ export interface AlarmRecord {
   id: string;
   target_time: string;
   label: string;
-  status: 'pending' | 'ringing' | 'dismissed' | 'snoozed' | 'canceled';
+  status: 'pending' | 'ringing' | 'dismissed' | 'snoozed' | 'canceled' | 'disabled';
   repeat_days?: string; // e.g. '1,2,3,4,5'
   sound_tone?: string; // e.g. 'alarm', 'chime', 'digital'
   ramp_seconds?: number; // e.g. 0, 15, 30, 60
@@ -20,7 +20,7 @@ export interface DeviceRecord {
   updated_at?: string;
 }
 
-const dbPath = path.resolve(process.cwd(), 'alarms.db');
+const dbPath = process.env.DB_PATH || path.resolve(process.cwd(), 'alarms.db');
 export const db = new Database(dbPath);
 
 // Enable WAL mode for high concurrency
@@ -77,7 +77,7 @@ export const AlarmRepo = {
       `).all() as AlarmRecord[];
     }
     if (view === 'all') {
-      return db.prepare('SELECT * FROM alarms ORDER BY target_time ASC').all() as AlarmRecord[];
+      return db.prepare("SELECT * FROM alarms WHERE status != 'canceled' ORDER BY target_time ASC").all() as AlarmRecord[];
     }
     // Default: active only
     return db.prepare(`
