@@ -657,26 +657,17 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                 ),
               ),
               alignment: Alignment.center,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Today',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isToday && !isPastToday ? FontWeight.w600 : FontWeight.w500,
-                      color: isPastToday
-                          ? const Color(0xFF454850)
-                          : (isToday ? Colors.white : const Color(0xFF8A8F98)),
-                      decoration: isPastToday ? TextDecoration.lineThrough : null,
-                      decorationColor: const Color(0xFF454850),
-                    ),
-                  ),
-                  if (isPastToday) ...[
-                    const SizedBox(width: 4),
-                    const Icon(Icons.block_rounded, size: 11, color: Color(0xFF454850)),
-                  ],
-                ],
+              child: Text(
+                'Today',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isToday && !isPastToday ? FontWeight.w600 : FontWeight.w500,
+                  color: isPastToday
+                      ? const Color(0xFF454850)
+                      : (isToday ? Colors.white : const Color(0xFF8A8F98)),
+                  decoration: isPastToday ? TextDecoration.lineThrough : null,
+                  decorationColor: const Color(0xFF454850),
+                ),
               ),
             ),
           ),

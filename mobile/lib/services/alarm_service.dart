@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:alarm/alarm.dart';
 import '../utils/id_mapper.dart';
 import 'backend_client.dart';
@@ -18,6 +19,35 @@ class AlarmService {
       default:
         return 'assets/alarm.mp3';
     }
+  }
+
+  /// Builds a perceptually-weighted logarithmic/power volume ramp.
+  /// Standard linear volume ramps sound like they jump to maximum volume almost
+  /// immediately because human loudness perception is logarithmic (Weber-Fechner / Stevens' power law).
+  /// By applying a power curve v(t) = (t / T)^2.5:
+  /// - 0% to 40% duration stays whisper-quiet (< 10% loudness)
+  /// - 40% to 60% duration rises into gentle wake-up level (10% to 28% loudness)
+  /// - 60% to 100% duration ramps up to full alert volume
+  static VolumeSettings buildPerceptualVolumeSettings(int rampSec) {
+    if (rampSec <= 0) {
+      return const VolumeSettings.fixed(volume: 1.0);
+    }
+
+    final steps = <VolumeFadeStep>[];
+    steps.add(VolumeFadeStep(Duration.zero, 0.001));
+
+    final stepCount = rampSec.clamp(6, 15);
+    for (int i = 1; i <= stepCount; i++) {
+      final progress = i / stepCount;
+      final timeMillis = ((rampSec * 1000 * i) / stepCount).round();
+      final volume = math.pow(progress, 2.5).toDouble().clamp(0.001, 1.0);
+      steps.add(VolumeFadeStep(Duration(milliseconds: timeMillis), volume));
+    }
+
+    return VolumeSettings.staircaseFade(
+      fadeSteps: steps,
+      volume: 1.0,
+    );
   }
 
   /// Entry point for FCM payload processing
@@ -87,12 +117,7 @@ class AlarmService {
         await IdMapper.setEnabled(intId, true);
 
         final audioPath = getAudioPathForTone(tone);
-        final volumeSettings = rampSec > 0
-            ? VolumeSettings.fade(
-                volume: 1.0,
-                fadeDuration: Duration(seconds: rampSec),
-              )
-            : VolumeSettings.fixed(volume: 1.0);
+        final volumeSettings = buildPerceptualVolumeSettings(rampSec);
 
         final alarmSettings = AlarmSettings(
           id: intId,
@@ -286,12 +311,7 @@ class AlarmService {
     final rampSec = rampSeconds ?? 30;
     final futureTarget = computeFutureOccurrence(alignedDateTime, repeatDays: repeatDays);
 
-    final volumeSettings = rampSec > 0
-        ? VolumeSettings.fade(
-            volume: 1.0,
-            fadeDuration: Duration(seconds: rampSec),
-          )
-        : VolumeSettings.fixed(volume: 1.0);
+    final volumeSettings = buildPerceptualVolumeSettings(rampSec);
 
     final alarmSettings = AlarmSettings(
       id: intId,
