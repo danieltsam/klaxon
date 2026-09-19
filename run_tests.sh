@@ -25,8 +25,12 @@ fi
 
 if [ "$1" == "--with-chaos" ] || [ "$2" == "--with-chaos" ]; then
   echo ""
-  echo "[Optional] Running Chaos Engineering Test Suite via ADB..."
+  echo "[Optional 1/2] Running Chaos Engineering Test Suite via ADB..."
   "$ROOT_DIR/scripts/chaos_engineering_test.sh"
+
+  echo ""
+  echo "[Optional 2/2] Running In-Depth Fault Injection Test Suite..."
+  "$ROOT_DIR/scripts/in_depth_chaos_test.sh"
 fi
 
 echo ""
