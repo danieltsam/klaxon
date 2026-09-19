@@ -134,6 +134,62 @@ class BackendClient {
     }
   }
 
+  /// Update an existing alarm on the backend (PATCH /api/alarms/:id)
+  static Future<bool> updateRemoteAlarm(
+    String uuid, {
+    DateTime? targetTime,
+    String? label,
+    String? description,
+    List<int>? repeatDays,
+    String? soundTone,
+    int? rampSeconds,
+  }) async {
+    try {
+      final baseUrl = await getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/alarms/$uuid');
+      final bodyMap = <String, dynamic>{};
+      if (targetTime != null) {
+        final aligned = DateTime(
+          targetTime.year,
+          targetTime.month,
+          targetTime.day,
+          targetTime.hour,
+          targetTime.minute,
+          0,
+          0,
+        );
+        bodyMap['target_time'] = aligned.toUtc().toIso8601String();
+      }
+      if (label != null) {
+        bodyMap['label'] = label;
+      }
+      if (description != null) {
+        bodyMap['description'] = description;
+      }
+      if (repeatDays != null) {
+        bodyMap['repeat_days'] = repeatDays;
+      }
+      if (soundTone != null) {
+        bodyMap['sound_tone'] = soundTone;
+      }
+      if (rampSeconds != null) {
+        bodyMap['ramp_seconds'] = rampSeconds;
+      }
+
+      final response = await http.patch(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(bodyMap),
+      ).timeout(const Duration(seconds: 8));
+
+      return response.statusCode == 200;
+    } catch (e) {
+      // ignore: avoid_print
+      print('[BackendClient] updateRemoteAlarm error: $e');
+      return false;
+    }
+  }
+
   /// Fetch active remote alarms from backend for bidirectional sync
   static Future<List<Map<String, dynamic>>?> fetchActiveAlarms() async {
     try {

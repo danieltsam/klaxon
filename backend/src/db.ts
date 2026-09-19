@@ -148,6 +148,33 @@ export const AlarmRepo = {
     return result.changes > 0;
   },
 
+  update(id: string, updates: Partial<AlarmRecord>): boolean {
+    const existing = this.getById(id);
+    if (!existing) return false;
+    const merged = { ...existing, ...updates };
+    const result = db.prepare(`
+      UPDATE alarms
+      SET target_time = @target_time,
+          label = @label,
+          description = @description,
+          status = @status,
+          repeat_days = @repeat_days,
+          sound_tone = @sound_tone,
+          ramp_seconds = @ramp_seconds
+      WHERE id = @id
+    `).run({
+      id,
+      target_time: merged.target_time,
+      label: merged.label,
+      description: merged.description || null,
+      status: merged.status,
+      repeat_days: merged.repeat_days || null,
+      sound_tone: merged.sound_tone || 'alarm',
+      ramp_seconds: merged.ramp_seconds ?? 30
+    });
+    return result.changes > 0;
+  },
+
   cancel(id: string): boolean {
     return this.updateStatus(id, 'canceled');
   }

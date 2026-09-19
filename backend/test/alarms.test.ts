@@ -274,6 +274,53 @@ describe('Fastify Alarm API & Persistence Test Suite', () => {
       // Cleanup
       db.prepare('DELETE FROM alarms WHERE id = ?').run(created.id);
     });
+
+    it('PATCH /api/alarms/:id should update title, description, repeat_days, tone, and ramp', async () => {
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/api/alarms',
+        payload: {
+          target_time: '2026-12-01T08:00:00.000Z',
+          label: 'Original Label',
+          description: 'Original Desc',
+          sound_tone: 'alarm',
+          ramp_seconds: 0
+        }
+      });
+      const created = JSON.parse(createRes.body);
+
+      const patchRes = await app.inject({
+        method: 'PATCH',
+        url: `/api/alarms/${created.id}`,
+        payload: {
+          label: 'Updated Label',
+          description: 'Updated Desc',
+          target_time: '2026-12-01T09:30:00.000Z',
+          repeat_days: [1, 3, 5],
+          sound_tone: 'digital',
+          ramp_seconds: 30
+        }
+      });
+      assert.strictEqual(patchRes.statusCode, 200);
+      const updated = JSON.parse(patchRes.body);
+      assert.strictEqual(updated.label, 'Updated Label');
+      assert.strictEqual(updated.description, 'Updated Desc');
+      assert.strictEqual(updated.target_time, '2026-12-01T09:30:00.000Z');
+      assert.strictEqual(updated.repeat_days, '1,3,5');
+      assert.strictEqual(updated.sound_tone, 'digital');
+      assert.strictEqual(updated.ramp_seconds, 30);
+
+      // Verify in DB
+      const dbRecord = AlarmRepo.getById(created.id);
+      assert.strictEqual(dbRecord?.label, 'Updated Label');
+      assert.strictEqual(dbRecord?.description, 'Updated Desc');
+      assert.strictEqual(dbRecord?.sound_tone, 'digital');
+      assert.strictEqual(dbRecord?.ramp_seconds, 30);
+      assert.strictEqual(dbRecord?.repeat_days, '1,3,5');
+
+      // Cleanup
+      db.prepare('DELETE FROM alarms WHERE id = ?').run(created.id);
+    });
   });
 
   describe('Device Battery & Telemetry API', () => {

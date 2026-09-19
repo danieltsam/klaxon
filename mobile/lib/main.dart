@@ -113,7 +113,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   String _backendUrl = 'http://127.0.0.1:3000';
   late Timer _clockTimer;
   Timer? _foregroundSyncTimer;
-  DateTime _currentTime = DateTime.now();
   StreamSubscription<AlarmSettings>? _ringSubscription;
   StreamSubscription<int>? _remoteDismissSubscription;
   final Battery _battery = Battery();
@@ -195,7 +194,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
-        setState(() => _currentTime = DateTime.now());
+        setState(() {});
       }
     });
 
@@ -445,6 +444,290 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     return days.map((d) => names[d - 1]).join(', ');
   }
 
+  String _formatRepeatDaysOrDate(List<int> days, DateTime targetTime) {
+    if (days.isNotEmpty) {
+      return _formatRepeatDays(days);
+    }
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final alarmDay = DateTime(targetTime.year, targetTime.month, targetTime.day);
+    final diffDays = alarmDay.difference(today).inDays;
+    if (diffDays == 0) return 'Today';
+    if (diffDays == 1) return 'Tomorrow';
+    return _formatDate(targetTime);
+  }
+
+  String _formatRepeatSummary(List<int> days) {
+    if (days.isEmpty) return 'Does not repeat (one-time alarm)';
+    if (days.length == 7) return 'Repeats every day';
+    if (days.length == 5 &&
+        days.contains(1) &&
+        days.contains(2) &&
+        days.contains(3) &&
+        days.contains(4) &&
+        days.contains(5)) {
+      return 'Repeats every weekday (Mon - Fri)';
+    }
+    if (days.length == 2 && days.contains(6) && days.contains(7)) {
+      return 'Repeats every weekend (Sat, Sun)';
+    }
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return 'Repeats on ${days.map((d) => names[d - 1]).join(', ')}';
+  }
+
+  Widget _buildLinearSegmentedControl<T>({
+    required List<T> values,
+    required T selectedValue,
+    required List<String> labels,
+    required ValueChanged<T> onSelected,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: const Color(0xFF16181B),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF26282E)),
+      ),
+      child: Row(
+        children: List.generate(values.length, (index) {
+          final val = values[index];
+          final label = labels[index];
+          final isSelected = val == selectedValue;
+
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => onSelected(val),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(vertical: 9),
+                decoration: BoxDecoration(
+                  color: isSelected ? const Color(0xFF5E6AD2) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                    color: isSelected ? Colors.white : const Color(0xFF8A8F98),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildWeekdaySelector({
+    required List<int> selectedDays,
+    required ValueChanged<List<int>> onChanged,
+  }) {
+    const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S']; // 1=Mon ... 7=Sun
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: List.generate(7, (index) {
+            final dayNum = index + 1;
+            final isSelected = selectedDays.contains(dayNum);
+            return GestureDetector(
+              onTap: () {
+                final newDays = List<int>.from(selectedDays);
+                if (isSelected) {
+                  newDays.remove(dayNum);
+                } else {
+                  newDays.add(dayNum);
+                  newDays.sort();
+                }
+                onChanged(newDays);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: isSelected ? const Color(0xFF5E6AD2) : const Color(0xFF16181B),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isSelected ? const Color(0xFF5E6AD2) : const Color(0xFF26282E),
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  dayLabels[index],
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isSelected ? Colors.white : const Color(0xFF8A8F98),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          _formatRepeatSummary(selectedDays),
+          style: const TextStyle(
+            fontSize: 11,
+            color: Color(0xFF8A8F98),
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDateSelector({
+    required BuildContext context,
+    required DateTime selectedDate,
+    required TimeOfDay selectedTime,
+    required ValueChanged<DateTime> onDateChanged,
+  }) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final curSelectedDay = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+
+    final isToday = curSelectedDay.isAtSameMomentAs(today);
+    final isTomorrow = curSelectedDay.isAtSameMomentAs(tomorrow);
+    final isCustom = !isToday && !isTomorrow;
+
+    final isPastToday = (selectedTime.hour < now.hour) ||
+        (selectedTime.hour == now.hour && selectedTime.minute <= now.minute);
+
+    return Row(
+      children: [
+        // Today
+        Expanded(
+          child: GestureDetector(
+            onTap: () => onDateChanged(today),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              decoration: BoxDecoration(
+                color: isToday ? const Color(0xFF5E6AD2) : const Color(0xFF16181B),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isToday ? const Color(0xFF5E6AD2) : const Color(0xFF26282E),
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Today',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isToday ? FontWeight.w600 : FontWeight.w500,
+                      color: isToday ? Colors.white : const Color(0xFF8A8F98),
+                    ),
+                  ),
+                  if (isPastToday && isToday) ...[
+                    const SizedBox(width: 4),
+                    const Icon(Icons.info_outline, size: 12, color: Color(0xFFF2C94C)),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+
+        // Tomorrow
+        Expanded(
+          child: GestureDetector(
+            onTap: () => onDateChanged(tomorrow),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              decoration: BoxDecoration(
+                color: isTomorrow ? const Color(0xFF5E6AD2) : const Color(0xFF16181B),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isTomorrow ? const Color(0xFF5E6AD2) : const Color(0xFF26282E),
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                'Tomorrow',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isTomorrow ? FontWeight.w600 : FontWeight.w500,
+                  color: isTomorrow ? Colors.white : const Color(0xFF8A8F98),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+
+        // Pick Date
+        Expanded(
+          child: GestureDetector(
+            onTap: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: curSelectedDay.isBefore(today) ? today : curSelectedDay,
+                firstDate: today,
+                lastDate: today.add(const Duration(days: 365)),
+                builder: (ctx, child) {
+                  return Theme(
+                    data: ThemeData.dark().copyWith(
+                      colorScheme: const ColorScheme.dark(
+                        primary: Color(0xFF5E6AD2),
+                        surface: Color(0xFF16181B),
+                        onSurface: Color(0xFFF7F8F8),
+                      ),
+                      dialogTheme: const DialogThemeData(
+                        backgroundColor: Color(0xFF0F1013),
+                      ),
+                    ),
+                    child: child!,
+                  );
+                },
+              );
+              if (picked != null) {
+                onDateChanged(picked);
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              decoration: BoxDecoration(
+                color: isCustom ? const Color(0xFF5E6AD2) : const Color(0xFF16181B),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isCustom ? const Color(0xFF5E6AD2) : const Color(0xFF26282E),
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.calendar_today_rounded, size: 12, color: Color(0xFF8A8F98)),
+                  const SizedBox(width: 4),
+                  Text(
+                    isCustom ? '${curSelectedDay.day}/${curSelectedDay.month}' : 'Pick Date',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isCustom ? FontWeight.w600 : FontWeight.w500,
+                      color: isCustom ? Colors.white : const Color(0xFF8A8F98),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _loadBackendUrl() async {
     final url = await BackendClient.getBaseUrl();
     if (mounted) {
@@ -687,92 +970,95 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
                     const SizedBox(height: 18),
 
-                    // Sound Tone & Gentle Ramp Row
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'TONE',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF8A8F98),
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF16181B),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: const Color(0xFF26282E)),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String>(
-                                    value: tone,
-                                    isExpanded: true,
-                                    dropdownColor: const Color(0xFF16181B),
-                                    items: const [
-                                      DropdownMenuItem(value: 'alarm', child: Text('Radar')),
-                                      DropdownMenuItem(value: 'chime', child: Text('Chime')),
-                                      DropdownMenuItem(value: 'digital', child: Text('Digital')),
-                                    ],
-                                    onChanged: (val) {
-                                      if (val != null) setModalState(() => tone = val);
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                    // Repeat Days (Recurrence)
+                    const Text(
+                      'REPEAT',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildWeekdaySelector(
+                      selectedDays: repeatDays,
+                      onChanged: (newDays) {
+                        setModalState(() => repeatDays = newDays);
+                      },
+                    ),
+
+                    if (repeatDays.isEmpty) ...[
+                      const SizedBox(height: 18),
+                      // Target Date Selector (when one-time)
+                      const Text(
+                        'DATE',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF8A8F98),
+                          letterSpacing: 0.8,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'GENTLE RAMP',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF8A8F98),
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF16181B),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: const Color(0xFF26282E)),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<int>(
-                                    value: ramp,
-                                    isExpanded: true,
-                                    dropdownColor: const Color(0xFF16181B),
-                                    items: const [
-                                      DropdownMenuItem(value: 0, child: Text('0s (Instant)')),
-                                      DropdownMenuItem(value: 15, child: Text('15s Ramp')),
-                                      DropdownMenuItem(value: 30, child: Text('30s Ramp')),
-                                      DropdownMenuItem(value: 60, child: Text('60s Ramp')),
-                                    ],
-                                    onChanged: (val) {
-                                      if (val != null) setModalState(() => ramp = val);
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                      ),
+                      const SizedBox(height: 8),
+                      _buildDateSelector(
+                        context: builderContext,
+                        selectedDate: selectedTime,
+                        selectedTime: TimeOfDay.fromDateTime(selectedTime),
+                        onDateChanged: (newDate) {
+                          setModalState(() {
+                            selectedTime = DateTime(
+                              newDate.year,
+                              newDate.month,
+                              newDate.day,
+                              selectedTime.hour,
+                              selectedTime.minute,
+                              0,
+                              0,
+                            );
+                          });
+                        },
+                      ),
+                    ],
+
+                    const SizedBox(height: 18),
+
+                    // Sound Tone
+                    const Text(
+                      'SOUND TONE',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildLinearSegmentedControl<String>(
+                      values: const ['alarm', 'chime', 'digital'],
+                      selectedValue: tone,
+                      labels: const ['Radar', 'Chime', 'Digital'],
+                      onSelected: (val) => setModalState(() => tone = val),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    // Gentle Ramp
+                    const Text(
+                      'GENTLE VOLUME RAMP',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildLinearSegmentedControl<int>(
+                      values: const [0, 15, 30, 60],
+                      selectedValue: ramp,
+                      labels: const ['0s Instant', '15s', '30s', '60s'],
+                      onSelected: (val) => setModalState(() => ramp = val),
                     ),
 
                     const SizedBox(height: 24),
@@ -798,21 +1084,45 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                     : 'Alarm';
                                 final updatedDesc = descController.text.trim();
 
+                                DateTime finalTarget;
+                                if (repeatDays.isNotEmpty) {
+                                  finalTarget = AlarmService.computeFutureOccurrence(
+                                    selectedTime,
+                                    repeatDays: repeatDays,
+                                  );
+                                } else {
+                                  finalTarget = selectedTime;
+                                }
+
                                 item.title = updatedTitle;
                                 item.description = updatedDesc;
-                                item.dateTime = selectedTime;
+                                item.dateTime = finalTarget;
                                 item.soundTone = tone;
                                 item.rampSeconds = ramp;
+                                item.repeatDays = repeatDays;
 
                                 await IdMapper.saveMapping(
                                   item.id,
                                   item.uuid ?? 'local_${item.id}',
                                   label: updatedTitle,
                                   description: updatedDesc,
-                                  targetTime: selectedTime,
+                                  targetTime: finalTarget,
+                                  soundTone: tone,
+                                  rampSeconds: ramp,
+                                  repeatDays: repeatDays,
                                 );
-                                await IdMapper.setSoundTone(item.id, tone);
-                                await IdMapper.setRampSeconds(item.id, ramp);
+
+                                if (item.uuid != null && !item.uuid!.startsWith('local_')) {
+                                  await BackendClient.updateRemoteAlarm(
+                                    item.uuid!,
+                                    targetTime: finalTarget,
+                                    label: updatedTitle,
+                                    description: updatedDesc,
+                                    repeatDays: repeatDays,
+                                    soundTone: tone,
+                                    rampSeconds: ramp,
+                                  );
+                                }
 
                                 if (item.isEnabled) {
                                   // Reschedule
@@ -1263,6 +1573,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       0,
       0,
     ).add(const Duration(minutes: 5));
+    List<int> selectedDays = [];
     String selectedTone = _defaultSoundTone;
     int selectedRampSeconds = _defaultRampSeconds;
     final labelController = TextEditingController(text: 'Morning workout');
@@ -1445,92 +1756,95 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
                     const SizedBox(height: 18),
 
-                    // Tone & Ramp
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'TONE',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF8A8F98),
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF16181B),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: const Color(0xFF26282E)),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String>(
-                                    value: selectedTone,
-                                    isExpanded: true,
-                                    dropdownColor: const Color(0xFF16181B),
-                                    items: const [
-                                      DropdownMenuItem(value: 'alarm', child: Text('Radar')),
-                                      DropdownMenuItem(value: 'chime', child: Text('Chime')),
-                                      DropdownMenuItem(value: 'digital', child: Text('Digital')),
-                                    ],
-                                    onChanged: (val) {
-                                      if (val != null) setModalState(() => selectedTone = val);
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                    // Repeat Days (Recurrence)
+                    const Text(
+                      'REPEAT',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildWeekdaySelector(
+                      selectedDays: selectedDays,
+                      onChanged: (newDays) {
+                        setModalState(() => selectedDays = newDays);
+                      },
+                    ),
+
+                    if (selectedDays.isEmpty) ...[
+                      const SizedBox(height: 18),
+                      // Target Date Selector (when one-time)
+                      const Text(
+                        'DATE',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF8A8F98),
+                          letterSpacing: 0.8,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'GENTLE RAMP',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF8A8F98),
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF16181B),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: const Color(0xFF26282E)),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<int>(
-                                    value: selectedRampSeconds,
-                                    isExpanded: true,
-                                    dropdownColor: const Color(0xFF16181B),
-                                    items: const [
-                                      DropdownMenuItem(value: 0, child: Text('0s (Instant)')),
-                                      DropdownMenuItem(value: 15, child: Text('15s Ramp')),
-                                      DropdownMenuItem(value: 30, child: Text('30s Ramp')),
-                                      DropdownMenuItem(value: 60, child: Text('60s Ramp')),
-                                    ],
-                                    onChanged: (val) {
-                                      if (val != null) setModalState(() => selectedRampSeconds = val);
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                      ),
+                      const SizedBox(height: 8),
+                      _buildDateSelector(
+                        context: builderContext,
+                        selectedDate: selectedTime,
+                        selectedTime: TimeOfDay.fromDateTime(selectedTime),
+                        onDateChanged: (newDate) {
+                          setModalState(() {
+                            selectedTime = DateTime(
+                              newDate.year,
+                              newDate.month,
+                              newDate.day,
+                              selectedTime.hour,
+                              selectedTime.minute,
+                              0,
+                              0,
+                            );
+                          });
+                        },
+                      ),
+                    ],
+
+                    const SizedBox(height: 18),
+
+                    // Sound Tone
+                    const Text(
+                      'SOUND TONE',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildLinearSegmentedControl<String>(
+                      values: const ['alarm', 'chime', 'digital'],
+                      selectedValue: selectedTone,
+                      labels: const ['Radar', 'Chime', 'Digital'],
+                      onSelected: (val) => setModalState(() => selectedTone = val),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    // Gentle Ramp
+                    const Text(
+                      'GENTLE VOLUME RAMP',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildLinearSegmentedControl<int>(
+                      values: const [0, 15, 30, 60],
+                      selectedValue: selectedRampSeconds,
+                      labels: const ['0s Instant', '15s', '30s', '60s'],
+                      onSelected: (val) => setModalState(() => selectedRampSeconds = val),
                     ),
 
                     const SizedBox(height: 24),
@@ -1557,6 +1871,16 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             0,
                           );
 
+                          DateTime finalTarget;
+                          if (selectedDays.isNotEmpty) {
+                            finalTarget = AlarmService.computeFutureOccurrence(
+                              cleanTime,
+                              repeatDays: selectedDays,
+                            );
+                          } else {
+                            finalTarget = cleanTime;
+                          }
+
                           String assetAudio = AlarmService.getAudioPathForTone(selectedTone);
                           final title = labelController.text.trim().isNotEmpty
                               ? labelController.text.trim()
@@ -1565,9 +1889,10 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
                           // First create on backend to establish sync with dashboard
                           String? remoteId = await BackendClient.createRemoteAlarm(
-                            targetTime: cleanTime,
+                            targetTime: finalTarget,
                             label: title,
                             description: desc,
+                            repeatDays: selectedDays.isNotEmpty ? selectedDays : null,
                             soundTone: selectedTone,
                             rampSeconds: selectedRampSeconds,
                           );
@@ -1577,7 +1902,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
                           final settings = AlarmSettings(
                             id: intId,
-                            dateTime: cleanTime,
+                            dateTime: finalTarget,
                             assetAudioPath: assetAudio,
                             loopAudio: true,
                             vibrate: true,
@@ -1600,7 +1925,10 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             assignedUuid,
                             label: title,
                             description: desc,
-                            targetTime: cleanTime,
+                            targetTime: finalTarget,
+                            soundTone: selectedTone,
+                            rampSeconds: selectedRampSeconds,
+                            repeatDays: selectedDays,
                           );
                           await IdMapper.setSoundTone(intId, selectedTone);
                           await IdMapper.setRampSeconds(intId, selectedRampSeconds);
@@ -1609,7 +1937,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           if (bottomSheetContext.mounted) {
                             Navigator.pop(bottomSheetContext);
                           }
-                          _showToast('Alarm armed for $formattedTime');
+                          _showToast('Alarm armed for ${_formatTime(finalTarget)}');
                           _loadAllAlarms();
                         },
                         child: const Text(
@@ -2033,7 +2361,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                     border: Border.all(color: const Color(0xFF2E323B)),
                   ),
                   child: Text(
-                    _formatRepeatDays(alarm.repeatDays),
+                    _formatRepeatDaysOrDate(alarm.repeatDays, alarm.dateTime),
                     style: const TextStyle(fontSize: 11, color: Color(0xFF8A8F98)),
                   ),
                 ),
@@ -2152,7 +2480,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
-                          _formatRepeatDays(alarm.repeatDays),
+                          _formatRepeatDaysOrDate(alarm.repeatDays, alarm.dateTime),
                           style: TextStyle(
                             fontSize: 10,
                             color: subtextColor,
@@ -2180,7 +2508,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
             // Smooth Slider Switch (Linear style)
             Switch.adaptive(
               value: alarm.isEnabled,
-              activeColor: const Color(0xFFFFFFFF),
+              activeThumbColor: const Color(0xFFFFFFFF),
               activeTrackColor: const Color(0xFF5E6AD2),
               inactiveThumbColor: const Color(0xFF565A61),
               inactiveTrackColor: const Color(0xFF1E2024),

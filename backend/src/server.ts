@@ -14,7 +14,7 @@ const app = fastify({ logger: true });
 // Register CORS for client access
 await app.register(cors, {
   origin: true,
-  methods: ['GET', 'POST', 'DELETE', 'OPTIONS']
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS']
 });
 
 // Serve static dashboard files
@@ -244,6 +244,98 @@ app.post<{
     success: true,
     id,
     status: 'dismissed',
+    fcm_dispatch: dispatchResult
+  });
+});
+
+// 3c. PATCH /api/alarms/:id: Update alarm fields and broadcast FCM CREATE
+app.patch<{
+  Params: { id: string };
+  Body: {
+    target_time?: string;
+    label?: string;
+    description?: string;
+    repeat_days?: string | number[];
+    sound_tone?: string;
+    ramp_seconds?: number;
+    status?: 'pending' | 'ringing' | 'dismissed' | 'snoozed' | 'canceled' | 'disabled';
+  };
+}>('/api/alarms/:id', async (request, reply) => {
+  const { id } = request.params;
+  const existing = AlarmRepo.getById(id);
+
+  if (!existing) {
+    return reply.status(404).send({ error: 'Alarm not found' });
+  }
+
+  const { target_time, label, description, repeat_days, sound_tone, ramp_seconds, status } = request.body || {};
+
+  const updates: Partial<AlarmRecord> = {};
+
+  if (target_time !== undefined) {
+    const dateObj = new Date(target_time);
+    if (isNaN(dateObj.getTime())) {
+      return reply.status(400).send({ error: 'Invalid target_time: must be a valid ISO 8601 UTC timestamp.' });
+    }
+    dateObj.setSeconds(0, 0);
+    updates.target_time = dateObj.toISOString();
+  }
+
+  if (label !== undefined) {
+    if (!label.trim()) {
+      return reply.status(400).send({ error: 'Label cannot be empty.' });
+    }
+    updates.label = label.trim();
+  }
+
+  if (description !== undefined) {
+    updates.description = description.trim();
+  }
+
+  if (repeat_days !== undefined) {
+    if (Array.isArray(repeat_days)) {
+      updates.repeat_days = repeat_days.join(',');
+    } else if (typeof repeat_days === 'string') {
+      updates.repeat_days = repeat_days.trim();
+    }
+  }
+
+  if (sound_tone !== undefined) {
+    const normTone = sound_tone.trim().toLowerCase();
+    if (['alarm', 'chime', 'digital'].includes(normTone)) {
+      updates.sound_tone = normTone;
+    }
+  }
+
+  if (ramp_seconds !== undefined) {
+    if (typeof ramp_seconds !== 'number' || ramp_seconds < 0 || !Number.isInteger(ramp_seconds)) {
+      return reply.status(400).send({ error: 'Invalid ramp_seconds: must be a non-negative integer.' });
+    }
+    updates.ramp_seconds = ramp_seconds;
+  }
+
+  if (status !== undefined) {
+    updates.status = status;
+  }
+
+  AlarmRepo.update(id, updates);
+  const updated = AlarmRepo.getById(id)!;
+
+  // Broadcast FCM update
+  const fcmPayload: FcmPayload = {
+    id: updated.id,
+    target_time: updated.target_time,
+    label: updated.label,
+    sound_tone: updated.sound_tone || 'alarm',
+    ramp_seconds: updated.ramp_seconds ?? 30
+  };
+  if (updated.description) fcmPayload.description = updated.description;
+  if (updated.repeat_days) fcmPayload.repeat_days = updated.repeat_days;
+
+  const dispatchResult = await sendFcmDataMessage('CREATE', fcmPayload);
+
+  return reply.send({
+    ...updated,
     fcm_dispatch: dispatchResult
   });
 });
