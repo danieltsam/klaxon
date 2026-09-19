@@ -144,6 +144,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   int _defaultRampSeconds = 15;
   String _timeFormat = '24h';
   String _dateFormat = 'dd/mm/yyyy';
+  bool _useMicroPillsLayout = true;
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
@@ -153,6 +154,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       _defaultRampSeconds = prefs.getInt('pref_ramp_seconds') ?? 15;
       _timeFormat = prefs.getString('pref_time_format') ?? '24h';
       _dateFormat = prefs.getString('pref_date_format') ?? 'dd/mm/yyyy';
+      _useMicroPillsLayout = prefs.getBool('pref_use_micro_pills') ?? true;
     });
 
     try {
@@ -179,15 +181,20 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       if (key == 'ramp_seconds') _defaultRampSeconds = value as int;
       if (key == 'time_format') _timeFormat = value as String;
       if (key == 'date_format') _dateFormat = value as String;
+      if (key == 'use_micro_pills') _useMicroPillsLayout = value as bool;
     });
 
     if (value is String) {
       await prefs.setString('pref_$key', value);
     } else if (value is int) {
       await prefs.setInt('pref_$key', value);
+    } else if (value is bool) {
+      await prefs.setBool('pref_$key', value);
     }
 
-    await BackendClient.updateSettings({key: value});
+    if (key != 'use_micro_pills') {
+      await BackendClient.updateSettings({key: value});
+    }
   }
 
   String _formatTime(DateTime dt) {
@@ -490,6 +497,406 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     }
     const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return 'Repeats on ${days.map((d) => names[d - 1]).join(', ')}';
+  }
+
+  String _formatMicroPillRecurrence(List<int> days, DateTime targetTime) {
+    if (days.length == 7) return 'Daily';
+    if (days.length == 5 && [1, 2, 3, 4, 5].every(days.contains)) return 'Weekdays';
+    if (days.length == 2 && days.contains(6) && days.contains(7)) return 'Weekends';
+    if (days.isNotEmpty) {
+      if (days.length <= 3) {
+        const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        return days.map((d) => names[d - 1]).join(', ');
+      }
+      return '${days.length} days';
+    }
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final targetDay = DateTime(targetTime.year, targetTime.month, targetTime.day);
+
+    if (targetDay.isAtSameMomentAs(today)) return 'Today';
+    if (targetDay.isAtSameMomentAs(tomorrow)) return 'Tomorrow';
+    return _formatDate(targetTime);
+  }
+
+  String _formatMicroPillSound(String tone, int rampSec) {
+    String toneName = 'Radar';
+    if (tone.toLowerCase() == 'chime') toneName = 'Chime';
+    if (tone.toLowerCase() == 'digital') toneName = 'Digital';
+
+    final rampName = rampSec <= 0 ? 'Instant' : '${rampSec}s';
+    return '$toneName • $rampName';
+  }
+
+  Widget _buildPresetChip(String label, bool isSelected, VoidCallback onTap) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF5E6AD2) : const Color(0xFF20232A),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected ? const Color(0xFF5E6AD2) : const Color(0xFF2E323D),
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+              color: isSelected ? Colors.white : const Color(0xFF8A8F98),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openRecurrenceSheet({
+    required BuildContext context,
+    required List<int> initialDays,
+    required DateTime initialTime,
+    required void Function(List<int> newDays, DateTime newTime) onApplied,
+  }) {
+    List<int> curDays = List.from(initialDays);
+    DateTime curTime = initialTime;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF16181B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        side: BorderSide(color: Color(0xFF26282E)),
+      ),
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (builderCtx, setSheetState) {
+            final isOnce = curDays.isEmpty;
+            final isWeekdays = curDays.length == 5 && [1, 2, 3, 4, 5].every(curDays.contains);
+            final isWeekends = curDays.length == 2 && curDays.contains(6) && curDays.contains(7);
+            final isDaily = curDays.length == 7;
+
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 16,
+                bottom: MediaQuery.of(builderCtx).viewInsets.bottom + 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3A3F4A),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Schedule & Recurrence',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFF7F8F8),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          onApplied(curDays, curTime);
+                          Navigator.pop(sheetCtx);
+                        },
+                        child: const Text(
+                          'Done',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF5E6AD2),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Quick presets
+                  Row(
+                    children: [
+                      _buildPresetChip('Once', isOnce, () {
+                        setSheetState(() => curDays.clear());
+                      }),
+                      const SizedBox(width: 6),
+                      _buildPresetChip('Weekdays', isWeekdays, () {
+                        setSheetState(() => curDays = [1, 2, 3, 4, 5]);
+                      }),
+                      const SizedBox(width: 6),
+                      _buildPresetChip('Weekends', isWeekends, () {
+                        setSheetState(() => curDays = [6, 7]);
+                      }),
+                      const SizedBox(width: 6),
+                      _buildPresetChip('Daily', isDaily, () {
+                        setSheetState(() => curDays = [1, 2, 3, 4, 5, 6, 7]);
+                      }),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Weekday Circles
+                  _buildWeekdaySelector(
+                    selectedDays: curDays,
+                    onChanged: (newDays) {
+                      setSheetState(() => curDays = newDays);
+                    },
+                  ),
+
+                  // If One-time, show Date selector
+                  if (curDays.isEmpty) ...[
+                    const SizedBox(height: 16),
+                    const Text(
+                      'TARGET DATE',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildDateSelector(
+                      context: builderCtx,
+                      selectedDate: curTime,
+                      selectedTime: TimeOfDay.fromDateTime(curTime),
+                      onDateChanged: (newDate) {
+                        setSheetState(() {
+                          curTime = DateTime(
+                            newDate.year,
+                            newDate.month,
+                            newDate.day,
+                            curTime.hour,
+                            curTime.minute,
+                            0,
+                            0,
+                          );
+                        });
+                      },
+                    ),
+                  ],
+
+                  const SizedBox(height: 20),
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 46,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF5E6AD2),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () {
+                        onApplied(curDays, curTime);
+                        Navigator.pop(sheetCtx);
+                      },
+                      child: const Text(
+                        'Apply Schedule',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _openSoundSheet({
+    required BuildContext context,
+    required String initialTone,
+    required int initialRamp,
+    required void Function(String newTone, int newRamp) onApplied,
+  }) {
+    String curTone = initialTone;
+    int curRamp = initialRamp;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF16181B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        side: BorderSide(color: Color(0xFF26282E)),
+      ),
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (builderCtx, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 16,
+                bottom: MediaQuery.of(builderCtx).viewInsets.bottom + 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3A3F4A),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Sound & Gentle Ramp',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFF7F8F8),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          onApplied(curTone, curRamp);
+                          Navigator.pop(sheetCtx);
+                        },
+                        child: const Text(
+                          'Done',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF5E6AD2),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Sound Tone
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'SOUND TONE',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF8A8F98),
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      const Text(
+                        'Tap to audition',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Color(0xFF565A61),
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _buildLinearSegmentedControl<String>(
+                    values: const ['alarm', 'chime', 'digital'],
+                    selectedValue: curTone,
+                    labels: const ['Radar', 'Chime', 'Digital'],
+                    icons: const [
+                      Icons.volume_up_rounded,
+                      Icons.volume_up_rounded,
+                      Icons.volume_up_rounded,
+                    ],
+                    onSelected: (val) {
+                      setSheetState(() => curTone = val);
+                      _previewTone(val);
+                    },
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  // Gentle Ramp
+                  const Text(
+                    'GENTLE VOLUME RAMP',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF8A8F98),
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Power 4.0 logarithmic curve keeps volume under 32% for 75% of duration',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Color(0xFF565A61),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildLinearSegmentedControl<int>(
+                    values: const [0, 15, 30, 60],
+                    selectedValue: curRamp,
+                    labels: const ['0s Instant', '15s', '30s', '60s'],
+                    onSelected: (val) => setSheetState(() => curRamp = val),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 46,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF5E6AD2),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () {
+                        onApplied(curTone, curRamp);
+                        Navigator.pop(sheetCtx);
+                      },
+                      child: const Text(
+                        'Save Sound Settings',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Widget _buildLinearSegmentedControl<T>({
@@ -875,24 +1282,247 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             letterSpacing: -0.2,
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF8A8F98)),
-                          onPressed: () => Navigator.pop(bottomSheetContext),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            GestureDetector(
+                              onTap: () {
+                                setModalState(() => _useMicroPillsLayout = !_useMicroPillsLayout);
+                                _updateSetting('use_micro_pills', _useMicroPillsLayout);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF1E2028),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFF2E323D)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      _useMicroPillsLayout ? Icons.view_compact_rounded : Icons.view_agenda_rounded,
+                                      size: 13,
+                                      color: const Color(0xFF5E6AD2),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _useMicroPillsLayout ? 'Micro' : 'Grouped',
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF5E6AD2),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            IconButton(
+                              icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF8A8F98)),
+                              onPressed: () => Navigator.pop(bottomSheetContext),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
 
-                    // Title
-                    const Text(
-                      'TITLE',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
+                    if (_useMicroPillsLayout) ...[
+                      // HERO MICRO-PILLS CARD
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF16181B),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFF26282E)),
+                        ),
+                        child: Column(
+                          children: [
+                            // Large Time Display
+                            GestureDetector(
+                              onTap: () async {
+                                final picked = await showTimePicker(
+                                  context: builderContext,
+                                  initialTime: TimeOfDay.fromDateTime(selectedTime),
+                                );
+                                if (picked != null) {
+                                  setModalState(() {
+                                    final now = DateTime.now();
+                                    final isPast = (picked.hour < now.hour) ||
+                                        (picked.hour == now.hour && picked.minute <= now.minute);
+                                    final today = DateTime(now.year, now.month, now.day);
+                                    DateTime dayPart = DateTime(selectedTime.year, selectedTime.month, selectedTime.day);
+                                    if (isPast && repeatDays.isEmpty && dayPart.isAtSameMomentAs(today)) {
+                                      dayPart = today.add(const Duration(days: 1));
+                                    }
+                                    selectedTime = DateTime(
+                                      dayPart.year,
+                                      dayPart.month,
+                                      dayPart.day,
+                                      picked.hour,
+                                      picked.minute,
+                                      0,
+                                      0,
+                                    );
+                                  });
+                                }
+                              },
+                              child: Column(
+                                children: [
+                                  Text(
+                                    formattedTime,
+                                    style: const TextStyle(
+                                      fontSize: 50,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFFF7F8F8),
+                                      letterSpacing: -1.0,
+                                      fontFeatures: [FontFeature.tabularFigures()],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _getRelativeCountdown(AlarmService.computeFutureOccurrence(selectedTime, repeatDays: repeatDays)),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                      color: Color(0xFF5E6AD2),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            // Micro-Pills Row
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                // Recurrence Pill
+                                GestureDetector(
+                                  onTap: () {
+                                    _openRecurrenceSheet(
+                                      context: builderContext,
+                                      initialDays: repeatDays,
+                                      initialTime: selectedTime,
+                                      onApplied: (newDays, newTime) {
+                                        setModalState(() {
+                                          repeatDays = newDays;
+                                          selectedTime = newTime;
+                                        });
+                                      },
+                                    );
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF20232A),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: const Color(0xFF2E323D)),
+                                    ),
+                                    child: Text(
+                                      _formatMicroPillRecurrence(repeatDays, selectedTime),
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFFF7F8F8),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+
+                                // Sound & Ramp Pill
+                                GestureDetector(
+                                  onTap: () {
+                                    _openSoundSheet(
+                                      context: builderContext,
+                                      initialTone: tone,
+                                      initialRamp: ramp,
+                                      onApplied: (newTone, newRamp) {
+                                        setModalState(() {
+                                          tone = newTone;
+                                          ramp = newRamp;
+                                        });
+                                      },
+                                    );
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF20232A),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: const Color(0xFF2E323D)),
+                                    ),
+                                    child: Text(
+                                      _formatMicroPillSound(tone, ramp),
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFFF7F8F8),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 16),
+                            const Divider(color: Color(0xFF26282E), height: 1),
+                            const SizedBox(height: 12),
+
+                            // Inline Title Field
+                            TextField(
+                              controller: titleController,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFFF7F8F8)),
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                isDense: true,
+                                hintText: 'Alarm title...',
+                                hintStyle: TextStyle(color: Color(0xFF565A61)),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
+
+                      const SizedBox(height: 12),
+
+                      // Description & Notes Container
+                      Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF16181B),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF26282E)),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        child: TextField(
+                          controller: descController,
+                          maxLines: 2,
+                          style: const TextStyle(fontSize: 12, color: Color(0xFFF7F8F8), height: 1.4),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            isDense: true,
+                            hintText: 'Optional notes, checklist, or routine...',
+                            hintStyle: TextStyle(color: Color(0xFF565A61), fontSize: 12),
+                          ),
+                        ),
+                      ),
+                    ] else ...[
+                      // Title
+                      const Text(
+                        'TITLE',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF8A8F98),
+                          letterSpacing: 0.8,
+                        ),
+                      ),
                     const SizedBox(height: 8),
                     Container(
                       decoration: BoxDecoration(
@@ -1117,12 +1747,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       ),
                     ),
                     const SizedBox(height: 8),
-                    _buildLinearSegmentedControl<int>(
-                      values: const [0, 15, 30, 60],
-                      selectedValue: ramp,
-                      labels: const ['0s Instant', '15s', '30s', '60s'],
-                      onSelected: (val) => setModalState(() => ramp = val),
-                    ),
+                      _buildLinearSegmentedControl<int>(
+                        values: const [0, 15, 30, 60],
+                        selectedValue: ramp,
+                        labels: const ['0s Instant', '15s', '30s', '60s'],
+                        onSelected: (val) => setModalState(() => ramp = val),
+                      ),
+                    ],
 
                     const SizedBox(height: 24),
 
@@ -1690,166 +2321,240 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             letterSpacing: -0.2,
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF8A8F98)),
-                          onPressed: () => Navigator.pop(bottomSheetContext),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            GestureDetector(
+                              onTap: () {
+                                setModalState(() => _useMicroPillsLayout = !_useMicroPillsLayout);
+                                _updateSetting('use_micro_pills', _useMicroPillsLayout);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF1E2028),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFF2E323D)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      _useMicroPillsLayout ? Icons.view_compact_rounded : Icons.view_agenda_rounded,
+                                      size: 13,
+                                      color: const Color(0xFF5E6AD2),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _useMicroPillsLayout ? 'Micro' : 'Grouped',
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF5E6AD2),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            IconButton(
+                              icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF8A8F98)),
+                              onPressed: () => Navigator.pop(bottomSheetContext),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
 
-                    // Label Input
-                    const Text(
-                      'ALARM TITLE',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF16181B),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFF26282E)),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      child: TextField(
-                        controller: labelController,
-                        style: const TextStyle(fontSize: 14, color: Color(0xFFF7F8F8)),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          hintText: 'e.g. Quick catchup',
-                          hintStyle: TextStyle(color: Color(0xFF565A61)),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    // Description / Rich Notes
-                    const Text(
-                      'DESCRIPTION & NOTES (RICH TEXT)',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF16181B),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFF26282E)),
-                      ),
-                      padding: const EdgeInsets.all(12),
-                      child: TextField(
-                        controller: descController,
-                        maxLines: 2,
-                        style: const TextStyle(fontSize: 13, color: Color(0xFFF7F8F8), height: 1.4),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          hintText: 'Optional notes, checklist, or routine...',
-                          hintStyle: TextStyle(color: Color(0xFF565A61)),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    // Time Picker
-                    const Text(
-                      'TRIGGER TIME',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    InkWell(
-                      onTap: () async {
-                        final picked = await showTimePicker(
-                          context: context,
-                          initialTime: TimeOfDay.fromDateTime(selectedTime),
-                        );
-                        if (picked != null) {
-                          setModalState(() {
-                            final now = DateTime.now();
-                            final isPast = (picked.hour < now.hour) ||
-                                (picked.hour == now.hour && picked.minute <= now.minute);
-                            final today = DateTime(now.year, now.month, now.day);
-                            DateTime dayPart = DateTime(selectedTime.year, selectedTime.month, selectedTime.day);
-                            if (isPast && selectedDays.isEmpty && dayPart.isAtSameMomentAs(today)) {
-                              dayPart = today.add(const Duration(days: 1));
-                            }
-                            selectedTime = DateTime(
-                              dayPart.year,
-                              dayPart.month,
-                              dayPart.day,
-                              picked.hour,
-                              picked.minute,
-                              0,
-                              0,
-                            );
-                          });
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
+                    if (_useMicroPillsLayout) ...[
+                      // HERO MICRO-PILLS CARD
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
                         decoration: BoxDecoration(
                           color: const Color(0xFF16181B),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: const Color(0xFF26282E)),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        child: Column(
                           children: [
-                            Text(
-                              formattedTime,
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFFF7F8F8),
-                                fontFeatures: [FontFeature.tabularFigures()],
+                            // Large Time Display
+                            GestureDetector(
+                              onTap: () async {
+                                final picked = await showTimePicker(
+                                  context: builderContext,
+                                  initialTime: TimeOfDay.fromDateTime(selectedTime),
+                                );
+                                if (picked != null) {
+                                  setModalState(() {
+                                    final now = DateTime.now();
+                                    final isPast = (picked.hour < now.hour) ||
+                                        (picked.hour == now.hour && picked.minute <= now.minute);
+                                    final today = DateTime(now.year, now.month, now.day);
+                                    DateTime dayPart = DateTime(selectedTime.year, selectedTime.month, selectedTime.day);
+                                    if (isPast && selectedDays.isEmpty && dayPart.isAtSameMomentAs(today)) {
+                                      dayPart = today.add(const Duration(days: 1));
+                                    }
+                                    selectedTime = DateTime(
+                                      dayPart.year,
+                                      dayPart.month,
+                                      dayPart.day,
+                                      picked.hour,
+                                      picked.minute,
+                                      0,
+                                      0,
+                                    );
+                                  });
+                                }
+                              },
+                              child: Column(
+                                children: [
+                                  Text(
+                                    formattedTime,
+                                    style: const TextStyle(
+                                      fontSize: 50,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFFF7F8F8),
+                                      letterSpacing: -1.0,
+                                      fontFeatures: [FontFeature.tabularFigures()],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _getRelativeCountdown(AlarmService.computeFutureOccurrence(selectedTime, repeatDays: selectedDays)),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                      color: Color(0xFF5E6AD2),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            const Icon(Icons.access_time_rounded, size: 20, color: Color(0xFF8A8F98)),
+
+                            const SizedBox(height: 16),
+
+                            // Micro-Pills Row
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                // Recurrence Pill
+                                GestureDetector(
+                                  onTap: () {
+                                    _openRecurrenceSheet(
+                                      context: builderContext,
+                                      initialDays: selectedDays,
+                                      initialTime: selectedTime,
+                                      onApplied: (newDays, newTime) {
+                                        setModalState(() {
+                                          selectedDays = newDays;
+                                          selectedTime = newTime;
+                                        });
+                                      },
+                                    );
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF20232A),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: const Color(0xFF2E323D)),
+                                    ),
+                                    child: Text(
+                                      _formatMicroPillRecurrence(selectedDays, selectedTime),
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFFF7F8F8),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+
+                                // Sound & Ramp Pill
+                                GestureDetector(
+                                  onTap: () {
+                                    _openSoundSheet(
+                                      context: builderContext,
+                                      initialTone: selectedTone,
+                                      initialRamp: selectedRampSeconds,
+                                      onApplied: (newTone, newRamp) {
+                                        setModalState(() {
+                                          selectedTone = newTone;
+                                          selectedRampSeconds = newRamp;
+                                        });
+                                      },
+                                    );
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF20232A),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: const Color(0xFF2E323D)),
+                                    ),
+                                    child: Text(
+                                      _formatMicroPillSound(selectedTone, selectedRampSeconds),
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFFF7F8F8),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 16),
+                            const Divider(color: Color(0xFF26282E), height: 1),
+                            const SizedBox(height: 12),
+
+                            // Inline Title Field
+                            TextField(
+                              controller: labelController,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFFF7F8F8)),
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                isDense: true,
+                                hintText: 'Alarm title...',
+                                hintStyle: TextStyle(color: Color(0xFF565A61)),
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                    ),
 
-                    const SizedBox(height: 18),
+                      const SizedBox(height: 12),
 
-                    // Repeat Days (Recurrence)
-                    const Text(
-                      'REPEAT',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
+                      // Description & Notes Container
+                      Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF16181B),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF26282E)),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        child: TextField(
+                          controller: descController,
+                          maxLines: 2,
+                          style: const TextStyle(fontSize: 12, color: Color(0xFFF7F8F8), height: 1.4),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            isDense: true,
+                            hintText: 'Optional notes, checklist, or routine...',
+                            hintStyle: TextStyle(color: Color(0xFF565A61), fontSize: 12),
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildWeekdaySelector(
-                      selectedDays: selectedDays,
-                      onChanged: (newDays) {
-                        setModalState(() => selectedDays = newDays);
-                      },
-                    ),
-
-                    if (selectedDays.isEmpty) ...[
-                      const SizedBox(height: 18),
-                      // Target Date Selector (when one-time)
+                    ] else ...[
+                      // GROUPED INSPECTOR LAYOUT
                       const Text(
-                        'DATE',
+                        'ALARM TITLE',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
@@ -1858,34 +2563,143 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         ),
                       ),
                       const SizedBox(height: 8),
-                      _buildDateSelector(
-                        context: builderContext,
-                        selectedDate: selectedTime,
-                        selectedTime: TimeOfDay.fromDateTime(selectedTime),
-                        onDateChanged: (newDate) {
-                          setModalState(() {
-                            selectedTime = DateTime(
-                              newDate.year,
-                              newDate.month,
-                              newDate.day,
-                              selectedTime.hour,
-                              selectedTime.minute,
-                              0,
-                              0,
-                            );
-                          });
+                      Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF16181B),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF26282E)),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        child: TextField(
+                          controller: labelController,
+                          style: const TextStyle(fontSize: 14, color: Color(0xFFF7F8F8)),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            hintText: 'e.g. Quick catchup',
+                            hintStyle: TextStyle(color: Color(0xFF565A61)),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      const Text(
+                        'DESCRIPTION & NOTES (RICH TEXT)',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF8A8F98),
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF16181B),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF26282E)),
+                        ),
+                        padding: const EdgeInsets.all(12),
+                        child: TextField(
+                          controller: descController,
+                          maxLines: 2,
+                          style: const TextStyle(fontSize: 13, color: Color(0xFFF7F8F8), height: 1.4),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            hintText: 'Optional notes, checklist, or routine...',
+                            hintStyle: TextStyle(color: Color(0xFF565A61)),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      const Text(
+                        'TRIGGER TIME',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF8A8F98),
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () async {
+                          final picked = await showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay.fromDateTime(selectedTime),
+                          );
+                          if (picked != null) {
+                            setModalState(() {
+                              final now = DateTime.now();
+                              final isPast = (picked.hour < now.hour) ||
+                                  (picked.hour == now.hour && picked.minute <= now.minute);
+                              final today = DateTime(now.year, now.month, now.day);
+                              DateTime dayPart = DateTime(selectedTime.year, selectedTime.month, selectedTime.day);
+                              if (isPast && selectedDays.isEmpty && dayPart.isAtSameMomentAs(today)) {
+                                dayPart = today.add(const Duration(days: 1));
+                              }
+                              selectedTime = DateTime(
+                                dayPart.year,
+                                dayPart.month,
+                                dayPart.day,
+                                picked.hour,
+                                picked.minute,
+                                0,
+                                0,
+                              );
+                            });
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF16181B),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFF26282E)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                formattedTime,
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFFF7F8F8),
+                                  fontFeatures: [FontFeature.tabularFigures()],
+                                ),
+                              ),
+                              const Icon(Icons.access_time_rounded, size: 20, color: Color(0xFF8A8F98)),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      const Text(
+                        'REPEAT',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF8A8F98),
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      _buildWeekdaySelector(
+                        selectedDays: selectedDays,
+                        onChanged: (newDays) {
+                          setModalState(() => selectedDays = newDays);
                         },
                       ),
-                    ],
 
-                    const SizedBox(height: 18),
-
-                    // Sound Tone
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
+                      if (selectedDays.isEmpty) ...[
+                        const SizedBox(height: 18),
                         const Text(
-                          'SOUND TONE',
+                          'DATE',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
@@ -1893,51 +2707,86 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             letterSpacing: 0.8,
                           ),
                         ),
-                        const Text(
-                          'Tap to audition',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Color(0xFF565A61),
-                            fontStyle: FontStyle.italic,
-                          ),
+                        const SizedBox(height: 8),
+                        _buildDateSelector(
+                          context: builderContext,
+                          selectedDate: selectedTime,
+                          selectedTime: TimeOfDay.fromDateTime(selectedTime),
+                          onDateChanged: (newDate) {
+                            setModalState(() {
+                              selectedTime = DateTime(
+                                newDate.year,
+                                newDate.month,
+                                newDate.day,
+                                selectedTime.hour,
+                                selectedTime.minute,
+                                0,
+                                0,
+                              );
+                            });
+                          },
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 8),
-                    _buildLinearSegmentedControl<String>(
-                      values: const ['alarm', 'chime', 'digital'],
-                      selectedValue: selectedTone,
-                      labels: const ['Radar', 'Chime', 'Digital'],
-                      icons: const [
-                        Icons.volume_up_rounded,
-                        Icons.volume_up_rounded,
-                        Icons.volume_up_rounded,
-                      ],
-                      onSelected: (val) {
-                        setModalState(() => selectedTone = val);
-                        _previewTone(val);
-                      },
-                    ),
 
-                    const SizedBox(height: 18),
+                      const SizedBox(height: 18),
 
-                    // Gentle Ramp
-                    const Text(
-                      'GENTLE VOLUME RAMP',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'SOUND TONE',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF8A8F98),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const Text(
+                            'Tap to audition',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFF565A61),
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildLinearSegmentedControl<int>(
-                      values: const [0, 15, 30, 60],
-                      selectedValue: selectedRampSeconds,
-                      labels: const ['0s Instant', '15s', '30s', '60s'],
-                      onSelected: (val) => setModalState(() => selectedRampSeconds = val),
-                    ),
+                      const SizedBox(height: 8),
+                      _buildLinearSegmentedControl<String>(
+                        values: const ['alarm', 'chime', 'digital'],
+                        selectedValue: selectedTone,
+                        labels: const ['Radar', 'Chime', 'Digital'],
+                        icons: const [
+                          Icons.volume_up_rounded,
+                          Icons.volume_up_rounded,
+                          Icons.volume_up_rounded,
+                        ],
+                        onSelected: (val) {
+                          setModalState(() => selectedTone = val);
+                          _previewTone(val);
+                        },
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      const Text(
+                        'GENTLE VOLUME RAMP',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF8A8F98),
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      _buildLinearSegmentedControl<int>(
+                        values: const [0, 15, 30, 60],
+                        selectedValue: selectedRampSeconds,
+                        labels: const ['0s Instant', '15s', '30s', '60s'],
+                        onSelected: (val) => setModalState(() => selectedRampSeconds = val),
+                      ),
+                    ],
 
                     const SizedBox(height: 24),
 

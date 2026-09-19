@@ -42,9 +42,9 @@ void main() {
     expect(ramp15.fadeSteps.first.time, Duration.zero);
     expect(ramp15.fadeSteps.first.volume, 0.001);
 
-    // Midpoint (~50% duration) must be gentle (< 25% amplitude)
+    // Midpoint (~50% duration) must be whisper quiet (< 10% amplitude)
     final midStep = ramp15.fadeSteps[ramp15.fadeSteps.length ~/ 2];
-    expect(midStep.volume < 0.25, isTrue);
+    expect(midStep.volume < 0.10, isTrue);
 
     // Final step must reach 1.0
     expect(ramp15.fadeSteps.last.time, const Duration(seconds: 15));

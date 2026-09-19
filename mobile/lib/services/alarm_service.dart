@@ -24,10 +24,10 @@ class AlarmService {
   /// Builds a perceptually-weighted logarithmic/power volume ramp.
   /// Standard linear volume ramps sound like they jump to maximum volume almost
   /// immediately because human loudness perception is logarithmic (Weber-Fechner / Stevens' power law).
-  /// By applying a power curve v(t) = (t / T)^2.5:
-  /// - 0% to 40% duration stays whisper-quiet (< 10% loudness)
-  /// - 40% to 60% duration rises into gentle wake-up level (10% to 28% loudness)
-  /// - 60% to 100% duration ramps up to full alert volume
+  /// By applying a steeper power curve v(t) = (t / T)^4:
+  /// - 0% to 50% duration stays whisper-quiet (< 6.25% volume)
+  /// - 50% to 75% duration stays in the gentle wake-up zone (< 31.6% volume)
+  /// - 75% to 100% duration accelerates smoothly to full alert volume
   static VolumeSettings buildPerceptualVolumeSettings(int rampSec) {
     if (rampSec <= 0) {
       return const VolumeSettings.fixed(volume: 1.0);
@@ -36,11 +36,11 @@ class AlarmService {
     final steps = <VolumeFadeStep>[];
     steps.add(VolumeFadeStep(Duration.zero, 0.001));
 
-    final stepCount = rampSec.clamp(6, 15);
+    final stepCount = rampSec.clamp(8, 20);
     for (int i = 1; i <= stepCount; i++) {
       final progress = i / stepCount;
       final timeMillis = ((rampSec * 1000 * i) / stepCount).round();
-      final volume = math.pow(progress, 2.5).toDouble().clamp(0.001, 1.0);
+      final volume = math.pow(progress, 4.0).toDouble().clamp(0.001, 1.0);
       steps.add(VolumeFadeStep(Duration(milliseconds: timeMillis), volume));
     }
 
