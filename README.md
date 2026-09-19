@@ -67,28 +67,41 @@ graph TD
 
 ---
 
-## Quick Start
+## Quick Start & Homelab Deployment
 
-### 1. Backend
+### 1. Homelab Deployment (Docker Compose / Tailscale)
+
+Deploying to a personal homelab server (Linux / Proxmox / TrueNAS / Unraid) on a private Tailscale network:
+
+```bash
+# 1. Clone repository on homelab server
+git clone https://github.com/danieltsam/remotealarm.git
+cd remotealarm
+
+# 2. Place Firebase service-account.json in backend/
+cp /path/to/service-account.json backend/service-account.json
+
+# 3. Start via Docker Compose
+docker compose up -d
+```
+
+The server binds to `0.0.0.0:3000`. On your Tailscale network, access the dashboard at `http://<homelab-tailscale-name>:3000` or `http://<100.x.y.z>:3000`.
+
+### 2. Local Development (Node.js)
 
 ```bash
 cd backend
 npm install
-cp .env.example .env
-# Place your Firebase service-account.json in backend/
+# Place service-account.json in backend/
 npm run dev
 ```
-Dashboard runs at `http://localhost:3000`.
 
-### 2. Mobile (Android)
+### 3. Mobile Client (Android)
 
-```bash
-cd mobile
-# Place your google-services.json in mobile/android/app/
-flutter pub get
-flutter run -d <your-device-id>
-```
-On first launch, grant notification and exact alarm permissions. The device registers its FCM token with the backend automatically.
+1. Open the Remote Alarm app on Android.
+2. Open **Settings** (slider icon in top bar).
+3. Under **Backend Server URL**, enter your homelab Tailscale address (e.g. `http://homelab:3000` or `http://100.x.y.z:3000`).
+4. Tap **Save**. The app will immediately test connectivity, register its FCM token with battery telemetry, and synchronize alarms.
 
 ---
 
@@ -96,12 +109,14 @@ On first launch, grant notification and exact alarm permissions. The device regi
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/alarms?view=active\|history` | List active or past dismissed alarms |
-| `POST` | `/api/alarms` | Schedule new alarm (`{ target_time, label, repeat_days, sound_tone, ramp_seconds }`) |
+| `GET` | `/api/alarms?view=active\|all` | List active or all alarms |
+| `POST` | `/api/alarms` | Schedule new alarm (`{ target_time, label, repeat_days, sound_tone, ramp_seconds, description }`) |
 | `DELETE` | `/api/alarms/:id` | Cancel alarm and remove from phone via FCM `CANCEL` |
 | `POST` | `/api/alarms/:id/silence` | Remotely silence active ringing phone ringer via FCM `DISMISS` |
-| `POST` | `/api/alarms/:id/state` | Update state (`ringing`, `snoozed`, `dismissed`) |
-| `GET` | `/api/calendar.ics` | Live RFC 5545 iCal feed for Google/Apple Calendar |
+| `POST` | `/api/alarms/:id/state` | Update state (`pending`, `disabled`, `ringing`, `snoozed`, `dismissed`) |
+| `GET` | `/api/settings` | Retrieve user preferences (sound tone, ramp seconds, 12h/24h, date formats) |
+| `POST` | `/api/settings` | Update user preferences bidirectionally |
+| `GET` | `/ical/feed` | Live RFC 5545 iCal feed for Google/Apple Calendar |
 | `POST` | `/api/devices/register` | Register phone's FCM token with battery/charging telemetry |
 | `GET` | `/api/devices` | Query connected devices, battery percentage, and charging state |
 
@@ -114,11 +129,11 @@ Run the full in-memory backend suite and mobile Flutter test harness:
 ```bash
 ./run_tests.sh
 ```
-- **Backend (`backend/test/`):** 24 tests across 11 suites verifying REST APIs, iCalendar feeds, state transitions, FCM dispatch payloads, disabled/pending slider states, and isolated in-memory persistence.
-- **Mobile (`mobile/test/`):** 22 tests verifying recurrence calculations, payload sanitization, audio tone mappings, rich text notes storage, reconnection catch-up reconciliation, and offline safety.
+- **Backend (`backend/test/`):** 37 tests across 13 suites verifying REST APIs, iCalendar feeds, state transitions, FCM dispatch payloads, disabled/pending slider states, and isolated in-memory persistence.
+- **Mobile (`mobile/test/`):** 46 tests verifying recurrence calculations, payload sanitization, audio tone mappings, rich text notes storage, reconnection catch-up reconciliation, and offline safety.
 
 ### 2. Live Physical Device E2E Verification (via ADB)
-When an Android device is plugged in via USB:
+When an Android device is connected via USB:
 ```bash
 # Run standalone on-device sync test
 ./scripts/test_live_device_sync.sh
@@ -126,7 +141,13 @@ When an Android device is plugged in via USB:
 # Or run full suite including device test
 ./run_tests.sh --with-device
 ```
-This automated runner verifies live FCM push delivery, remote toggle synchronization, network disconnection resilience, and automatic catch-up reconciliation directly on hardware.
+
+### 3. Chaos Engineering & Fault Injection
+Run the automated hardware chaos suite to test resilience against process death, Doze deep sleep, server connection failures, and poison pill payloads:
+```bash
+# Run chaos suite
+./run_tests.sh --with-chaos
+```
 
 ---
 
