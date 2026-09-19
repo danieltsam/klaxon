@@ -2,22 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/services/alarm_service.dart';
 
 DateTime getNextOccurrence(DateTime targetTime, List<int> repeatDays, {DateTime? mockNow}) {
-  final now = mockNow ?? DateTime.now();
-  for (int dayOffset = 1; dayOffset <= 7; dayOffset++) {
-    final candidate = DateTime(
-      now.year,
-      now.month,
-      now.day + dayOffset,
-      targetTime.hour,
-      targetTime.minute,
-      0,
-      0,
-    );
-    if (repeatDays.contains(candidate.weekday)) {
-      return candidate;
-    }
-  }
-  return targetTime.add(const Duration(days: 1));
+  return AlarmService.getNextOccurrence(targetTime, repeatDays, mockNow: mockNow);
 }
 
 void main() {
@@ -111,6 +96,18 @@ void main() {
       expect(result.weekday, equals(DateTime.monday));
       expect(result.day, equals(21));
       expect(result.hour, equals(7));
+      expect(result.minute, equals(0));
+    });
+
+    test('Rolls past recurring alarm to today if today is active repeat day and time is later today', () {
+      final mondayNow = DateTime(2026, 9, 21, 10, 0, 0); // Monday 10:00 AM
+      final staleAlarm = DateTime(2026, 9, 18, 15, 0, 0); // 3:00 PM Mon-Fri
+      final repeatDays = [1, 2, 3, 4, 5];
+
+      final result = AlarmService.computeFutureOccurrence(staleAlarm, repeatDays: repeatDays, mockNow: mondayNow);
+      // Must be scheduled for TODAY (Monday), not tomorrow Tuesday!
+      expect(result.day, equals(21));
+      expect(result.hour, equals(15));
       expect(result.minute, equals(0));
     });
   });

@@ -258,7 +258,7 @@ export function rollTargetTimeToFuture(targetTimeStr: string, repeatDaysStr?: st
   if (repeatDaysStr && repeatDaysStr.trim().length > 0) {
     const days = repeatDaysStr.split(',').map(s => parseInt(s.trim(), 10)).filter(d => d >= 1 && d <= 7);
     if (days.length > 0) {
-      for (let dayOffset = 1; dayOffset <= 7; dayOffset++) {
+      for (let dayOffset = 0; dayOffset <= 7; dayOffset++) {
         const candidate = new Date(now.getTime());
         candidate.setUTCDate(candidate.getUTCDate() + dayOffset);
         candidate.setUTCHours(
@@ -267,6 +267,9 @@ export function rollTargetTimeToFuture(targetTimeStr: string, repeatDaysStr?: st
           0,
           0
         );
+        if (candidate.getTime() <= now.getTime()) {
+          continue;
+        }
         const jsDay = candidate.getUTCDay();
         const isoDay = jsDay === 0 ? 7 : jsDay;
         if (days.includes(isoDay)) {

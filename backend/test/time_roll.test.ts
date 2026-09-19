@@ -42,4 +42,15 @@ describe('rollTargetTimeToFuture Unit Tests', () => {
     assert.strictEqual(rolledDate.getUTCHours(), 7);
     assert.strictEqual(rolledDate.getUTCMinutes(), 0);
   });
+
+  it('should schedule for later today if today is in repeat_days and time has not passed yet', () => {
+    // Current time: Monday 10:00 UTC
+    const mondayNow = new Date('2026-09-21T10:00:00.000Z');
+    // Stale target time from past Friday at 15:00 UTC
+    const oldAlarm = '2026-09-18T15:00:00.000Z';
+    // Mon-Fri
+    const result = rollTargetTimeToFuture(oldAlarm, '1,2,3,4,5', mondayNow);
+    // Should be scheduled for TODAY (Monday) at 15:00 UTC, NOT tomorrow Tuesday
+    assert.strictEqual(result, '2026-09-21T15:00:00.000Z');
+  });
 });

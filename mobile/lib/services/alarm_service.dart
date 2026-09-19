@@ -378,7 +378,7 @@ class AlarmService {
 
   static DateTime getNextOccurrence(DateTime targetTime, List<int> repeatDays, {DateTime? mockNow}) {
     final now = mockNow ?? DateTime.now();
-    for (int dayOffset = 1; dayOffset <= 7; dayOffset++) {
+    for (int dayOffset = 0; dayOffset <= 7; dayOffset++) {
       final candidate = DateTime(
         now.year,
         now.month,
@@ -388,6 +388,9 @@ class AlarmService {
         0,
         0,
       );
+      if (candidate.isBefore(now) || candidate.isAtSameMomentAs(now)) {
+        continue;
+      }
       if (repeatDays.contains(candidate.weekday)) {
         return candidate;
       }
