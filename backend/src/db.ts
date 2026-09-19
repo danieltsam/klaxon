@@ -35,10 +35,13 @@ if (dbPath !== ':memory:') {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   } catch (_) {}
 }
+console.log(`[DB] Opening SQLite database at ${dbPath}...`);
 export const db = new Database(dbPath);
 
 // Enable WAL mode for high concurrency
+console.log(`[DB] Setting journal_mode = WAL...`);
 db.pragma('journal_mode = WAL');
+console.log(`[DB] SQLite database initialized successfully.`);
 
 // Initialize tables
 db.exec(`
