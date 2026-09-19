@@ -152,11 +152,17 @@ app.post<{
     repeatDaysStr = repeat_days.trim();
   }
 
+  if (ramp_seconds !== undefined && (typeof ramp_seconds !== 'number' || ramp_seconds < 0 || !Number.isInteger(ramp_seconds))) {
+    return reply.status(400).send({
+      error: 'Invalid ramp_seconds: must be a non-negative integer.'
+    });
+  }
+
   const id = uuidv4();
   const normalizedTone = sound_tone && ['alarm', 'chime', 'digital'].includes(sound_tone.trim().toLowerCase())
     ? sound_tone.trim().toLowerCase()
     : 'alarm';
-  const normalizedRamp = typeof ramp_seconds === 'number' && ramp_seconds >= 0 ? ramp_seconds : 30;
+  const normalizedRamp = ramp_seconds !== undefined ? ramp_seconds : 30;
 
   const newAlarm: AlarmRecord = {
     id,

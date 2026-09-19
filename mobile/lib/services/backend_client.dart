@@ -135,7 +135,7 @@ class BackendClient {
   }
 
   /// Fetch active remote alarms from backend for bidirectional sync
-  static Future<List<Map<String, dynamic>>> fetchActiveAlarms() async {
+  static Future<List<Map<String, dynamic>>?> fetchActiveAlarms() async {
     try {
       final baseUrl = await getBaseUrl();
       final uri = Uri.parse('$baseUrl/api/alarms?view=active');
@@ -145,16 +145,16 @@ class BackendClient {
         final List<dynamic> data = jsonDecode(response.body);
         return data.map((e) => Map<String, dynamic>.from(e)).toList();
       }
-      return [];
+      return null;
     } catch (e) {
       // ignore: avoid_print
       print('[BackendClient] fetchActiveAlarms error: $e');
-      return [];
+      return null;
     }
   }
 
   /// Fetch all alarms (both active and inactive) from backend
-  static Future<List<Map<String, dynamic>>> fetchAllAlarms() async {
+  static Future<List<Map<String, dynamic>>?> fetchAllAlarms() async {
     try {
       final baseUrl = await getBaseUrl();
       final uri = Uri.parse('$baseUrl/api/alarms?view=all');
@@ -164,16 +164,16 @@ class BackendClient {
         final List<dynamic> data = jsonDecode(response.body);
         return data.map((e) => Map<String, dynamic>.from(e)).toList();
       }
-      return [];
+      return null;
     } catch (e) {
       // ignore: avoid_print
       print('[BackendClient] fetchAllAlarms error: $e');
-      return [];
+      return null;
     }
   }
 
   /// Fetch remote alarms from backend
-  static Future<List<Map<String, dynamic>>> fetchRemoteAlarms() async {
+  static Future<List<Map<String, dynamic>>?> fetchRemoteAlarms() async {
     try {
       final baseUrl = await getBaseUrl();
       final uri = Uri.parse('$baseUrl/api/alarms');
@@ -183,11 +183,11 @@ class BackendClient {
         final List<dynamic> data = jsonDecode(response.body);
         return data.map((e) => Map<String, dynamic>.from(e)).toList();
       }
-      return [];
+      return null;
     } catch (e) {
       // ignore: avoid_print
       print('[BackendClient] fetchRemoteAlarms error: $e');
-      return [];
+      return null;
     }
   }
 

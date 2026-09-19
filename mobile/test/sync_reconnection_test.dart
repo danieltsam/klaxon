@@ -205,13 +205,13 @@ void main() {
       // Set unreachable host
       await BackendClient.setBaseUrl('http://127.0.0.1:9999');
 
-      // fetchActiveAlarms should not throw, returns empty list
+      // fetchActiveAlarms should not throw, returns null to prevent false local purges
       final active = await BackendClient.fetchActiveAlarms();
-      expect(active, isEmpty);
+      expect(active, isNull);
 
-      // fetchAllAlarms should not throw, returns empty list
+      // fetchAllAlarms should not throw, returns null to prevent false local purges
       final all = await BackendClient.fetchAllAlarms();
-      expect(all, isEmpty);
+      expect(all, isNull);
 
       // updateAlarmState should not throw, returns false
       final success = await BackendClient.updateAlarmState('test-uuid', 'disabled');

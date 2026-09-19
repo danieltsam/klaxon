@@ -22,107 +22,118 @@ class AlarmService {
 
   /// Entry point for FCM payload processing
   static Future<void> handleAlarmPayload(Map<String, dynamic> data) async {
-    final action = data['action'];
-    final uuid = data['id'];
+    try {
+      final action = data['action'];
+      final uuid = data['id'];
 
-    if (action == null || uuid == null) {
-      // ignore: avoid_print
-      print('[AlarmService] Missing action or id in FCM payload: $data');
-      return;
-    }
-
-    final intId = IdMapper.uuidToInt(uuid.toString());
-
-    if (action == 'CREATE') {
-      final targetTimeStr = data['target_time'];
-      final label = data['label'] ?? 'Remote Alarm';
-      final tone = data['sound_tone']?.toString() ?? 'alarm';
-      final rampSec = int.tryParse(data['ramp_seconds']?.toString() ?? '30') ?? 30;
-
-      if (targetTimeStr == null) {
+      if (action == null || uuid == null) {
         // ignore: avoid_print
-        print('[AlarmService] Missing target_time in CREATE payload');
+        print('[AlarmService] Missing action or id in FCM payload: $data');
         return;
       }
 
-      final rawDateTime = DateTime.parse(targetTimeStr).toLocal();
-      final parsedDateTime = DateTime(
-        rawDateTime.year,
-        rawDateTime.month,
-        rawDateTime.day,
-        rawDateTime.hour,
-        rawDateTime.minute,
-        0,
-        0,
-      );
+      final intId = IdMapper.uuidToInt(uuid.toString());
 
-      final repeatDaysStr = data['repeat_days'];
-      List<int>? repeatDaysList;
-      if (repeatDaysStr != null && repeatDaysStr.toString().isNotEmpty) {
-        repeatDaysList = repeatDaysStr.toString().split(',').map((s) => int.tryParse(s) ?? 0).where((d) => d >= 1 && d <= 7).toList();
-        await IdMapper.setRepeatDays(intId, repeatDaysList);
+      if (action == 'CREATE') {
+        final targetTimeStr = data['target_time']?.toString();
+        final label = data['label'] ?? 'Remote Alarm';
+        final tone = data['sound_tone']?.toString() ?? 'alarm';
+        final rampSec = int.tryParse(data['ramp_seconds']?.toString() ?? '30') ?? 30;
+
+        if (targetTimeStr == null) {
+          // ignore: avoid_print
+          print('[AlarmService] Missing target_time in CREATE payload');
+          return;
+        }
+
+        final rawDateTime = DateTime.tryParse(targetTimeStr)?.toLocal();
+        if (rawDateTime == null) {
+          // ignore: avoid_print
+          print('[AlarmService] Invalid target_time in CREATE payload: $targetTimeStr');
+          return;
+        }
+
+        final parsedDateTime = DateTime(
+          rawDateTime.year,
+          rawDateTime.month,
+          rawDateTime.day,
+          rawDateTime.hour,
+          rawDateTime.minute,
+          0,
+          0,
+        );
+
+        final repeatDaysStr = data['repeat_days'];
+        List<int>? repeatDaysList;
+        if (repeatDaysStr != null && repeatDaysStr.toString().isNotEmpty) {
+          repeatDaysList = repeatDaysStr.toString().split(',').map((s) => int.tryParse(s) ?? 0).where((d) => d >= 1 && d <= 7).toList();
+          await IdMapper.setRepeatDays(intId, repeatDaysList);
+        }
+
+        final futureTarget = computeFutureOccurrence(parsedDateTime, repeatDays: repeatDaysList);
+
+        final desc = data['description']?.toString();
+        // Ensure mapping is preserved
+        await IdMapper.saveMapping(
+          intId,
+          uuid.toString(),
+          label: label.toString(),
+          description: desc,
+          targetTime: futureTarget,
+        );
+        await IdMapper.setSnoozed(intId, false);
+        await IdMapper.setSoundTone(intId, tone);
+        await IdMapper.setRampSeconds(intId, rampSec);
+        await IdMapper.setEnabled(intId, true);
+
+        final audioPath = getAudioPathForTone(tone);
+        final volumeSettings = rampSec > 0
+            ? VolumeSettings.fade(
+                volume: 1.0,
+                fadeDuration: Duration(seconds: rampSec),
+              )
+            : VolumeSettings.fixed(volume: 1.0);
+
+        final alarmSettings = AlarmSettings(
+          id: intId,
+          dateTime: futureTarget,
+          assetAudioPath: audioPath,
+          loopAudio: true,
+          vibrate: true,
+          volumeSettings: volumeSettings,
+          notificationSettings: NotificationSettings(
+            title: label.toString(),
+            body: 'Tap to dismiss or snooze',
+            stopButton: 'Stop',
+          ),
+        );
+
+        await Alarm.set(alarmSettings: alarmSettings);
+        onRemoteDismissed.add(intId);
+        // ignore: avoid_print
+        print('[AlarmService] Successfully scheduled alarm $intId ($uuid) tone=$tone ramp=${rampSec}s for $futureTarget');
+      } else if (action == 'DISABLE') {
+        await Alarm.stop(intId);
+        await IdMapper.setEnabled(intId, false);
+        onRemoteDismissed.add(intId);
+        // ignore: avoid_print
+        print('[AlarmService] Disabled alarm $intId ($uuid)');
+      } else if (action == 'CANCEL') {
+        await Alarm.stop(intId);
+        await IdMapper.removeMapping(intId);
+        onRemoteDismissed.add(intId);
+        // ignore: avoid_print
+        print('[AlarmService] Canceled alarm $intId ($uuid)');
+      } else if (action == 'DISMISS') {
+        await Alarm.stop(intId);
+        await IdMapper.setSnoozed(intId, false);
+        onRemoteDismissed.add(intId);
+        // ignore: avoid_print
+        print('[AlarmService] Remotely dismissed alarm $intId ($uuid)');
       }
-
-      final futureTarget = computeFutureOccurrence(parsedDateTime, repeatDays: repeatDaysList);
-
-      final desc = data['description']?.toString();
-      // Ensure mapping is preserved
-      await IdMapper.saveMapping(
-        intId,
-        uuid.toString(),
-        label: label.toString(),
-        description: desc,
-        targetTime: futureTarget,
-      );
-      await IdMapper.setSnoozed(intId, false);
-      await IdMapper.setSoundTone(intId, tone);
-      await IdMapper.setRampSeconds(intId, rampSec);
-      await IdMapper.setEnabled(intId, true);
-
-      final audioPath = getAudioPathForTone(tone);
-      final volumeSettings = rampSec > 0
-          ? VolumeSettings.fade(
-              volume: 1.0,
-              fadeDuration: Duration(seconds: rampSec),
-            )
-          : VolumeSettings.fixed(volume: 1.0);
-
-      final alarmSettings = AlarmSettings(
-        id: intId,
-        dateTime: futureTarget,
-        assetAudioPath: audioPath,
-        loopAudio: true,
-        vibrate: true,
-        volumeSettings: volumeSettings,
-        notificationSettings: NotificationSettings(
-          title: label.toString(),
-          body: 'Tap to dismiss or snooze',
-          stopButton: 'Stop',
-        ),
-      );
-
-      await Alarm.set(alarmSettings: alarmSettings);
-      onRemoteDismissed.add(intId);
+    } catch (e) {
       // ignore: avoid_print
-      print('[AlarmService] Successfully scheduled alarm $intId ($uuid) tone=$tone ramp=${rampSec}s for $futureTarget');
-    } else if (action == 'DISABLE') {
-      await Alarm.stop(intId);
-      await IdMapper.setEnabled(intId, false);
-      onRemoteDismissed.add(intId);
-      // ignore: avoid_print
-      print('[AlarmService] Disabled alarm $intId ($uuid)');
-    } else if (action == 'CANCEL') {
-      await Alarm.stop(intId);
-      await IdMapper.removeMapping(intId);
-      onRemoteDismissed.add(intId);
-      // ignore: avoid_print
-      print('[AlarmService] Canceled alarm $intId ($uuid)');
-    } else if (action == 'DISMISS') {
-      await Alarm.stop(intId);
-      await IdMapper.setSnoozed(intId, false);
-      onRemoteDismissed.add(intId);
-      // ignore: avoid_print
-      print('[AlarmService] Remotely dismissed alarm $intId ($uuid)');
+      print('[AlarmService] Error handling alarm payload: $e');
     }
   }
 
@@ -130,6 +141,11 @@ class AlarmService {
   static Future<int> syncWithBackend() async {
     try {
       final remoteAlarms = await BackendClient.fetchAllAlarms();
+      if (remoteAlarms == null) {
+        // ignore: avoid_print
+        print('[AlarmService] syncWithBackend aborted: backend unreachable or returned error. Preserving local alarms.');
+        return 0;
+      }
       final localAlarms = await Alarm.getAlarms();
       final remoteUuids = <String>{};
 
