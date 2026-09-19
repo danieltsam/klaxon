@@ -144,7 +144,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   int _defaultRampSeconds = 15;
   String _timeFormat = '24h';
   String _dateFormat = 'dd/mm/yyyy';
-  bool _useMicroPillsLayout = true;
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
@@ -154,7 +153,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       _defaultRampSeconds = prefs.getInt('pref_ramp_seconds') ?? 15;
       _timeFormat = prefs.getString('pref_time_format') ?? '24h';
       _dateFormat = prefs.getString('pref_date_format') ?? 'dd/mm/yyyy';
-      _useMicroPillsLayout = prefs.getBool('pref_use_micro_pills') ?? true;
     });
 
     try {
@@ -181,7 +179,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       if (key == 'ramp_seconds') _defaultRampSeconds = value as int;
       if (key == 'time_format') _timeFormat = value as String;
       if (key == 'date_format') _dateFormat = value as String;
-      if (key == 'use_micro_pills') _useMicroPillsLayout = value as bool;
     });
 
     if (value is String) {
@@ -192,9 +189,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       await prefs.setBool('pref_$key', value);
     }
 
-    if (key != 'use_micro_pills') {
-      await BackendClient.updateSettings({key: value});
-    }
+    await BackendClient.updateSettings({key: value});
   }
 
   String _formatTime(DateTime dt) {
@@ -554,6 +549,440 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           ),
         ),
       ),
+    );
+  }
+
+  void _openTimePickerSheet({
+    required BuildContext context,
+    required DateTime initialTime,
+    required List<int> repeatDays,
+    required ValueChanged<DateTime> onTimeSelected,
+  }) {
+    final bool is12h = _timeFormat == '12h';
+    DateTime curTime = initialTime;
+
+    int curHour = curTime.hour;
+    int curMinute = curTime.minute;
+
+    int hour12 = curHour % 12;
+    if (hour12 == 0) hour12 = 12;
+    bool isPm = curHour >= 12;
+
+    final FixedExtentScrollController hourController = FixedExtentScrollController(
+      initialItem: is12h ? (hour12 - 1) : curHour,
+    );
+    final FixedExtentScrollController minuteController = FixedExtentScrollController(
+      initialItem: curMinute,
+    );
+    final FixedExtentScrollController amPmController = FixedExtentScrollController(
+      initialItem: isPm ? 1 : 0,
+    );
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF16181B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        side: BorderSide(color: Color(0xFF26282E)),
+      ),
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (builderCtx, setSheetState) {
+            DateTime computeFinalTime(int h, int m) {
+              final now = DateTime.now();
+              final isPast = (h < now.hour) || (h == now.hour && m <= now.minute);
+              final today = DateTime(now.year, now.month, now.day);
+              DateTime dayPart = DateTime(curTime.year, curTime.month, curTime.day);
+              if (isPast && repeatDays.isEmpty && dayPart.isAtSameMomentAs(today)) {
+                dayPart = today.add(const Duration(days: 1));
+              }
+              return DateTime(
+                dayPart.year,
+                dayPart.month,
+                dayPart.day,
+                h,
+                m,
+                0,
+                0,
+              );
+            }
+
+            void updateTime({int? newH, int? newM}) {
+              final h = newH ?? curHour;
+              final m = newM ?? curMinute;
+              final newDt = computeFinalTime(h, m);
+              setSheetState(() {
+                curHour = h;
+                curMinute = m;
+                curTime = newDt;
+              });
+            }
+
+            void applyQuickOffset(Duration offset) {
+              final adjusted = DateTime.now().add(offset);
+              final h = adjusted.hour;
+              final m = adjusted.minute;
+              updateTime(newH: h, newM: m);
+              if (is12h) {
+                int h12 = h % 12;
+                if (h12 == 0) h12 = 12;
+                hourController.animateToItem(
+                  h12 - 1,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                );
+                amPmController.animateToItem(
+                  h >= 12 ? 1 : 0,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                );
+              } else {
+                hourController.animateToItem(
+                  h,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                );
+              }
+              minuteController.animateToItem(
+                m,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+              );
+            }
+
+            final formattedPreview = SettingsFormatter.formatTime(curTime, _timeFormat);
+            final countdown = _getRelativeCountdown(AlarmService.computeFutureOccurrence(curTime, repeatDays: repeatDays));
+
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 16,
+                bottom: MediaQuery.of(builderCtx).viewInsets.bottom + 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3A3F4A),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Set Trigger Time',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFF7F8F8),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          onTimeSelected(curTime);
+                          Navigator.pop(sheetCtx);
+                        },
+                        child: const Text(
+                          'Done',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF5E6AD2),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Big dynamic preview card
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF101114),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF26282E)),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          formattedPreview,
+                          style: const TextStyle(
+                            fontSize: 36,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFFF7F8F8),
+                            letterSpacing: -0.5,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          countdown,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF5E6AD2),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Quick preset chips
+                  Row(
+                    children: [
+                      _buildPresetChip('+15m', false, () => applyQuickOffset(const Duration(minutes: 15))),
+                      const SizedBox(width: 6),
+                      _buildPresetChip('+30m', false, () => applyQuickOffset(const Duration(minutes: 30))),
+                      const SizedBox(width: 6),
+                      _buildPresetChip('+1h', false, () => applyQuickOffset(const Duration(hours: 1))),
+                      const SizedBox(width: 6),
+                      _buildPresetChip('07:00', false, () {
+                        updateTime(newH: 7, newM: 0);
+                        if (is12h) {
+                          hourController.animateToItem(6, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
+                          amPmController.animateToItem(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
+                        } else {
+                          hourController.animateToItem(7, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
+                        }
+                        minuteController.animateToItem(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
+                      }),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Drum Wheel Selector Container
+                  Container(
+                    height: 180,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF121417),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFF26282E)),
+                    ),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Center Highlight Overlay Bar
+                        Container(
+                          height: 44,
+                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: const Color(0x145E6AD2),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFF383C48), width: 1),
+                          ),
+                        ),
+
+                        // Wheels Row
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Hours Wheel
+                            SizedBox(
+                              width: is12h ? 64 : 80,
+                              child: ListWheelScrollView.useDelegate(
+                                controller: hourController,
+                                itemExtent: 44,
+                                perspective: 0.005,
+                                diameterRatio: 1.3,
+                                physics: const FixedExtentScrollPhysics(),
+                                onSelectedItemChanged: (idx) {
+                                  HapticFeedback.selectionClick();
+                                  int newHour;
+                                  if (is12h) {
+                                    final val12 = (idx % 12) + 1;
+                                    newHour = isPm ? (val12 == 12 ? 12 : val12 + 12) : (val12 == 12 ? 0 : val12);
+                                  } else {
+                                    newHour = idx % 24;
+                                  }
+                                  updateTime(newH: newHour);
+                                },
+                                childDelegate: ListWheelChildLoopingListDelegate(
+                                  children: List.generate(is12h ? 12 : 24, (i) {
+                                    final val = is12h ? (i + 1) : i;
+                                    final isSelected = is12h ? (val == (curHour % 12 == 0 ? 12 : curHour % 12)) : (val == curHour);
+                                    final str = val.toString().padLeft(2, '0');
+                                    return Center(
+                                      child: Text(
+                                        str,
+                                        style: TextStyle(
+                                          fontSize: 26,
+                                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                                          color: isSelected ? const Color(0xFFF7F8F8) : const Color(0xFF565A61),
+                                          fontFeatures: const [FontFeature.tabularFigures()],
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                ),
+                              ),
+                            ),
+
+                            // Separator Colon
+                            const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 8),
+                              child: Text(
+                                ':',
+                                style: TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF8A8F98),
+                                ),
+                              ),
+                            ),
+
+                            // Minutes Wheel
+                            SizedBox(
+                              width: is12h ? 64 : 80,
+                              child: ListWheelScrollView.useDelegate(
+                                controller: minuteController,
+                                itemExtent: 44,
+                                perspective: 0.005,
+                                diameterRatio: 1.3,
+                                physics: const FixedExtentScrollPhysics(),
+                                onSelectedItemChanged: (idx) {
+                                  HapticFeedback.selectionClick();
+                                  final newMin = idx % 60;
+                                  updateTime(newM: newMin);
+                                },
+                                childDelegate: ListWheelChildLoopingListDelegate(
+                                  children: List.generate(60, (i) {
+                                    final isSelected = i == curMinute;
+                                    final str = i.toString().padLeft(2, '0');
+                                    return Center(
+                                      child: Text(
+                                        str,
+                                        style: TextStyle(
+                                          fontSize: 26,
+                                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                                          color: isSelected ? const Color(0xFFF7F8F8) : const Color(0xFF565A61),
+                                          fontFeatures: const [FontFeature.tabularFigures()],
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                ),
+                              ),
+                            ),
+
+                            // AM / PM Wheel if 12h
+                            if (is12h) ...[
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                width: 64,
+                                child: ListWheelScrollView.useDelegate(
+                                  controller: amPmController,
+                                  itemExtent: 44,
+                                  perspective: 0.005,
+                                  diameterRatio: 1.3,
+                                  physics: const FixedExtentScrollPhysics(),
+                                  onSelectedItemChanged: (idx) {
+                                    HapticFeedback.selectionClick();
+                                    final selectedIsPm = idx == 1;
+                                    isPm = selectedIsPm;
+                                    int h12 = curHour % 12;
+                                    if (h12 == 0) h12 = 12;
+                                    final newHour = isPm ? (h12 == 12 ? 12 : h12 + 12) : (h12 == 12 ? 0 : h12);
+                                    updateTime(newH: newHour);
+                                  },
+                                  childDelegate: ListWheelChildListDelegate(
+                                    children: [
+                                      Center(
+                                        child: Text(
+                                          'AM',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: !isPm ? FontWeight.w700 : FontWeight.w400,
+                                            color: !isPm ? const Color(0xFFF7F8F8) : const Color(0xFF565A61),
+                                          ),
+                                        ),
+                                      ),
+                                      Center(
+                                        child: Text(
+                                          'PM',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: isPm ? FontWeight.w700 : FontWeight.w400,
+                                            color: isPm ? const Color(0xFFF7F8F8) : const Color(0xFF565A61),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+
+                        // Top & Bottom Fade Mask Gradient
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(14),
+                                gradient: const LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Color(0xFF121417),
+                                    Color(0x00121417),
+                                    Color(0x00121417),
+                                    Color(0xFF121417),
+                                  ],
+                                  stops: [0.0, 0.28, 0.72, 1.0],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Confirm Button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 46,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF5E6AD2),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () {
+                        onTimeSelected(curTime);
+                        Navigator.pop(sheetCtx);
+                      },
+                      child: const Text(
+                        'Confirm Time',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1282,98 +1711,43 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             letterSpacing: -0.2,
                           ),
                         ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            GestureDetector(
-                              onTap: () {
-                                setModalState(() => _useMicroPillsLayout = !_useMicroPillsLayout);
-                                _updateSetting('use_micro_pills', _useMicroPillsLayout);
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF1E2028),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: const Color(0xFF2E323D)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      _useMicroPillsLayout ? Icons.view_compact_rounded : Icons.view_agenda_rounded,
-                                      size: 13,
-                                      color: const Color(0xFF5E6AD2),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      _useMicroPillsLayout ? 'Micro' : 'Grouped',
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF5E6AD2),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            IconButton(
-                              icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF8A8F98)),
-                              onPressed: () => Navigator.pop(bottomSheetContext),
-                            ),
-                          ],
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF8A8F98)),
+                          onPressed: () => Navigator.pop(bottomSheetContext),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
 
-                    if (_useMicroPillsLayout) ...[
-                      // HERO MICRO-PILLS CARD
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF16181B),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFF26282E)),
-                        ),
-                        child: Column(
-                          children: [
-                            // Large Time Display
-                            GestureDetector(
-                              onTap: () async {
-                                final picked = await showTimePicker(
-                                  context: builderContext,
-                                  initialTime: TimeOfDay.fromDateTime(selectedTime),
-                                );
-                                if (picked != null) {
+                    // HERO MICRO-PILLS CARD
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF16181B),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFF26282E)),
+                      ),
+                      child: Column(
+                        children: [
+                          // Large Time Display
+                          GestureDetector(
+                            onTap: () {
+                              _openTimePickerSheet(
+                                context: builderContext,
+                                initialTime: selectedTime,
+                                repeatDays: repeatDays,
+                                onTimeSelected: (newTime) {
                                   setModalState(() {
-                                    final now = DateTime.now();
-                                    final isPast = (picked.hour < now.hour) ||
-                                        (picked.hour == now.hour && picked.minute <= now.minute);
-                                    final today = DateTime(now.year, now.month, now.day);
-                                    DateTime dayPart = DateTime(selectedTime.year, selectedTime.month, selectedTime.day);
-                                    if (isPast && repeatDays.isEmpty && dayPart.isAtSameMomentAs(today)) {
-                                      dayPart = today.add(const Duration(days: 1));
-                                    }
-                                    selectedTime = DateTime(
-                                      dayPart.year,
-                                      dayPart.month,
-                                      dayPart.day,
-                                      picked.hour,
-                                      picked.minute,
-                                      0,
-                                      0,
-                                    );
+                                    selectedTime = newTime;
                                   });
-                                }
-                              },
-                              child: Column(
-                                children: [
-                                  Text(
-                                    formattedTime,
+                                },
+                              );
+                            },
+                            child: Column(
+                              children: [
+                                Text(
+                                  formattedTime,
                                     style: const TextStyle(
                                       fontSize: 50,
                                       fontWeight: FontWeight.w700,
@@ -1512,248 +1886,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           ),
                         ),
                       ),
-                    ] else ...[
-                      // Title
-                      const Text(
-                        'TITLE',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF8A8F98),
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                    const SizedBox(height: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF16181B),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFF26282E)),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      child: TextField(
-                        controller: titleController,
-                        style: const TextStyle(fontSize: 14, color: Color(0xFFF7F8F8)),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          hintText: 'Alarm Title',
-                          hintStyle: TextStyle(color: Color(0xFF565A61)),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    // Free Rich Text Description
-                    const Text(
-                      'DESCRIPTION & NOTES (RICH TEXT)',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF16181B),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFF26282E)),
-                      ),
-                      padding: const EdgeInsets.all(12),
-                      child: TextField(
-                        controller: descController,
-                        maxLines: 3,
-                        style: const TextStyle(fontSize: 13, color: Color(0xFFF7F8F8), height: 1.4),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          hintText: 'Add rich details, checklists, wake goals, or routine notes...',
-                          hintStyle: TextStyle(color: Color(0xFF565A61)),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    // Time Picker
-                    const Text(
-                      'TIME',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    InkWell(
-                      onTap: () async {
-                        final picked = await showTimePicker(
-                          context: context,
-                          initialTime: TimeOfDay.fromDateTime(selectedTime),
-                        );
-                        if (picked != null) {
-                          setModalState(() {
-                            final now = DateTime.now();
-                            final isPast = (picked.hour < now.hour) ||
-                                (picked.hour == now.hour && picked.minute <= now.minute);
-                            final today = DateTime(now.year, now.month, now.day);
-                            DateTime dayPart = DateTime(selectedTime.year, selectedTime.month, selectedTime.day);
-                            if (isPast && repeatDays.isEmpty && dayPart.isAtSameMomentAs(today)) {
-                              dayPart = today.add(const Duration(days: 1));
-                            }
-                            selectedTime = DateTime(
-                              dayPart.year,
-                              dayPart.month,
-                              dayPart.day,
-                              picked.hour,
-                              picked.minute,
-                              0,
-                              0,
-                            );
-                          });
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF16181B),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFF26282E)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              formattedTime,
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFFF7F8F8),
-                                fontFeatures: [FontFeature.tabularFigures()],
-                              ),
-                            ),
-                            const Icon(Icons.access_time_rounded, size: 20, color: Color(0xFF8A8F98)),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    // Repeat Days (Recurrence)
-                    const Text(
-                      'REPEAT',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildWeekdaySelector(
-                      selectedDays: repeatDays,
-                      onChanged: (newDays) {
-                        setModalState(() => repeatDays = newDays);
-                      },
-                    ),
-
-                    if (repeatDays.isEmpty) ...[
-                      const SizedBox(height: 18),
-                      // Target Date Selector (when one-time)
-                      const Text(
-                        'DATE',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF8A8F98),
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      _buildDateSelector(
-                        context: builderContext,
-                        selectedDate: selectedTime,
-                        selectedTime: TimeOfDay.fromDateTime(selectedTime),
-                        onDateChanged: (newDate) {
-                          setModalState(() {
-                            selectedTime = DateTime(
-                              newDate.year,
-                              newDate.month,
-                              newDate.day,
-                              selectedTime.hour,
-                              selectedTime.minute,
-                              0,
-                              0,
-                            );
-                          });
-                        },
-                      ),
-                    ],
-
-                    const SizedBox(height: 18),
-
-                    // Sound Tone
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'SOUND TONE',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF8A8F98),
-                            letterSpacing: 0.8,
-                          ),
-                        ),
-                        const Text(
-                          'Tap to audition',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Color(0xFF565A61),
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    _buildLinearSegmentedControl<String>(
-                      values: const ['alarm', 'chime', 'digital'],
-                      selectedValue: tone,
-                      labels: const ['Radar', 'Chime', 'Digital'],
-                      icons: const [
-                        Icons.volume_up_rounded,
-                        Icons.volume_up_rounded,
-                        Icons.volume_up_rounded,
-                      ],
-                      onSelected: (val) {
-                        setModalState(() => tone = val);
-                        _previewTone(val);
-                      },
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    // Gentle Ramp
-                    const Text(
-                      'GENTLE VOLUME RAMP',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                      _buildLinearSegmentedControl<int>(
-                        values: const [0, 15, 30, 60],
-                        selectedValue: ramp,
-                        labels: const ['0s Instant', '15s', '30s', '60s'],
-                        onSelected: (val) => setModalState(() => ramp = val),
-                      ),
-                    ],
 
                     const SizedBox(height: 24),
 
@@ -2321,98 +2453,43 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             letterSpacing: -0.2,
                           ),
                         ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            GestureDetector(
-                              onTap: () {
-                                setModalState(() => _useMicroPillsLayout = !_useMicroPillsLayout);
-                                _updateSetting('use_micro_pills', _useMicroPillsLayout);
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF1E2028),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: const Color(0xFF2E323D)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      _useMicroPillsLayout ? Icons.view_compact_rounded : Icons.view_agenda_rounded,
-                                      size: 13,
-                                      color: const Color(0xFF5E6AD2),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      _useMicroPillsLayout ? 'Micro' : 'Grouped',
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF5E6AD2),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            IconButton(
-                              icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF8A8F98)),
-                              onPressed: () => Navigator.pop(bottomSheetContext),
-                            ),
-                          ],
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF8A8F98)),
+                          onPressed: () => Navigator.pop(bottomSheetContext),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
 
-                    if (_useMicroPillsLayout) ...[
-                      // HERO MICRO-PILLS CARD
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF16181B),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFF26282E)),
-                        ),
-                        child: Column(
-                          children: [
-                            // Large Time Display
-                            GestureDetector(
-                              onTap: () async {
-                                final picked = await showTimePicker(
-                                  context: builderContext,
-                                  initialTime: TimeOfDay.fromDateTime(selectedTime),
-                                );
-                                if (picked != null) {
+                    // HERO MICRO-PILLS CARD
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF16181B),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFF26282E)),
+                      ),
+                      child: Column(
+                        children: [
+                          // Large Time Display
+                          GestureDetector(
+                            onTap: () {
+                              _openTimePickerSheet(
+                                context: builderContext,
+                                initialTime: selectedTime,
+                                repeatDays: selectedDays,
+                                onTimeSelected: (newTime) {
                                   setModalState(() {
-                                    final now = DateTime.now();
-                                    final isPast = (picked.hour < now.hour) ||
-                                        (picked.hour == now.hour && picked.minute <= now.minute);
-                                    final today = DateTime(now.year, now.month, now.day);
-                                    DateTime dayPart = DateTime(selectedTime.year, selectedTime.month, selectedTime.day);
-                                    if (isPast && selectedDays.isEmpty && dayPart.isAtSameMomentAs(today)) {
-                                      dayPart = today.add(const Duration(days: 1));
-                                    }
-                                    selectedTime = DateTime(
-                                      dayPart.year,
-                                      dayPart.month,
-                                      dayPart.day,
-                                      picked.hour,
-                                      picked.minute,
-                                      0,
-                                      0,
-                                    );
+                                    selectedTime = newTime;
                                   });
-                                }
-                              },
-                              child: Column(
-                                children: [
-                                  Text(
-                                    formattedTime,
+                                },
+                              );
+                            },
+                            child: Column(
+                              children: [
+                                Text(
+                                  formattedTime,
                                     style: const TextStyle(
                                       fontSize: 50,
                                       fontWeight: FontWeight.w700,
@@ -2551,242 +2628,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           ),
                         ),
                       ),
-                    ] else ...[
-                      // GROUPED INSPECTOR LAYOUT
-                      const Text(
-                        'ALARM TITLE',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF8A8F98),
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF16181B),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFF26282E)),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        child: TextField(
-                          controller: labelController,
-                          style: const TextStyle(fontSize: 14, color: Color(0xFFF7F8F8)),
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            hintText: 'e.g. Quick catchup',
-                            hintStyle: TextStyle(color: Color(0xFF565A61)),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      const Text(
-                        'DESCRIPTION & NOTES (RICH TEXT)',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF8A8F98),
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF16181B),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFF26282E)),
-                        ),
-                        padding: const EdgeInsets.all(12),
-                        child: TextField(
-                          controller: descController,
-                          maxLines: 2,
-                          style: const TextStyle(fontSize: 13, color: Color(0xFFF7F8F8), height: 1.4),
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            hintText: 'Optional notes, checklist, or routine...',
-                            hintStyle: TextStyle(color: Color(0xFF565A61)),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      const Text(
-                        'TRIGGER TIME',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF8A8F98),
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      InkWell(
-                        onTap: () async {
-                          final picked = await showTimePicker(
-                            context: context,
-                            initialTime: TimeOfDay.fromDateTime(selectedTime),
-                          );
-                          if (picked != null) {
-                            setModalState(() {
-                              final now = DateTime.now();
-                              final isPast = (picked.hour < now.hour) ||
-                                  (picked.hour == now.hour && picked.minute <= now.minute);
-                              final today = DateTime(now.year, now.month, now.day);
-                              DateTime dayPart = DateTime(selectedTime.year, selectedTime.month, selectedTime.day);
-                              if (isPast && selectedDays.isEmpty && dayPart.isAtSameMomentAs(today)) {
-                                dayPart = today.add(const Duration(days: 1));
-                              }
-                              selectedTime = DateTime(
-                                dayPart.year,
-                                dayPart.month,
-                                dayPart.day,
-                                picked.hour,
-                                picked.minute,
-                                0,
-                                0,
-                              );
-                            });
-                          }
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF16181B),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFF26282E)),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                formattedTime,
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFFF7F8F8),
-                                  fontFeatures: [FontFeature.tabularFigures()],
-                                ),
-                              ),
-                              const Icon(Icons.access_time_rounded, size: 20, color: Color(0xFF8A8F98)),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      const Text(
-                        'REPEAT',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF8A8F98),
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      _buildWeekdaySelector(
-                        selectedDays: selectedDays,
-                        onChanged: (newDays) {
-                          setModalState(() => selectedDays = newDays);
-                        },
-                      ),
-
-                      if (selectedDays.isEmpty) ...[
-                        const SizedBox(height: 18),
-                        const Text(
-                          'DATE',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF8A8F98),
-                            letterSpacing: 0.8,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        _buildDateSelector(
-                          context: builderContext,
-                          selectedDate: selectedTime,
-                          selectedTime: TimeOfDay.fromDateTime(selectedTime),
-                          onDateChanged: (newDate) {
-                            setModalState(() {
-                              selectedTime = DateTime(
-                                newDate.year,
-                                newDate.month,
-                                newDate.day,
-                                selectedTime.hour,
-                                selectedTime.minute,
-                                0,
-                                0,
-                              );
-                            });
-                          },
-                        ),
-                      ],
-
-                      const SizedBox(height: 18),
-
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'SOUND TONE',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF8A8F98),
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                          const Text(
-                            'Tap to audition',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Color(0xFF565A61),
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      _buildLinearSegmentedControl<String>(
-                        values: const ['alarm', 'chime', 'digital'],
-                        selectedValue: selectedTone,
-                        labels: const ['Radar', 'Chime', 'Digital'],
-                        icons: const [
-                          Icons.volume_up_rounded,
-                          Icons.volume_up_rounded,
-                          Icons.volume_up_rounded,
-                        ],
-                        onSelected: (val) {
-                          setModalState(() => selectedTone = val);
-                          _previewTone(val);
-                        },
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      const Text(
-                        'GENTLE VOLUME RAMP',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF8A8F98),
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      _buildLinearSegmentedControl<int>(
-                        values: const [0, 15, 30, 60],
-                        selectedValue: selectedRampSeconds,
-                        labels: const ['0s Instant', '15s', '30s', '60s'],
-                        onSelected: (val) => setModalState(() => selectedRampSeconds = val),
-                      ),
-                    ],
 
                     const SizedBox(height: 24),
 
@@ -3080,11 +2921,40 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                 child: ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   children: [
-                    // Hero Upcoming Alarm Card (Linear Active Cycle style with soft shadows & textures)
-                    if (upcomingHeroAlarm != null && _searchQuery.isEmpty) ...[
-                      _buildUpcomingHeroCard(upcomingHeroAlarm),
-                      const SizedBox(height: 24),
-                    ],
+                    // Hero Upcoming Alarm Card (Smooth animated height and fade transitions)
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 350),
+                      curve: Curves.easeInOutCubic,
+                      alignment: Alignment.topCenter,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 280),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        transitionBuilder: (child, animation) {
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SizeTransition(
+                              sizeFactor: animation,
+                              axisAlignment: -1.0,
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: (upcomingHeroAlarm != null && _searchQuery.isEmpty)
+                            ? KeyedSubtree(
+                                key: ValueKey('hero_card_${upcomingHeroAlarm.id}'),
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 24),
+                                  child: _buildUpcomingHeroCard(upcomingHeroAlarm),
+                                ),
+                              )
+                            : const SizedBox(
+                                key: ValueKey('hero_card_empty'),
+                                width: double.infinity,
+                                height: 0,
+                              ),
+                      ),
+                    ),
 
                     // Section Header: ALL ALARMS (Renamed from active alarms)
                     Row(
