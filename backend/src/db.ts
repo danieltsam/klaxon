@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 
 export interface AlarmRecord {
   id: string;
@@ -29,6 +30,11 @@ export interface AppSettings {
 }
 
 const dbPath = process.env.DB_PATH || path.resolve(process.cwd(), 'alarms.db');
+if (dbPath !== ':memory:') {
+  try {
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  } catch (_) {}
+}
 export const db = new Database(dbPath);
 
 // Enable WAL mode for high concurrency

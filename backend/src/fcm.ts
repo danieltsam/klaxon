@@ -13,7 +13,7 @@ export function initFirebase() {
 
   const serviceAccountPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || path.resolve(process.cwd(), 'service-account.json');
 
-  if (fs.existsSync(serviceAccountPath)) {
+  if (fs.existsSync(serviceAccountPath) && fs.statSync(serviceAccountPath).isFile()) {
     try {
       const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
       admin.initializeApp({
