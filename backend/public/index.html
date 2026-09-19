@@ -947,19 +947,20 @@
     async function loadDeviceTelemetry() {
       try {
         const res = await fetch('/api/devices');
-        const devices = await res.json();
+        const data = await res.json();
+        const devList = Array.isArray(data) ? data : (data.devices || []);
         const dotEl = document.getElementById('header-device-dot');
         const statusEl = document.getElementById('header-device-status');
         const infoCard = document.getElementById('device-info-card');
 
-        if (devices.length === 0) {
+        if (devList.length === 0) {
           dotEl.className = 'h-1.5 w-1.5 rounded-full bg-zinc-600';
           statusEl.textContent = 'no phone';
           infoCard.innerHTML = `<div class="text-zinc-600 lowercase">no phone registered yet.</div>`;
           return;
         }
 
-        const dev = devices[0];
+        const dev = devList[0];
         const battText = dev.battery_level !== null && dev.battery_level !== undefined ? `${dev.battery_level}%` : 'unknown';
 
         dotEl.className = 'h-1.5 w-1.5 rounded-full bg-[#5E6AD2]';
@@ -1017,13 +1018,38 @@
     });
 
     // iCal copy
+    function copyTextFallback(text, onSuccess) {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        if (onSuccess) onSuccess();
+      } catch (err) {
+        console.error('Copy fallback failed:', err);
+      }
+      document.body.removeChild(textarea);
+    }
+
     document.getElementById('btn-copy-ical-modal').addEventListener('click', () => {
       const icalUrl = `${window.location.origin}/api/calendar.ics`;
-      navigator.clipboard.writeText(icalUrl).then(() => {
-        const btn = document.getElementById('btn-copy-ical-modal');
+      const btn = document.getElementById('btn-copy-ical-modal');
+      const showCopied = () => {
         btn.textContent = 'copied!';
         setTimeout(() => { btn.textContent = 'copy ical url'; }, 2000);
-      });
+      };
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(icalUrl).then(showCopied).catch(() => {
+          copyTextFallback(icalUrl, showCopied);
+        });
+      } else {
+        copyTextFallback(icalUrl, showCopied);
+      }
     });
 
     // Google Calendar
