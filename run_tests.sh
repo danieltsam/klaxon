@@ -17,10 +17,16 @@ echo "[2/2] Running Mobile Tests (Flutter + Alarm + IdMapper + Reconnection)..."
 cd "$ROOT_DIR/mobile"
 flutter test
 
-if [ "$1" == "--with-device" ]; then
+if [ "$1" == "--with-device" ] || [ "$2" == "--with-device" ]; then
   echo ""
   echo "[Optional] Running Live Device Sync Test via ADB..."
   "$ROOT_DIR/scripts/test_live_device_sync.sh"
+fi
+
+if [ "$1" == "--with-chaos" ] || [ "$2" == "--with-chaos" ]; then
+  echo ""
+  echo "[Optional] Running Chaos Engineering Test Suite via ADB..."
+  "$ROOT_DIR/scripts/chaos_engineering_test.sh"
 fi
 
 echo ""
