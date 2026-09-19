@@ -130,7 +130,7 @@
           </section>
         </div>
 
-        <!-- VIEW 2: SETTINGS (Styled exactly like user snippet) -->
+        <!-- VIEW 2: SETTINGS (Persistent configuration & telemetry) -->
         <div id="view-settings" class="hidden space-y-16">
           <!-- Section 1: Active Configuration -->
           <section class="space-y-8" data-purpose="active-alarms-settings">
@@ -159,7 +159,7 @@
               <div class="py-6 flex items-center justify-between gap-12">
                 <div class="max-w-md">
                   <label class="block text-xs font-medium text-zinc-200">alarm sound profile</label>
-                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">audio feedback sequence played when threshold is breached</span>
+                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">default audio feedback sequence played when alarm triggers</span>
                 </div>
                 <div class="flex items-center gap-2 w-72">
                   <select id="settings-sound-select" class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
@@ -179,99 +179,50 @@
               <div class="py-6 flex items-center justify-between gap-12">
                 <div class="max-w-md">
                   <label class="block text-xs font-medium text-zinc-200">volume ramp duration</label>
-                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">gradual volume increase curve to prevent abrupt awakening</span>
+                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">default gradual volume increase curve to prevent abrupt awakening</span>
                 </div>
                 <div class="w-72">
                   <select id="settings-ramp-select" class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
                     <option value="0" class="bg-[#11140f]">immediate (0s)</option>
-                    <option value="15" selected class="bg-[#11140f]">gentle (15s)</option>
+                    <option value="15" class="bg-[#11140f]">gentle (15s)</option>
                     <option value="30" class="bg-[#11140f]">standard (30s)</option>
                     <option value="60" class="bg-[#11140f]">deep sleep ramp (60s)</option>
                   </select>
                 </div>
               </div>
 
-              <!-- Setting Item 3: Minimum Trigger Priority -->
-              <div class="py-6 flex items-center justify-between gap-12">
-                <div class="max-w-md">
-                  <label class="block text-xs font-medium text-zinc-200">minimum trigger priority</label>
-                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">filter low-severity system events from broadcasting</span>
-                </div>
-                <div class="w-72">
-                  <select class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
-                    <option class="bg-[#11140f]">any priority</option>
-                    <option class="bg-[#11140f]">warning &amp; above</option>
-                    <option class="bg-[#11140f]">critical only</option>
-                  </select>
-                </div>
-              </div>
-
-              <!-- Setting Item 4: Acknowledge Timeout -->
-              <div class="py-6 flex items-center justify-between gap-12">
-                <div class="max-w-md">
-                  <label class="block text-xs font-medium text-zinc-200">acknowledge timeout</label>
-                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">auto-clear unacknowledged non-critical alarms</span>
-                </div>
-                <div class="w-72">
-                  <select class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
-                    <option class="bg-[#11140f]">never (manual)</option>
-                    <option class="bg-[#11140f]">after 1 hour</option>
-                    <option class="bg-[#11140f]">after 24 hours</option>
-                    <option class="bg-[#11140f]">after one week</option>
-                  </select>
-                </div>
-              </div>
-
-              <!-- Setting Item 5: Calendar Sync Feed -->
+              <!-- Setting Item 3: Calendar Sync Feed -->
               <div class="py-6 flex items-center justify-between gap-12">
                 <div class="max-w-md">
                   <label class="block text-xs font-medium text-zinc-200">calendar subscription feed (rfc 5545)</label>
-                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">subscribe to alarms in google calendar, apple calendar, or outlook</span>
-                </div>
-                <div class="w-72 flex items-center gap-2">
-                  <button id="btn-copy-ical-modal" class="flex-1 rounded-none border border-[#232820] bg-transparent py-2 text-xs text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors" type="button">
-                    copy ical url
-                  </button>
-                  <button id="btn-open-gcal-modal" class="flex-1 rounded-none border border-[#232820] bg-transparent py-2 text-xs text-[#5E6AD2] hover:text-[#7A85E6] hover:border-[#5E6AD2] transition-colors" type="button">
-                    + google cal
-                  </button>
-                </div>
-              </div>
-
-              <!-- Setting Item 6: Remote Websocket Telemetry -->
-              <div class="py-6 flex items-center justify-between gap-12">
-                <div class="max-w-md">
-                  <label class="block text-xs font-medium text-zinc-200">remote websocket telemetry</label>
-                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">receive instant alarm feeds while remote web app is active</span>
+                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">subscribe to alarms in apple calendar, outlook, or external clients</span>
                 </div>
                 <div class="w-72">
-                  <select class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
-                    <option class="bg-[#11140f]">enabled (instant sync)</option>
-                    <option class="bg-[#11140f]">disabled</option>
-                  </select>
+                  <button id="btn-copy-ical-modal" class="w-full rounded-none border border-[#232820] bg-transparent py-2 text-xs text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors" type="button">
+                    copy ical url
+                  </button>
                 </div>
               </div>
             </div>
           </section>
 
-          <!-- Section 2: Display & Appearance Rules (matches user snippet) -->
-          <section class="space-y-8" data-purpose="recurring-alarms-section">
+          <!-- Section 2: Display & Formatting Rules -->
+          <section class="space-y-8" data-purpose="formatting-settings-section">
             <div class="space-y-2 border-b border-[#232820] pb-6">
-              <h2 class="text-xl font-light tracking-tight text-zinc-100">recurring alarms &amp; display rules</h2>
-              <p class="text-xs text-zinc-500 font-light">define system appearance, timestamp formats, and interface localization.</p>
+              <h2 class="text-xl font-light tracking-tight text-zinc-100">display &amp; formatting rules</h2>
+              <p class="text-xs text-zinc-500 font-light">define system clock formatting, timestamp display conventions, and date formats.</p>
             </div>
             <div class="divide-y divide-[#232820]/40">
-              <!-- Appearance -->
+              <!-- Time Format -->
               <div class="py-6 flex items-center justify-between gap-12">
                 <div class="max-w-md">
-                  <label class="block text-xs font-medium text-zinc-200">system theme &amp; appearance</label>
-                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">override ui color rendering profiles</span>
+                  <label class="block text-xs font-medium text-zinc-200">time format convention</label>
+                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">clock readout and alarm time formatting rules</span>
                 </div>
                 <div class="w-72">
-                  <select class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
-                    <option class="bg-[#11140f]">system default (dark mode)</option>
-                    <option class="bg-[#11140f]">force dark</option>
-                    <option class="bg-[#11140f]">high contrast mono</option>
+                  <select id="settings-time-format-select" class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
+                    <option value="24h" class="bg-[#11140f]">24-hour (14:30)</option>
+                    <option value="12h" class="bg-[#11140f]">12-hour am/pm (02:30 pm)</option>
                   </select>
                 </div>
               </div>
@@ -283,40 +234,10 @@
                   <span class="block text-[11px] text-zinc-500 font-light mt-0.5">standard system timestamp display layout</span>
                 </div>
                 <div class="w-72">
-                  <select class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
-                    <option class="bg-[#11140f]">dd/mm/yyyy (26/04/2026)</option>
-                    <option class="bg-[#11140f]">mm-dd-yyyy</option>
-                    <option class="bg-[#11140f]">iso 8601 (yyyy-mm-dd)</option>
-                  </select>
-                </div>
-              </div>
-
-              <!-- Time Format -->
-              <div class="py-6 flex items-center justify-between gap-12">
-                <div class="max-w-md">
-                  <label class="block text-xs font-medium text-zinc-200">time format convention</label>
-                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">clock readout formatting rules</span>
-                </div>
-                <div class="w-72">
-                  <select class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
-                    <option class="bg-[#11140f]">24-hour (14:30)</option>
-                    <option class="bg-[#11140f]">12-hour am/pm (02:30 pm)</option>
-                  </select>
-                </div>
-              </div>
-
-              <!-- Language & Localization -->
-              <div class="py-6 flex items-center justify-between gap-12">
-                <div class="max-w-md">
-                  <label class="block text-xs font-medium text-zinc-200">language &amp; localization</label>
-                  <span class="block text-[11px] text-zinc-500 font-light mt-0.5">interface localization pack</span>
-                </div>
-                <div class="w-72">
-                  <select class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
-                    <option class="bg-[#11140f]">english (us)</option>
-                    <option class="bg-[#11140f]">deutsch</option>
-                    <option class="bg-[#11140f]">français</option>
-                    <option class="bg-[#11140f]">nihongo</option>
+                  <select id="settings-date-format-select" class="w-full rounded-none border border-[#232820] bg-transparent px-3 py-2 text-xs text-zinc-200 focus:border-[#5E6AD2] focus:ring-0">
+                    <option value="dd/mm/yyyy" class="bg-[#11140f]">dd/mm/yyyy (19/09/2026)</option>
+                    <option value="mm/dd/yyyy" class="bg-[#11140f]">mm/dd/yyyy (09/19/2026)</option>
+                    <option value="yyyy-mm-dd" class="bg-[#11140f]">iso 8601 (2026-09-19)</option>
                   </select>
                 </div>
               </div>
@@ -510,6 +431,62 @@
     let isPreviewPlaying = false;
     let currentActiveView = 'dashboard';
 
+    // Application Settings (Synchronized with backend & cached in localStorage)
+    let appSettings = {
+      sound_tone: 'alarm',
+      ramp_seconds: 15,
+      date_format: 'dd/mm/yyyy',
+      time_format: '24h'
+    };
+
+    async function loadSettings() {
+      try {
+        const local = localStorage.getItem('remotealarm_settings');
+        if (local) {
+          try { Object.assign(appSettings, JSON.parse(local)); } catch (_) {}
+        }
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const remote = await res.json();
+          Object.assign(appSettings, remote);
+          localStorage.setItem('remotealarm_settings', JSON.stringify(appSettings));
+        }
+      } catch (err) {
+        console.warn('Could not fetch remote settings:', err);
+      }
+      applySettingsToUI();
+    }
+
+    function applySettingsToUI() {
+      const soundSelect = document.getElementById('settings-sound-select');
+      const rampSelect = document.getElementById('settings-ramp-select');
+      const timeSelect = document.getElementById('settings-time-format-select');
+      const dateSelect = document.getElementById('settings-date-format-select');
+
+      if (soundSelect) soundSelect.value = appSettings.sound_tone;
+      if (rampSelect) rampSelect.value = String(appSettings.ramp_seconds);
+      if (timeSelect) timeSelect.value = appSettings.time_format;
+      if (dateSelect) dateSelect.value = appSettings.date_format;
+
+      updateClock();
+      renderDashboard();
+    }
+
+    async function persistSetting(key, val) {
+      appSettings[key] = val;
+      localStorage.setItem('remotealarm_settings', JSON.stringify(appSettings));
+      applySettingsToUI();
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [key]: val })
+        });
+      } catch (err) {
+        console.warn('Failed to persist setting to backend:', err);
+      }
+    }
+
     // View Switching: dashboard vs settings
     function switchView(view) {
       currentActiveView = view;
@@ -537,11 +514,23 @@
     // System Clock
     function updateClock() {
       const now = new Date();
-      const hh = String(now.getHours()).padStart(2, '0');
+      let hh = now.getHours();
       const mm = String(now.getMinutes()).padStart(2, '0');
       const ss = String(now.getSeconds()).padStart(2, '0');
+      let clockStr = '';
+      if (appSettings.time_format === '12h') {
+        const ampm = hh >= 12 ? 'pm' : 'am';
+        hh = hh % 12;
+        hh = hh ? hh : 12;
+        const hhStr = String(hh).padStart(2, '0');
+        clockStr = `${hhStr}:${mm}:${ss} ${ampm}`;
+      } else {
+        const hhStr = String(hh).padStart(2, '0');
+        clockStr = `${hhStr}:${mm}:${ss}`;
+      }
+
       const el = document.getElementById('header-clock');
-      if (el) el.textContent = `${hh}:${mm}:${ss}`;
+      if (el) el.textContent = clockStr;
 
       // Update hero countdown
       const countdownEl = document.getElementById('hero-countdown-text');
@@ -556,9 +545,34 @@
     function formatTime(isoStr) {
       if (!isoStr) return '--:--';
       const d = new Date(isoStr);
-      const h = String(d.getHours()).padStart(2, '0');
-      const m = String(d.getMinutes()).padStart(2, '0');
-      return `${h}:${m}`;
+      if (appSettings.time_format === '12h') {
+        let h = d.getHours();
+        const m = String(d.getMinutes()).padStart(2, '0');
+        const ampm = h >= 12 ? 'pm' : 'am';
+        h = h % 12;
+        h = h ? h : 12;
+        const hStr = String(h).padStart(2, '0');
+        return `${hStr}:${m} ${ampm}`;
+      } else {
+        const h = String(d.getHours()).padStart(2, '0');
+        const m = String(d.getMinutes()).padStart(2, '0');
+        return `${h}:${m}`;
+      }
+    }
+
+    function formatDate(isoStr) {
+      if (!isoStr) return '';
+      const d = new Date(isoStr);
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yyyy = d.getFullYear();
+
+      if (appSettings.date_format === 'mm/dd/yyyy') {
+        return `${mm}/${dd}/${yyyy}`;
+      } else if (appSettings.date_format === 'yyyy-mm-dd') {
+        return `${yyyy}-${mm}-${dd}`;
+      }
+      return `${dd}/${mm}/${yyyy}`;
     }
 
     function formatRelative(targetIso) {
@@ -862,6 +876,8 @@
       document.getElementById('new-alarm-date').value = `${yyyy}-${m}-${dd}`;
       document.getElementById('new-alarm-title').value = '';
       document.getElementById('new-alarm-desc').value = '';
+      document.getElementById('new-alarm-tone').value = appSettings.sound_tone || 'alarm';
+      document.getElementById('new-alarm-ramp').value = String(appSettings.ramp_seconds || 15);
       selectedDays = [];
       updateDayButtons();
 
@@ -1052,12 +1068,18 @@
       }
     });
 
-    // Google Calendar
-    document.getElementById('btn-open-gcal-modal').addEventListener('click', () => {
-      const icalUrl = `${window.location.origin}/api/calendar.ics`;
-      const webcalUrl = icalUrl.replace(/^https?:\/\//, 'webcal://');
-      const gcalAddUrl = `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcalUrl)}`;
-      window.open(gcalAddUrl, '_blank');
+    // Settings listeners
+    document.getElementById('settings-sound-select').addEventListener('change', (e) => {
+      persistSetting('sound_tone', e.target.value);
+    });
+    document.getElementById('settings-ramp-select').addEventListener('change', (e) => {
+      persistSetting('ramp_seconds', parseInt(e.target.value, 10));
+    });
+    document.getElementById('settings-time-format-select').addEventListener('change', (e) => {
+      persistSetting('time_format', e.target.value);
+    });
+    document.getElementById('settings-date-format-select').addEventListener('change', (e) => {
+      persistSetting('date_format', e.target.value);
     });
 
     function escapeHtml(str) {
@@ -1072,6 +1094,7 @@
     }
 
     // Initial load & 4s polling
+    loadSettings();
     loadAlarms();
     loadDeviceTelemetry();
     setInterval(() => {

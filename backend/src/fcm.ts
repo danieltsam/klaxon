@@ -45,10 +45,12 @@ export interface FcmPayload {
   repeat_days?: string;
   sound_tone?: string;
   ramp_seconds?: number | string;
+  description?: string;
+  [key: string]: any;
 }
 
 export async function sendFcmDataMessage(
-  action: 'CREATE' | 'CANCEL' | 'DISMISS',
+  action: 'CREATE' | 'CANCEL' | 'DISMISS' | 'DISABLE',
   payload: FcmPayload
 ): Promise<{ sent: number; failed: number }> {
   const tokens = DeviceRepo.getAllTokens();
@@ -77,6 +79,9 @@ export async function sendFcmDataMessage(
   }
   if (payload.ramp_seconds !== undefined) {
     dataPayload.ramp_seconds = String(payload.ramp_seconds);
+  }
+  if (payload.description) {
+    dataPayload.description = payload.description;
   }
 
   console.log(`[FCM] Dispatching ${action} data payload to ${tokens.length} device(s):`, dataPayload);

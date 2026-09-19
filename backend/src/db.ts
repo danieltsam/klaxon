@@ -21,6 +21,13 @@ export interface DeviceRecord {
   updated_at?: string;
 }
 
+export interface AppSettings {
+  sound_tone: 'alarm' | 'chime' | 'digital';
+  ramp_seconds: number;
+  date_format: 'dd/mm/yyyy' | 'mm/dd/yyyy' | 'yyyy-mm-dd';
+  time_format: '24h' | '12h';
+}
+
 const dbPath = process.env.DB_PATH || path.resolve(process.cwd(), 'alarms.db');
 export const db = new Database(dbPath);
 
@@ -46,6 +53,12 @@ db.exec(`
     battery_level INTEGER DEFAULT NULL,
     is_charging INTEGER DEFAULT NULL,
     device_name TEXT DEFAULT NULL,
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
     updated_at TEXT DEFAULT (datetime('now'))
   );
 `);
@@ -157,5 +170,64 @@ export const DeviceRepo = {
 
   remove(token: string): void {
     db.prepare('DELETE FROM devices WHERE token = ?').run(token);
+  }
+};
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  sound_tone: 'alarm',
+  ramp_seconds: 15,
+  date_format: 'dd/mm/yyyy',
+  time_format: '24h'
+};
+
+export const SettingsRepo = {
+  getAll(): AppSettings {
+    const rows = db.prepare('SELECT key, value FROM settings').all() as { key: string; value: string }[];
+    const map: Record<string, string> = {};
+    for (const r of rows) {
+      map[r.key] = r.value;
+    }
+    return {
+      sound_tone: (map['sound_tone'] && ['alarm', 'chime', 'digital'].includes(map['sound_tone']))
+        ? (map['sound_tone'] as 'alarm' | 'chime' | 'digital')
+        : DEFAULT_SETTINGS.sound_tone,
+      ramp_seconds: (map['ramp_seconds'] && !isNaN(parseInt(map['ramp_seconds'], 10)))
+        ? parseInt(map['ramp_seconds'], 10)
+        : DEFAULT_SETTINGS.ramp_seconds,
+      date_format: (map['date_format'] && ['dd/mm/yyyy', 'mm/dd/yyyy', 'yyyy-mm-dd'].includes(map['date_format']))
+        ? (map['date_format'] as 'dd/mm/yyyy' | 'mm/dd/yyyy' | 'yyyy-mm-dd')
+        : DEFAULT_SETTINGS.date_format,
+      time_format: (map['time_format'] && ['24h', '12h'].includes(map['time_format']))
+        ? (map['time_format'] as '24h' | '12h')
+        : DEFAULT_SETTINGS.time_format
+    };
+  },
+
+  update(settings: Partial<AppSettings>): AppSettings {
+    const upsertStmt = db.prepare(`
+      INSERT INTO settings (key, value, updated_at)
+      VALUES (?, ?, datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = datetime('now')
+    `);
+
+    const tx = db.transaction((updates: Partial<AppSettings>) => {
+      if (updates.sound_tone !== undefined) {
+        upsertStmt.run('sound_tone', updates.sound_tone);
+      }
+      if (updates.ramp_seconds !== undefined) {
+        upsertStmt.run('ramp_seconds', String(updates.ramp_seconds));
+      }
+      if (updates.date_format !== undefined) {
+        upsertStmt.run('date_format', updates.date_format);
+      }
+      if (updates.time_format !== undefined) {
+        upsertStmt.run('time_format', updates.time_format);
+      }
+    });
+
+    tx(settings);
+    return this.getAll();
   }
 };

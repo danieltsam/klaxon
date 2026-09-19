@@ -4,8 +4,8 @@ import fastifyStatic from '@fastify/static';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
-import { AlarmRepo, DeviceRepo, AlarmRecord } from './db.js';
-import { initFirebase, sendFcmDataMessage } from './fcm.js';
+import { AlarmRepo, DeviceRepo, SettingsRepo, AlarmRecord, AppSettings } from './db.js';
+import { initFirebase, sendFcmDataMessage, FcmPayload } from './fcm.js';
 
 dotenv.config();
 
@@ -172,12 +172,12 @@ app.post<{
   AlarmRepo.create(newAlarm);
 
   // Send FCM Data Message
-  const fcmPayload: Record<string, string> = {
+  const fcmPayload: FcmPayload = {
     id: newAlarm.id,
     target_time: newAlarm.target_time,
     label: newAlarm.label,
     sound_tone: normalizedTone,
-    ramp_seconds: String(normalizedRamp)
+    ramp_seconds: normalizedRamp
   };
   if (newAlarm.description) {
     fcmPayload.description = newAlarm.description;
@@ -268,12 +268,12 @@ app.post<{
   if (status === 'disabled') {
     fcmResult = await sendFcmDataMessage('DISABLE', { id });
   } else if (status === 'pending') {
-    const fcmPayload: Record<string, string> = {
+    const fcmPayload: FcmPayload = {
       id: existing.id,
       target_time: existing.target_time,
       label: existing.label,
       sound_tone: existing.sound_tone || 'alarm',
-      ramp_seconds: String(existing.ramp_seconds ?? 30)
+      ramp_seconds: existing.ramp_seconds ?? 30
     };
     if (existing.repeat_days) {
       fcmPayload.repeat_days = existing.repeat_days;
@@ -334,6 +334,67 @@ app.get('/api/devices', async (_request, reply) => {
   });
 });
 
+// 7. GET /api/settings: Return persisted application settings
+app.get('/api/settings', async (_request, reply) => {
+  const settings = SettingsRepo.getAll();
+  return reply.send(settings);
+});
+
+// 8. POST /api/settings: Update application settings
+app.post<{
+  Body: Partial<AppSettings>;
+}>('/api/settings', async (request, reply) => {
+  const { sound_tone, ramp_seconds, date_format, time_format } = request.body || {};
+
+  const updates: Partial<AppSettings> = {};
+
+  if (sound_tone !== undefined) {
+    const validTones = ['alarm', 'chime', 'digital'];
+    if (!validTones.includes(sound_tone)) {
+      return reply.status(400).send({
+        error: `Invalid sound_tone. Must be one of: ${validTones.join(', ')}.`
+      });
+    }
+    updates.sound_tone = sound_tone;
+  }
+
+  if (ramp_seconds !== undefined) {
+    const validRamps = [0, 15, 30, 60];
+    if (typeof ramp_seconds !== 'number' || !validRamps.includes(ramp_seconds)) {
+      return reply.status(400).send({
+        error: `Invalid ramp_seconds. Must be one of: ${validRamps.join(', ')}.`
+      });
+    }
+    updates.ramp_seconds = ramp_seconds;
+  }
+
+  if (date_format !== undefined) {
+    const validDates = ['dd/mm/yyyy', 'mm/dd/yyyy', 'yyyy-mm-dd'];
+    if (!validDates.includes(date_format)) {
+      return reply.status(400).send({
+        error: `Invalid date_format. Must be one of: ${validDates.join(', ')}.`
+      });
+    }
+    updates.date_format = date_format;
+  }
+
+  if (time_format !== undefined) {
+    const validTimes = ['24h', '12h'];
+    if (!validTimes.includes(time_format)) {
+      return reply.status(400).send({
+        error: `Invalid time_format. Must be one of: ${validTimes.join(', ')}.`
+      });
+    }
+    updates.time_format = time_format;
+  }
+
+  const updated = SettingsRepo.update(updates);
+  return reply.send({
+    success: true,
+    settings: updated
+  });
+});
+
 export { app };
 
 if (process.env.NODE_ENV !== 'test') {
@@ -342,8 +403,8 @@ if (process.env.NODE_ENV !== 'test') {
 
   try {
     await app.listen({ port: PORT, host: HOST });
-    console.log(`\n🚀 Remote Alarm Backend running at http://${HOST}:${PORT}`);
-    console.log(`📱 Dashboard available at http://localhost:${PORT}\n`);
+    console.log(`\n[Server] Remote Alarm Backend running at http://${HOST}:${PORT}`);
+    console.log(`[Server] Dashboard available at http://localhost:${PORT}\n`);
   } catch (err) {
     app.log.error(err);
     process.exit(1);

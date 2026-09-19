@@ -200,4 +200,39 @@ class BackendClient {
       return false;
     }
   }
+
+  /// Fetch persistent settings from backend
+  static Future<Map<String, dynamic>?> fetchSettings() async {
+    try {
+      final baseUrl = await getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/settings');
+      final response = await http.get(uri).timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        return Map<String, dynamic>.from(jsonDecode(response.body));
+      }
+      return null;
+    } catch (e) {
+      // ignore: avoid_print
+      print('[BackendClient] fetchSettings error: $e');
+      return null;
+    }
+  }
+
+  /// Update persistent settings on backend
+  static Future<bool> updateSettings(Map<String, dynamic> settings) async {
+    try {
+      final baseUrl = await getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/settings');
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(settings),
+      ).timeout(const Duration(seconds: 8));
+      return response.statusCode == 200;
+    } catch (e) {
+      // ignore: avoid_print
+      print('[BackendClient] updateSettings error: $e');
+      return false;
+    }
+  }
 }

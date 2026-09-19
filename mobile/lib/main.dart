@@ -5,11 +5,13 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart' hide NotificationSettings;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart';
 import 'screens/ring_screen.dart';
 import 'services/alarm_service.dart';
 import 'services/backend_client.dart';
 import 'utils/id_mapper.dart';
+import 'utils/settings_formatter.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -121,6 +123,65 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  // Persistent Settings
+  String _defaultSoundTone = 'alarm';
+  int _defaultRampSeconds = 15;
+  String _timeFormat = '24h';
+  String _dateFormat = 'dd/mm/yyyy';
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _defaultSoundTone = prefs.getString('pref_sound_tone') ?? 'alarm';
+      _defaultRampSeconds = prefs.getInt('pref_ramp_seconds') ?? 15;
+      _timeFormat = prefs.getString('pref_time_format') ?? '24h';
+      _dateFormat = prefs.getString('pref_date_format') ?? 'dd/mm/yyyy';
+    });
+
+    try {
+      final remote = await BackendClient.fetchSettings();
+      if (remote != null && mounted) {
+        setState(() {
+          if (remote['sound_tone'] != null) _defaultSoundTone = remote['sound_tone'] as String;
+          if (remote['ramp_seconds'] != null) _defaultRampSeconds = (remote['ramp_seconds'] as num).toInt();
+          if (remote['time_format'] != null) _timeFormat = remote['time_format'] as String;
+          if (remote['date_format'] != null) _dateFormat = remote['date_format'] as String;
+        });
+        await prefs.setString('pref_sound_tone', _defaultSoundTone);
+        await prefs.setInt('pref_ramp_seconds', _defaultRampSeconds);
+        await prefs.setString('pref_time_format', _timeFormat);
+        await prefs.setString('pref_date_format', _dateFormat);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _updateSetting(String key, dynamic value) async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      if (key == 'sound_tone') _defaultSoundTone = value as String;
+      if (key == 'ramp_seconds') _defaultRampSeconds = value as int;
+      if (key == 'time_format') _timeFormat = value as String;
+      if (key == 'date_format') _dateFormat = value as String;
+    });
+
+    if (value is String) {
+      await prefs.setString('pref_$key', value);
+    } else if (value is int) {
+      await prefs.setInt('pref_$key', value);
+    }
+
+    await BackendClient.updateSettings({key: value});
+  }
+
+  String _formatTime(DateTime dt) {
+    return SettingsFormatter.formatTime(dt, _timeFormat);
+  }
+
+  String _formatDate(DateTime dt) {
+    return SettingsFormatter.formatDate(dt, _dateFormat);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -128,6 +189,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     _loadAllAlarms();
     _initFCM();
     _loadBackendUrl();
+    _loadSettings();
     _syncWithBackend(silent: true);
 
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -460,8 +522,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       builder: (bottomSheetContext) {
         return StatefulBuilder(
           builder: (builderContext, setModalState) {
-            final formattedTime =
-                '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
+            final formattedTime = _formatTime(selectedTime);
 
             return Padding(
               padding: EdgeInsets.only(
@@ -803,7 +864,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     );
   }
 
-  // SETTINGS & BACKEND CONFIG MODAL
+  // SETTINGS & CONFIGURATION MODAL
   void _showSettingsModal() {
     final controller = TextEditingController(text: _backendUrl);
     showModalBottomSheet(
@@ -815,186 +876,361 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         side: BorderSide(color: Color(0xFF26282E)),
       ),
       builder: (bottomSheetContext) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 16,
-            bottom: MediaQuery.of(bottomSheetContext).viewInsets.bottom + 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF26282E),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+        return StatefulBuilder(
+          builder: (builderContext, setModalState) {
+            return Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(builderContext).size.height * 0.88,
               ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Settings & Diagnostics',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFFF7F8F8),
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF8A8F98)),
-                    onPressed: () => Navigator.pop(bottomSheetContext),
-                  ),
-                ],
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 16,
+                bottom: MediaQuery.of(builderContext).viewInsets.bottom + 24,
               ),
-              const SizedBox(height: 16),
-
-              // Server URL Section
-              const Text(
-                'BACKEND SERVER URL',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF8A8F98),
-                  letterSpacing: 0.8,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF16181B),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFF26282E)),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: TextField(
-                  controller: controller,
-                  style: const TextStyle(fontSize: 13, color: Color(0xFFF7F8F8)),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    hintText: 'http://127.0.0.1:3000',
-                    hintStyle: TextStyle(color: Color(0xFF565A61)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: const Color(0xFF16181B),
-                    foregroundColor: const Color(0xFFF7F8F8),
-                    side: const BorderSide(color: const Color(0xFF26282E)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  onPressed: () async {
-                    final newUrl = controller.text.trim();
-                    if (newUrl.isNotEmpty) {
-                      await BackendClient.setBaseUrl(newUrl);
-                      setState(() => _backendUrl = newUrl);
-                      await _syncWithBackend();
-                      if (bottomSheetContext.mounted) {
-                        Navigator.pop(bottomSheetContext);
-                      }
-                    }
-                  },
-                  child: const Text('Save & Resync', style: TextStyle(fontSize: 13)),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Telemetry Info
-              const Text(
-                'DEVICE TELEMETRY',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF8A8F98),
-                  letterSpacing: 0.8,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF16181B),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFF26282E)),
-                ),
+              child: SingleChildScrollView(
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _telemetryRow('Phone Model', 'Android Device'),
-                    const Divider(color: Color(0xFF26282E), height: 16),
-                    _telemetryRow(
-                      'Battery',
-                      _batteryLevel != null
-                          ? '$_batteryLevel% (${_isCharging ? 'Charging' : 'On Battery'})'
-                          : 'Checking...',
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF26282E),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
                     ),
-                    const Divider(color: Color(0xFF26282E), height: 16),
-                    _telemetryRow(
-                      'Push Token',
-                      _fcmToken != null && _fcmToken!.length > 16
-                          ? '${_fcmToken!.substring(0, 8)}...${_fcmToken!.substring(_fcmToken!.length - 6)}'
-                          : 'Acquiring...',
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Settings & Configuration',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFF7F8F8),
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF8A8F98)),
+                          onPressed: () => Navigator.pop(bottomSheetContext),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // SECTION 1: ALARM CONFIGURATION
+                    const Text(
+                      'ALARM CONFIGURATION',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Sound Tone Dropdown
+                    _buildModalDropdown<String>(
+                      label: 'Default Sound Profile',
+                      description: 'audio feedback sequence played when alarm triggers',
+                      value: _defaultSoundTone,
+                      items: const [
+                        DropdownMenuItem(value: 'alarm', child: Text('ding (default alarm)')),
+                        DropdownMenuItem(value: 'chime', child: Text('chime (gentle)')),
+                        DropdownMenuItem(value: 'digital', child: Text('digital pulse')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setModalState(() => _defaultSoundTone = val);
+                          _updateSetting('sound_tone', val);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Tone Previews
+                    Row(
+                      children: [
+                        _previewToneButton('ding', 'alarm'),
+                        const SizedBox(width: 8),
+                        _previewToneButton('chime', 'chime'),
+                        const SizedBox(width: 8),
+                        _previewToneButton('digital', 'digital'),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Ramp Seconds Dropdown
+                    _buildModalDropdown<int>(
+                      label: 'Volume Ramp Duration',
+                      description: 'gradual volume increase curve to prevent abrupt awakening',
+                      value: _defaultRampSeconds,
+                      items: const [
+                        DropdownMenuItem(value: 0, child: Text('immediate (0s)')),
+                        DropdownMenuItem(value: 15, child: Text('gentle (15s)')),
+                        DropdownMenuItem(value: 30, child: Text('standard (30s)')),
+                        DropdownMenuItem(value: 60, child: Text('deep sleep ramp (60s)')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setModalState(() => _defaultRampSeconds = val);
+                          _updateSetting('ramp_seconds', val);
+                        }
+                      },
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // SECTION 2: DISPLAY & FORMATTING
+                    const Text(
+                      'DISPLAY & FORMATTING RULES',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Time Format
+                    _buildModalDropdown<String>(
+                      label: 'Time Format Convention',
+                      description: 'clock readout and alarm time formatting rules',
+                      value: _timeFormat,
+                      items: const [
+                        DropdownMenuItem(value: '24h', child: Text('24-hour (14:30)')),
+                        DropdownMenuItem(value: '12h', child: Text('12-hour am/pm (02:30 pm)')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setModalState(() => _timeFormat = val);
+                          _updateSetting('time_format', val);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Date Format
+                    _buildModalDropdown<String>(
+                      label: 'Date Format Convention',
+                      description: 'standard system timestamp display layout',
+                      value: _dateFormat,
+                      items: const [
+                        DropdownMenuItem(value: 'dd/mm/yyyy', child: Text('dd/mm/yyyy (19/09/2026)')),
+                        DropdownMenuItem(value: 'mm/dd/yyyy', child: Text('mm/dd/yyyy (09/19/2026)')),
+                        DropdownMenuItem(value: 'yyyy-mm-dd', child: Text('iso 8601 (2026-09-19)')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setModalState(() => _dateFormat = val);
+                          _updateSetting('date_format', val);
+                        }
+                      },
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // SECTION 3: CALENDAR FEED
+                    const Text(
+                      'CALENDAR SUBSCRIPTION (RFC 5545)',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.copy_rounded, size: 14),
+                        label: const Text('Copy iCal Feed URL', style: TextStyle(fontSize: 12)),
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: const Color(0xFF16181B),
+                          foregroundColor: const Color(0xFFF7F8F8),
+                          side: const BorderSide(color: Color(0xFF26282E)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onPressed: () async {
+                          final url = '$_backendUrl/api/calendar.ics';
+                          await Clipboard.setData(ClipboardData(text: url));
+                          _showToast('Copied iCal URL to clipboard');
+                        },
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // SECTION 4: SERVER & DEVICE TELEMETRY
+                    const Text(
+                      'SERVER & HARDWARE TELEMETRY',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF16181B),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFF26282E)),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: TextField(
+                        controller: controller,
+                        style: const TextStyle(fontSize: 13, color: Color(0xFFF7F8F8)),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          hintText: 'http://127.0.0.1:3000',
+                          hintStyle: TextStyle(color: Color(0xFF565A61)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: const Color(0xFF16181B),
+                          foregroundColor: const Color(0xFFF7F8F8),
+                          side: const BorderSide(color: Color(0xFF26282E)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () async {
+                          final newUrl = controller.text.trim();
+                          if (newUrl.isNotEmpty) {
+                            await BackendClient.setBaseUrl(newUrl);
+                            setState(() => _backendUrl = newUrl);
+                            await _syncWithBackend();
+                            if (bottomSheetContext.mounted) {
+                              Navigator.pop(bottomSheetContext);
+                            }
+                          }
+                        },
+                        child: const Text('Save & Resync', style: TextStyle(fontSize: 13)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF16181B),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFF26282E)),
+                      ),
+                      child: Column(
+                        children: [
+                          _telemetryRow('Phone Model', 'Android Device'),
+                          const Divider(color: Color(0xFF26282E), height: 16),
+                          _telemetryRow(
+                            'Battery',
+                            _batteryLevel != null
+                                ? '$_batteryLevel% (${_isCharging ? 'Charging' : 'On Battery'})'
+                                : 'Checking...',
+                          ),
+                          const Divider(color: Color(0xFF26282E), height: 16),
+                          _telemetryRow(
+                            'Push Token',
+                            _fcmToken != null && _fcmToken!.length > 16
+                                ? '${_fcmToken!.substring(0, 8)}...${_fcmToken!.substring(_fcmToken!.length - 6)}'
+                                : 'Acquiring...',
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
-
-              const SizedBox(height: 24),
-
-              // Audio Tone Test
-              const Text(
-                'SOUND TEST',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF8A8F98),
-                  letterSpacing: 0.8,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  _previewToneButton('Radar'),
-                  const SizedBox(width: 8),
-                  _previewToneButton('Chime'),
-                  const SizedBox(width: 8),
-                  _previewToneButton('Digital'),
-                ],
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
   }
 
-  Widget _previewToneButton(String name) {
+  Widget _buildModalDropdown<T>({
+    required String label,
+    required String description,
+    required T value,
+    required List<DropdownMenuItem<T>> items,
+    required ValueChanged<T?> onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: Color(0xFFF7F8F8),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          description,
+          style: const TextStyle(
+            fontSize: 10,
+            color: Color(0xFF8A8F98),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF16181B),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF26282E)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<T>(
+              value: value,
+              isExpanded: true,
+              dropdownColor: const Color(0xFF16181B),
+              icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Color(0xFF8A8F98)),
+              style: const TextStyle(
+                fontSize: 12,
+                color: Color(0xFFF7F8F8),
+                fontFamily: 'Helvetica Neue',
+              ),
+              items: items,
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _previewToneButton(String label, String tone) {
     return Expanded(
       child: OutlinedButton(
         style: OutlinedButton.styleFrom(
           backgroundColor: const Color(0xFF16181B),
           foregroundColor: const Color(0xFFF7F8F8),
           side: const BorderSide(color: Color(0xFF26282E)),
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
         onPressed: () {
-          _showToast('Playing $name tone');
+          _showToast('Previewing $label audio');
         },
-        child: Text(name, style: const TextStyle(fontSize: 12)),
+        child: Text(label, style: const TextStyle(fontSize: 11)),
       ),
     );
   }
@@ -1028,8 +1264,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       0,
       0,
     ).add(const Duration(minutes: 5));
-    String selectedTone = 'alarm';
-    int selectedRampSeconds = 15;
+    String selectedTone = _defaultSoundTone;
+    int selectedRampSeconds = _defaultRampSeconds;
     final labelController = TextEditingController(text: 'Morning workout');
     final descController = TextEditingController();
 
@@ -1044,8 +1280,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       builder: (bottomSheetContext) {
         return StatefulBuilder(
           builder: (builderContext, setModalState) {
-            final formattedTime =
-                '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
+            final formattedTime = _formatTime(selectedTime);
 
             return Padding(
               padding: EdgeInsets.only(
@@ -1707,8 +1942,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
   // Hero Upcoming Alarm Card with rich textured styling & relative countdown
   Widget _buildUpcomingHeroCard(_AlarmItem alarm) {
-    final hourStr = alarm.dateTime.hour.toString().padLeft(2, '0');
-    final minuteStr = alarm.dateTime.minute.toString().padLeft(2, '0');
+    final formattedTime = _formatTime(alarm.dateTime);
     final countdown = _getRelativeCountdown(alarm.dateTime);
 
     return InkWell(
@@ -1764,13 +1998,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
             // Large Clock (Swiss editorial light)
             Text(
-              '$hourStr:$minuteStr',
-              style: const TextStyle(
-                fontSize: 52,
+              formattedTime,
+              style: TextStyle(
+                fontSize: _timeFormat == '12h' ? 44 : 52,
                 fontWeight: FontWeight.w300,
-                color: Color(0xFFF7F8F8),
+                color: const Color(0xFFF7F8F8),
                 letterSpacing: -1.5,
-                fontFeatures: [FontFeature.tabularFigures()],
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
             const SizedBox(height: 4),
@@ -1833,8 +2067,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
   // Individual Alarm Row Card with smooth slider & click for rich details
   Widget _buildAlarmRowCard(_AlarmItem alarm) {
-    final timeStr =
-        '${alarm.dateTime.hour.toString().padLeft(2, '0')}:${alarm.dateTime.minute.toString().padLeft(2, '0')}';
+    final timeStr = _formatTime(alarm.dateTime);
     final textColor = alarm.isEnabled ? const Color(0xFFF7F8F8) : const Color(0xFF565A61);
     final subtextColor = alarm.isEnabled ? const Color(0xFF8A8F98) : const Color(0xFF45484F);
 
