@@ -112,6 +112,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   String? _fcmToken;
   String _backendUrl = 'http://127.0.0.1:3000';
   late Timer _clockTimer;
+  Timer? _foregroundSyncTimer;
   DateTime _currentTime = DateTime.now();
   StreamSubscription<AlarmSettings>? _ringSubscription;
   StreamSubscription<int>? _remoteDismissSubscription;
@@ -198,6 +199,12 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       }
     });
 
+    _foregroundSyncTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted) {
+        _syncWithBackend(silent: true);
+      }
+    });
+
     // ignore: deprecated_member_use
     _ringSubscription = Alarm.ringStream.stream.listen((alarmSettings) {
       _navigateToRingScreen(alarmSettings);
@@ -212,6 +219,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _clockTimer.cancel();
+    _foregroundSyncTimer?.cancel();
     _ringSubscription?.cancel();
     _remoteDismissSubscription?.cancel();
     _searchController.dispose();

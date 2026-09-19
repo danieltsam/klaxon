@@ -11,16 +11,32 @@ export function initFirebase() {
     return;
   }
 
-  const serviceAccountPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || path.resolve(process.cwd(), 'service-account.json');
+  const candidates = [
+    process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    path.resolve(process.cwd(), 'data', 'service-account.json'),
+    path.resolve(process.cwd(), 'service-account.json'),
+    '/app/data/service-account.json',
+    '/app/service-account.json'
+  ].filter(Boolean) as string[];
 
-  if (fs.existsSync(serviceAccountPath) && fs.statSync(serviceAccountPath).isFile()) {
+  let validPath: string | null = null;
+  for (const p of candidates) {
     try {
-      const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+        validPath = p;
+        break;
+      }
+    } catch (_) {}
+  }
+
+  if (validPath) {
+    try {
+      const serviceAccount = JSON.parse(fs.readFileSync(validPath, 'utf8'));
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
       });
       isFirebaseInitialized = true;
-      console.log(`[FCM] Firebase Admin successfully initialized using: ${serviceAccountPath}`);
+      console.log(`[FCM] Firebase Admin successfully initialized using: ${validPath}`);
     } catch (err) {
       console.error('[FCM] Failed to initialize Firebase Admin with service account file:', err);
     }
@@ -33,7 +49,7 @@ export function initFirebase() {
       isFirebaseInitialized = true;
       console.log('[FCM] Firebase Admin initialized using default application credentials');
     } catch (err) {
-      console.warn(`[FCM] No valid Firebase credentials found at ${serviceAccountPath}. Running in DRY-RUN / MOCK mode.`);
+      console.warn(`[FCM] No valid Firebase credentials found in [${candidates.join(', ')}]. Running in DRY-RUN / MOCK mode.`);
     }
   }
 }

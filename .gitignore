@@ -8,6 +8,7 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # Fastify Backend & DB
+data/
 backend/node_modules/
 backend/dist/
 backend/alarms.db
