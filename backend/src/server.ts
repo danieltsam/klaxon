@@ -242,13 +242,64 @@ app.post<{
   });
 });
 
+export function rollTargetTimeToFuture(targetTimeStr: string, repeatDaysStr?: string | null, mockNow?: Date): string {
+  const now = mockNow || new Date();
+  const currentTarget = new Date(targetTimeStr);
+  if (isNaN(currentTarget.getTime())) {
+    return targetTimeStr;
+  }
+
+  // If already in the future, return as-is
+  if (currentTarget.getTime() > now.getTime()) {
+    return currentTarget.toISOString();
+  }
+
+  // If recurring with repeat days (1=Mon ... 7=Sun)
+  if (repeatDaysStr && repeatDaysStr.trim().length > 0) {
+    const days = repeatDaysStr.split(',').map(s => parseInt(s.trim(), 10)).filter(d => d >= 1 && d <= 7);
+    if (days.length > 0) {
+      for (let dayOffset = 1; dayOffset <= 7; dayOffset++) {
+        const candidate = new Date(now.getTime());
+        candidate.setUTCDate(candidate.getUTCDate() + dayOffset);
+        candidate.setUTCHours(
+          currentTarget.getUTCHours(),
+          currentTarget.getUTCMinutes(),
+          0,
+          0
+        );
+        const jsDay = candidate.getUTCDay();
+        const isoDay = jsDay === 0 ? 7 : jsDay;
+        if (days.includes(isoDay)) {
+          return candidate.toISOString();
+        }
+      }
+    }
+  }
+
+  // One-time alarm: roll to today at same time, or tomorrow if time passed today
+  const candidate = new Date(now.getTime());
+  candidate.setUTCHours(
+    currentTarget.getUTCHours(),
+    currentTarget.getUTCMinutes(),
+    0,
+    0
+  );
+  if (candidate.getTime() <= now.getTime()) {
+    candidate.setUTCDate(candidate.getUTCDate() + 1);
+  }
+  return candidate.toISOString();
+}
+
 // 4. POST /api/alarms/:id/state: Update status ('ringing' | 'dismissed' | 'snoozed' | 'pending' | 'disabled')
 app.post<{
   Params: { id: string };
-  Body: { status: 'ringing' | 'dismissed' | 'snoozed' | 'pending' | 'disabled' }
+  Body: {
+    status: 'ringing' | 'dismissed' | 'snoozed' | 'pending' | 'disabled';
+    target_time?: string;
+  }
 }>('/api/alarms/:id/state', async (request, reply) => {
   const { id } = request.params;
-  const { status } = request.body || {};
+  const { status, target_time } = request.body || {};
 
   const validStatuses = ['ringing', 'dismissed', 'snoozed', 'pending', 'disabled'];
   if (!status || !validStatuses.includes(status)) {
@@ -264,17 +315,32 @@ app.post<{
 
   AlarmRepo.updateStatus(id, status);
 
+  let effectiveTargetTime = existing.target_time;
   let fcmResult;
+
   if (status === 'disabled') {
     fcmResult = await sendFcmDataMessage('DISABLE', { id });
   } else if (status === 'pending') {
+    if (target_time && !isNaN(Date.parse(target_time))) {
+      effectiveTargetTime = new Date(target_time).toISOString();
+    } else {
+      effectiveTargetTime = rollTargetTimeToFuture(existing.target_time, existing.repeat_days);
+    }
+
+    if (effectiveTargetTime !== existing.target_time) {
+      AlarmRepo.updateTargetTime(id, effectiveTargetTime);
+    }
+
     const fcmPayload: FcmPayload = {
       id: existing.id,
-      target_time: existing.target_time,
+      target_time: effectiveTargetTime,
       label: existing.label,
       sound_tone: existing.sound_tone || 'alarm',
       ramp_seconds: existing.ramp_seconds ?? 30
     };
+    if (existing.description) {
+      fcmPayload.description = existing.description;
+    }
     if (existing.repeat_days) {
       fcmPayload.repeat_days = existing.repeat_days;
     }
@@ -285,6 +351,7 @@ app.post<{
     success: true,
     id,
     status,
+    target_time: effectiveTargetTime,
     fcm_dispatch: fcmResult
   });
 });

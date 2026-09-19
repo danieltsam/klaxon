@@ -345,23 +345,10 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   Future<void> _toggleAlarmEnabled(_AlarmItem item, bool enable) async {
     if (enable) {
       // Re-enable and schedule
-      DateTime target = item.dateTime;
-      if (target.isBefore(DateTime.now())) {
-        // Move to next day at the same hour and minute
-        final now = DateTime.now();
-        target = DateTime(
-          now.year,
-          now.month,
-          now.day,
-          item.dateTime.hour,
-          item.dateTime.minute,
-          0,
-          0,
-        );
-        if (target.isBefore(now)) {
-          target = target.add(const Duration(days: 1));
-        }
-      }
+      final target = AlarmService.computeFutureOccurrence(
+        item.dateTime,
+        repeatDays: item.repeatDays,
+      );
 
       final audioPath = AlarmService.getAudioPathForTone(item.soundTone);
       final settings = AlarmSettings(
@@ -387,9 +374,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       await IdMapper.setEnabled(item.id, true);
       await IdMapper.setTargetTime(item.id, target);
       if (item.uuid != null && !item.uuid!.startsWith('local_')) {
-        BackendClient.updateAlarmState(item.uuid!, 'pending');
+        BackendClient.updateAlarmState(
+          item.uuid!,
+          'pending',
+          targetTime: target.toUtc().toIso8601String(),
+        );
       }
-      _showToast('Alarm armed for ${target.hour.toString().padLeft(2, '0')}:${target.minute.toString().padLeft(2, '0')}');
+      _showToast('Alarm armed for ${_formatTime(target)}');
     } else {
       // Disable / deactivate without deleting
       await Alarm.stop(item.id);

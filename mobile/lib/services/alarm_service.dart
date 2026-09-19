@@ -56,6 +56,15 @@ class AlarmService {
         0,
       );
 
+      final repeatDaysStr = data['repeat_days'];
+      List<int>? repeatDaysList;
+      if (repeatDaysStr != null && repeatDaysStr.toString().isNotEmpty) {
+        repeatDaysList = repeatDaysStr.toString().split(',').map((s) => int.tryParse(s) ?? 0).where((d) => d >= 1 && d <= 7).toList();
+        await IdMapper.setRepeatDays(intId, repeatDaysList);
+      }
+
+      final futureTarget = computeFutureOccurrence(parsedDateTime, repeatDays: repeatDaysList);
+
       final desc = data['description']?.toString();
       // Ensure mapping is preserved
       await IdMapper.saveMapping(
@@ -63,32 +72,28 @@ class AlarmService {
         uuid.toString(),
         label: label.toString(),
         description: desc,
-        targetTime: parsedDateTime,
+        targetTime: futureTarget,
       );
       await IdMapper.setSnoozed(intId, false);
       await IdMapper.setSoundTone(intId, tone);
       await IdMapper.setRampSeconds(intId, rampSec);
       await IdMapper.setEnabled(intId, true);
 
-      final repeatDaysStr = data['repeat_days'];
-      if (repeatDaysStr != null && repeatDaysStr.toString().isNotEmpty) {
-        final days = repeatDaysStr.toString().split(',').map((s) => int.tryParse(s) ?? 0).where((d) => d >= 1 && d <= 7).toList();
-        await IdMapper.setRepeatDays(intId, days);
-      }
-
       final audioPath = getAudioPathForTone(tone);
-      final fadeDuration = Duration(seconds: rampSec > 0 ? rampSec : 0);
+      final volumeSettings = rampSec > 0
+          ? VolumeSettings.fade(
+              volume: 1.0,
+              fadeDuration: Duration(seconds: rampSec),
+            )
+          : VolumeSettings.fixed(volume: 1.0);
 
       final alarmSettings = AlarmSettings(
         id: intId,
-        dateTime: parsedDateTime,
+        dateTime: futureTarget,
         assetAudioPath: audioPath,
         loopAudio: true,
         vibrate: true,
-        volumeSettings: VolumeSettings.fade(
-          volume: 1.0,
-          fadeDuration: fadeDuration,
-        ),
+        volumeSettings: volumeSettings,
         notificationSettings: NotificationSettings(
           title: label.toString(),
           body: 'Tap to dismiss or snooze',
@@ -99,7 +104,7 @@ class AlarmService {
       await Alarm.set(alarmSettings: alarmSettings);
       onRemoteDismissed.add(intId);
       // ignore: avoid_print
-      print('[AlarmService] Successfully scheduled alarm $intId ($uuid) tone=$tone ramp=${rampSec}s for $parsedDateTime');
+      print('[AlarmService] Successfully scheduled alarm $intId ($uuid) tone=$tone ramp=${rampSec}s for $futureTarget');
     } else if (action == 'DISABLE') {
       await Alarm.stop(intId);
       await IdMapper.setEnabled(intId, false);
@@ -263,17 +268,22 @@ class AlarmService {
 
     final audioPath = getAudioPathForTone(soundTone);
     final rampSec = rampSeconds ?? 30;
+    final futureTarget = computeFutureOccurrence(alignedDateTime, repeatDays: repeatDays);
+
+    final volumeSettings = rampSec > 0
+        ? VolumeSettings.fade(
+            volume: 1.0,
+            fadeDuration: Duration(seconds: rampSec),
+          )
+        : VolumeSettings.fixed(volume: 1.0);
 
     final alarmSettings = AlarmSettings(
       id: intId,
-      dateTime: alignedDateTime,
+      dateTime: futureTarget,
       assetAudioPath: audioPath,
       loopAudio: true,
       vibrate: true,
-      volumeSettings: VolumeSettings.fade(
-        volume: 1.0,
-        fadeDuration: Duration(seconds: rampSec > 0 ? rampSec : 0),
-      ),
+      volumeSettings: volumeSettings,
       notificationSettings: NotificationSettings(
         title: label,
         body: 'Tap to dismiss or snooze',
@@ -299,7 +309,7 @@ class AlarmService {
     // Check if this was a recurring alarm; if so, schedule next occurrence
     final repeatDays = await IdMapper.getRepeatDays(settings.id);
     if (repeatDays.isNotEmpty) {
-      final nextTime = _getNextOccurrence(settings.dateTime, repeatDays);
+      final nextTime = getNextOccurrence(settings.dateTime, repeatDays);
       final nextSettings = settings.copyWith(dateTime: nextTime);
       await Alarm.set(alarmSettings: nextSettings);
     }
@@ -338,8 +348,36 @@ class AlarmService {
     return newSettings;
   }
 
-  static DateTime _getNextOccurrence(DateTime targetTime, List<int> repeatDays) {
-    final now = DateTime.now();
+  /// Computes the next future occurrence of an alarm.
+  /// Guarantees that the returned DateTime is strictly in the future.
+  static DateTime computeFutureOccurrence(DateTime targetTime, {List<int>? repeatDays, DateTime? mockNow}) {
+    final now = mockNow ?? DateTime.now();
+    if (targetTime.isAfter(now)) {
+      return targetTime;
+    }
+
+    if (repeatDays != null && repeatDays.isNotEmpty) {
+      return getNextOccurrence(targetTime, repeatDays, mockNow: now);
+    }
+
+    // One-time alarm: if hour:minute has not passed today, schedule for today; else tomorrow.
+    final todayCandidate = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      targetTime.hour,
+      targetTime.minute,
+      0,
+      0,
+    );
+    if (todayCandidate.isAfter(now)) {
+      return todayCandidate;
+    }
+    return todayCandidate.add(const Duration(days: 1));
+  }
+
+  static DateTime getNextOccurrence(DateTime targetTime, List<int> repeatDays, {DateTime? mockNow}) {
+    final now = mockNow ?? DateTime.now();
     for (int dayOffset = 1; dayOffset <= 7; dayOffset++) {
       final candidate = DateTime(
         now.year,

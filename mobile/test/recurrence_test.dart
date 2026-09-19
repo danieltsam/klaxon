@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/services/alarm_service.dart';
 
 DateTime getNextOccurrence(DateTime targetTime, List<int> repeatDays, {DateTime? mockNow}) {
   final now = mockNow ?? DateTime.now();
@@ -65,6 +66,52 @@ void main() {
       expect(next.weekday, equals(DateTime.thursday));
       expect(next.day, equals(17));
       expect(next.second, equals(0));
+    });
+  });
+
+  group('AlarmService.computeFutureOccurrence Tests', () {
+    test('Returns future alarm as-is', () {
+      final mockNow = DateTime(2026, 9, 19, 10, 0, 0);
+      final futureTime = DateTime(2026, 9, 19, 15, 48, 0);
+
+      final result = AlarmService.computeFutureOccurrence(futureTime, mockNow: mockNow);
+      expect(result, equals(futureTime));
+    });
+
+    test('Rolls past one-time alarm to today when time is later today', () {
+      final mockNow = DateTime(2026, 9, 19, 10, 0, 0);
+      final yesterdayAlarm = DateTime(2026, 9, 18, 15, 48, 0); // 3:48 PM
+
+      final result = AlarmService.computeFutureOccurrence(yesterdayAlarm, mockNow: mockNow);
+      expect(result.year, equals(2026));
+      expect(result.month, equals(9));
+      expect(result.day, equals(19)); // Today!
+      expect(result.hour, equals(15));
+      expect(result.minute, equals(48));
+    });
+
+    test('Rolls past one-time alarm to tomorrow when time has passed today', () {
+      final mockNow = DateTime(2026, 9, 19, 16, 0, 0); // 4:00 PM
+      final yesterdayAlarm = DateTime(2026, 9, 18, 15, 48, 0); // 3:48 PM
+
+      final result = AlarmService.computeFutureOccurrence(yesterdayAlarm, mockNow: mockNow);
+      expect(result.year, equals(2026));
+      expect(result.month, equals(9));
+      expect(result.day, equals(20)); // Tomorrow!
+      expect(result.hour, equals(15));
+      expect(result.minute, equals(48));
+    });
+
+    test('Rolls past recurring alarm to next scheduled day', () {
+      final saturdayNow = DateTime(2026, 9, 19, 10, 0, 0); // Saturday
+      final staleAlarm = DateTime(2026, 9, 18, 7, 0, 0); // 7:00 AM Mon-Fri
+      final repeatDays = [1, 2, 3, 4, 5];
+
+      final result = AlarmService.computeFutureOccurrence(staleAlarm, repeatDays: repeatDays, mockNow: saturdayNow);
+      expect(result.weekday, equals(DateTime.monday));
+      expect(result.day, equals(21));
+      expect(result.hour, equals(7));
+      expect(result.minute, equals(0));
     });
   });
 }

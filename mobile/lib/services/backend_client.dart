@@ -55,15 +55,19 @@ class BackendClient {
     }
   }
 
-  /// Sync alarm status change back to backend ('dismissed' | 'snoozed')
-  static Future<bool> updateAlarmState(String uuid, String status) async {
+  /// Sync alarm status change back to backend ('dismissed' | 'snoozed' | 'pending' | 'disabled')
+  static Future<bool> updateAlarmState(String uuid, String status, {String? targetTime}) async {
     try {
       final baseUrl = await getBaseUrl();
       final uri = Uri.parse('$baseUrl/api/alarms/$uuid/state');
+      final bodyMap = <String, dynamic>{'status': status};
+      if (targetTime != null) {
+        bodyMap['target_time'] = targetTime;
+      }
       final response = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'status': status}),
+        body: jsonEncode(bodyMap),
       ).timeout(const Duration(seconds: 10));
 
       return response.statusCode == 200;

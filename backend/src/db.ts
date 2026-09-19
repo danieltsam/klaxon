@@ -130,6 +130,15 @@ export const AlarmRepo = {
     return result.changes > 0;
   },
 
+  updateTargetTime(id: string, targetTime: string): boolean {
+    const result = db.prepare(`
+      UPDATE alarms
+      SET target_time = ?
+      WHERE id = ?
+    `).run(targetTime, id);
+    return result.changes > 0;
+  },
+
   cancel(id: string): boolean {
     return this.updateStatus(id, 'canceled');
   }
