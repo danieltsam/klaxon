@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:alarm/alarm.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart' hide NotificationSettings;
@@ -122,6 +123,21 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   bool _isSearchVisible = false;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  final AudioPlayer _previewAudioPlayer = AudioPlayer();
+
+  Future<void> _previewTone(String tone) async {
+    try {
+      await _previewAudioPlayer.stop();
+      final assetFile = tone == 'chime'
+          ? 'chime.mp3'
+          : (tone == 'digital' ? 'digital.mp3' : 'alarm.mp3');
+      await _previewAudioPlayer.setVolume(0.85);
+      await _previewAudioPlayer.play(AssetSource(assetFile));
+      Future.delayed(const Duration(milliseconds: 3000), () {
+        _previewAudioPlayer.stop();
+      });
+    } catch (_) {}
+  }
 
   // Persistent Settings
   String _defaultSoundTone = 'alarm';
@@ -222,6 +238,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     _ringSubscription?.cancel();
     _remoteDismissSubscription?.cancel();
     _searchController.dispose();
+    _previewAudioPlayer.dispose();
     super.dispose();
   }
 
@@ -480,6 +497,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     required T selectedValue,
     required List<String> labels,
     required ValueChanged<T> onSelected,
+    List<IconData?>? icons,
   }) {
     return Container(
       padding: const EdgeInsets.all(3),
@@ -493,6 +511,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           final val = values[index];
           final label = labels[index];
           final isSelected = val == selectedValue;
+          final icon = icons != null && index < icons.length ? icons[index] : null;
 
           return Expanded(
             child: GestureDetector(
@@ -505,15 +524,31 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                   borderRadius: BorderRadius.circular(8),
                 ),
                 alignment: Alignment.center,
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    color: isSelected ? Colors.white : const Color(0xFF8A8F98),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (icon != null) ...[
+                      Icon(
+                        icon,
+                        size: 13,
+                        color: isSelected ? Colors.white : const Color(0xFF8A8F98),
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    Flexible(
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                          color: isSelected ? Colors.white : const Color(0xFF8A8F98),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -604,17 +639,21 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
     return Row(
       children: [
-        // Today
+        // Today (Blocked/Disabled if time has already passed today)
         Expanded(
           child: GestureDetector(
-            onTap: () => onDateChanged(today),
+            onTap: isPastToday ? null : () => onDateChanged(today),
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 9),
               decoration: BoxDecoration(
-                color: isToday ? const Color(0xFF5E6AD2) : const Color(0xFF16181B),
+                color: isPastToday
+                    ? const Color(0xFF101114)
+                    : (isToday ? const Color(0xFF5E6AD2) : const Color(0xFF16181B)),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: isToday ? const Color(0xFF5E6AD2) : const Color(0xFF26282E),
+                  color: isPastToday
+                      ? const Color(0xFF1B1D21)
+                      : (isToday ? const Color(0xFF5E6AD2) : const Color(0xFF26282E)),
                 ),
               ),
               alignment: Alignment.center,
@@ -625,13 +664,17 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                     'Today',
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight: isToday ? FontWeight.w600 : FontWeight.w500,
-                      color: isToday ? Colors.white : const Color(0xFF8A8F98),
+                      fontWeight: isToday && !isPastToday ? FontWeight.w600 : FontWeight.w500,
+                      color: isPastToday
+                          ? const Color(0xFF454850)
+                          : (isToday ? Colors.white : const Color(0xFF8A8F98)),
+                      decoration: isPastToday ? TextDecoration.lineThrough : null,
+                      decorationColor: const Color(0xFF454850),
                     ),
                   ),
-                  if (isPastToday && isToday) ...[
+                  if (isPastToday) ...[
                     const SizedBox(width: 4),
-                    const Icon(Icons.info_outline, size: 12, color: Color(0xFFF2C94C)),
+                    const Icon(Icons.block_rounded, size: 11, color: Color(0xFF454850)),
                   ],
                 ],
               ),
@@ -931,10 +974,18 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         );
                         if (picked != null) {
                           setModalState(() {
+                            final now = DateTime.now();
+                            final isPast = (picked.hour < now.hour) ||
+                                (picked.hour == now.hour && picked.minute <= now.minute);
+                            final today = DateTime(now.year, now.month, now.day);
+                            DateTime dayPart = DateTime(selectedTime.year, selectedTime.month, selectedTime.day);
+                            if (isPast && repeatDays.isEmpty && dayPart.isAtSameMomentAs(today)) {
+                              dayPart = today.add(const Duration(days: 1));
+                            }
                             selectedTime = DateTime(
-                              selectedTime.year,
-                              selectedTime.month,
-                              selectedTime.day,
+                              dayPart.year,
+                              dayPart.month,
+                              dayPart.day,
                               picked.hour,
                               picked.minute,
                               0,
@@ -1024,21 +1075,42 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                     const SizedBox(height: 18),
 
                     // Sound Tone
-                    const Text(
-                      'SOUND TONE',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'SOUND TONE',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF8A8F98),
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                        const Text(
+                          'Tap to audition',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Color(0xFF565A61),
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
                     _buildLinearSegmentedControl<String>(
                       values: const ['alarm', 'chime', 'digital'],
                       selectedValue: tone,
                       labels: const ['Radar', 'Chime', 'Digital'],
-                      onSelected: (val) => setModalState(() => tone = val),
+                      icons: const [
+                        Icons.volume_up_rounded,
+                        Icons.volume_up_rounded,
+                        Icons.volume_up_rounded,
+                      ],
+                      onSelected: (val) {
+                        setModalState(() => tone = val);
+                        _previewTone(val);
+                      },
                     ),
 
                     const SizedBox(height: 18),
@@ -1717,10 +1789,18 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         );
                         if (picked != null) {
                           setModalState(() {
+                            final now = DateTime.now();
+                            final isPast = (picked.hour < now.hour) ||
+                                (picked.hour == now.hour && picked.minute <= now.minute);
+                            final today = DateTime(now.year, now.month, now.day);
+                            DateTime dayPart = DateTime(selectedTime.year, selectedTime.month, selectedTime.day);
+                            if (isPast && selectedDays.isEmpty && dayPart.isAtSameMomentAs(today)) {
+                              dayPart = today.add(const Duration(days: 1));
+                            }
                             selectedTime = DateTime(
-                              selectedTime.year,
-                              selectedTime.month,
-                              selectedTime.day,
+                              dayPart.year,
+                              dayPart.month,
+                              dayPart.day,
                               picked.hour,
                               picked.minute,
                               0,
@@ -1810,21 +1890,42 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                     const SizedBox(height: 18),
 
                     // Sound Tone
-                    const Text(
-                      'SOUND TONE',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'SOUND TONE',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF8A8F98),
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                        const Text(
+                          'Tap to audition',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Color(0xFF565A61),
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
                     _buildLinearSegmentedControl<String>(
                       values: const ['alarm', 'chime', 'digital'],
                       selectedValue: selectedTone,
                       labels: const ['Radar', 'Chime', 'Digital'],
-                      onSelected: (val) => setModalState(() => selectedTone = val),
+                      icons: const [
+                        Icons.volume_up_rounded,
+                        Icons.volume_up_rounded,
+                        Icons.volume_up_rounded,
+                      ],
+                      onSelected: (val) {
+                        setModalState(() => selectedTone = val);
+                        _previewTone(val);
+                      },
                     ),
 
                     const SizedBox(height: 18),
