@@ -68,8 +68,8 @@ graph TD
 ### Features
 
 - Loud alarms. The system uses the Android `AlarmManager` and a full-screen intent. The alarm overrides Do Not Disturb and silent mode.
-- Remote control. You can set, snooze, or cancel an alarm from a browser or from a shell script.
-- Recurrence. You can select the days of the week for an alarm that repeats.
+- Remote control. You can set, snooze, or cancel an alarm from a browser at `http://localhost:3000`, or from a shell script with `curl`.
+- Recurrence. You can select the days of the week with the labels `M T W T F S S` for an alarm that repeats.
 - Snooze status. The phone and the dashboard show a SNOOZED badge for a snoozed alarm.
 - Calendar subscription. The backend supplies an RFC 5545 feed at `GET /api/calendar.ics`.
 - No open ports. All traffic goes through a private Tailscale network.
@@ -129,7 +129,7 @@ npm run dev
 | Method | Endpoint | Function |
 | :--- | :--- | :--- |
 | `GET` | `/api/alarms?view=active\|all` | List the active alarms, or all alarms |
-| `POST` | `/api/alarms` | Schedule a new alarm. The body contains `target_time`, `label`, `repeat_days`, `sound_tone`, `ramp_seconds`, and `description` |
+| `POST` | `/api/alarms` | Schedule a new alarm. The body contains these fields: `{ target_time, label, repeat_days, sound_tone, ramp_seconds, description }` |
 | `DELETE` | `/api/alarms/:id` | Cancel an alarm. The backend removes it from the phone with the FCM `CANCEL` message |
 | `POST` | `/api/alarms/:id/silence` | Stop an alarm that is ringing. The backend sends the FCM `DISMISS` message |
 | `POST` | `/api/alarms/:id/state` | Change the state to `pending`, `disabled`, `ringing`, `snoozed`, or `dismissed` |
@@ -235,7 +235,7 @@ The chaos suite examines the operation after these events:
 
 ## Libraries
 
-- [`alarm`](https://pub.dev/packages/alarm) is a Flutter plugin from Gregory Foret. It is the alarm engine of this project. It controls these parts of Android:
+- [`alarm`](https://pub.dev/packages/alarm) is a Flutter plugin from [Gregory Foret](https://github.com/gdelataillade). It is the alarm engine of this project. It controls these parts of Android:
 
   - The exact alarms, through the native `AlarmManager`.
   - The foreground services.
