@@ -699,7 +699,7 @@ A fake `GcalTransport` is injected in tests, so no network and no token are need
   - `type GcalErrorKind = 'auth' | 'rate_limit' | 'permanent' | 'transient' | 'unknown'`
   - `classifyGcalError(err: unknown): GcalErrorKind`
   - `unconfiguredTransport(): GcalTransport`
-  - `interface GcalTransport` (6 methods)
+  - `interface GcalTransport` (5 methods: `ensureSecondaryCalendar`, `insertEvent`, `updateEvent`, `deleteEvent`, `listEventIds`)
   - `class GcalMirror` with `isConfigured()`, `configReason()`, `timeZone()`, `syncAlarm(alarm)`, `ensureCalendar()`, `listEventIds()`, `deleteEventById(id)`, `status()`
 
 - [ ] **Step 1: Write the failing test**
@@ -870,7 +870,10 @@ describe('GcalMirror', () => {
   it('skips a malformed alarm id rather than throwing', async () => {
     const transport = new FakeTransport();
     const mirror = new GcalMirror({ config: CONFIG, transport });
-    await mirror.syncAlarm(alarm({ id: 'not-a-uuid' }));
+    // deriveEventId strips hyphens and accepts base32hex, so 'not-a-uuid'
+    // would be ACCEPTED (-> 'notauuid'). The input must contain a character
+    // outside [0-9a-v]; an underscore qualifies.
+    await mirror.syncAlarm(alarm({ id: 'not_a_uuid' }));
     assert.ok(!transport.calls.some((call) => call.startsWith('insert:')));
     assert.match(mirror.status().last_error ?? '', /cannot derive/i);
   });
@@ -990,7 +993,9 @@ export interface GcalStatus {
 export class GcalMirror {
   private readonly config: GcalConfig | null;
   private readonly transport: GcalTransport;
-  private readonly configReason: string | null;
+  /** Field is `reasonText`, not `configReason` — a field and method of the same
+   *  name collide (TS2300). The public accessor keeps the documented name. */
+  private readonly reasonText: string | null;
   private calendarIdCache: string | null = null;
   private lastSyncAt: string | null = null;
   private lastError: string | null = null;
@@ -1003,7 +1008,7 @@ export class GcalMirror {
   }) {
     this.config = options.config;
     this.transport = options.transport;
-    this.configReason = options.reason ?? null;
+    this.reasonText = options.reason ?? null;
   }
 
   isConfigured(): boolean {
@@ -1011,7 +1016,7 @@ export class GcalMirror {
   }
 
   configReason(): string | null {
-    return this.configReason;
+    return this.reasonText;
   }
 
   timeZone(): string {
@@ -1061,7 +1066,14 @@ export class GcalMirror {
       await this.transport.updateEvent(calendarId, event);
     } catch (err) {
       if (!isStatus(err, 404)) throw err;
-      await this.transport.insertEvent(calendarId, event);
+      // The user deleted the event in Google, so recreate it. A 409 on the
+      // retry means a concurrent writer recreated it first: both reach the
+      // desired end state (the event exists), so treat that as success.
+      try {
+        await this.transport.insertEvent(calendarId, event);
+      } catch (retryErr) {
+        if (!isStatus(retryErr, 409)) throw retryErr;
+      }
     }
   }
 
@@ -1132,7 +1144,7 @@ export class GcalMirror {
       last_sync_at: this.lastSyncAt,
       last_error: this.lastError,
       last_error_at: this.lastErrorAt,
-      reason: this.configReason,
+      reason: this.reasonText,
     };
   }
 }
