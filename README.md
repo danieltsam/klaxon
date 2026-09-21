@@ -138,13 +138,30 @@ receives the actual hardware alarm over FCM.
 `GET /api/calendar/status` reports whether the mirror is configured and healthy, the mirror
 calendar id, and the last sync/error timestamps. It never returns credentials.
 
+**If the stored credential is rejected or expires**, the mirror does not fail silently:
+
+- it logs a loud `[gcal] AUTH FAILED` line, emitted from both the push path and the 15-minute
+  reconcile path — so it appears even when no alarms are being created, which is precisely when a
+  dead credential would otherwise go unnoticed;
+- `GET /api/calendar/status` reports `needs_reauth: true` with `last_error_kind: "auth"`.
+
+Recovery is to re-run `npm run gcal:auth` and copy the new token file. **Alarms keep working
+throughout** — only the calendar mirror pauses.
+
 ### Setup (one-time, manual)
 
 1. Create a GCP project and enable the **Google Calendar API**.
 2. Configure the OAuth consent screen: user type **External**, and set **publishing status =
-   In production**. This is required: in **Testing** status Google issues a refresh token that
-   expires every 7 days, silently breaking sync. Verification is not required for personal use
-   under 100 users.
+   In production**. In **Testing** status Google issues a refresh token that expires after 7 days,
+   so sync stops until you re-consent; publishing removes that limit. Verification is *not* required
+   for personal use under 100 users, but the console gates publishing behind the **Branding** page:
+   app name, support email, a **homepage URL**, a **privacy policy URL**, and an **authorized
+   domain**. (Terms of Service and a logo are only needed for *verification*, not publishing.)
+   If you have no public page on a domain you own, staying in Testing is workable: re-run
+   `npm run gcal:auth` when the credential expires, and the logs and status endpoint will tell you
+   when that is. Two caveats: publishing does not revoke an existing grant, and the 7-day limit is
+   applied when a token is *issued*, so an older credential can outlive the rule that governs a
+   newly issued one.
 3. Confirm the scope classification under **Data Access** uses
    `.../auth/calendar.app.created` (the app only sees calendars it created).
 4. Create an OAuth client of type **Desktop app**; record the client ID and secret.
