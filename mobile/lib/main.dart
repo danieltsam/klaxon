@@ -3394,7 +3394,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       alignment: Alignment.topCenter,
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 900),
-                        reverseDuration: const Duration(milliseconds: 550),
+                        reverseDuration: const Duration(milliseconds: 200),
                         switchInCurve: Curves.elasticOut,
                         switchOutCurve: Curves.easeInCubic,
                         transitionBuilder: (child, animation) {
@@ -3435,7 +3435,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                 key: ValueKey('hero_card_${upcomingHeroAlarm.id}'),
                                 child: Padding(
                                   padding: const EdgeInsets.only(bottom: 24),
-                                  child: _buildUpcomingHeroCard(upcomingHeroAlarm),
+                                  child: _BreathingHeroCard(
+                                    alarm: upcomingHeroAlarm,
+                                    onTap: () => _showAlarmDetailModal(upcomingHeroAlarm),
+                                    bodyBuilder: _buildHeroCardBody,
+                                  ),
                                 ),
                               )
                             : const SizedBox(
@@ -3568,13 +3572,21 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     );
   }
 
-  // Hero Upcoming Alarm Card with rich textured styling & relative countdown
-  Widget _buildUpcomingHeroCard(_AlarmItem alarm) {
+  // Hero Upcoming Alarm Card body. The border color/width and outer glow are
+  // driven by the breathing wrapper's pulsing animation.
+  Widget _buildHeroCardBody({
+    required _AlarmItem alarm,
+    required VoidCallback onTap,
+    required Color borderColor,
+    required double borderWidth,
+    required double glowAlpha,
+    required double glowBlur,
+  }) {
     final formattedTime = _formatTime(alarm.dateTime);
     final countdown = _getRelativeCountdown(alarm.dateTime);
 
     return InkWell(
-      onTap: () => _showAlarmDetailModal(alarm),
+      onTap: onTap,
       borderRadius: BorderRadius.circular(18),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
@@ -3593,13 +3605,17 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                 ],
               ),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0x595E6AD2), width: 1.5),
-              boxShadow: const [
-                BoxShadow(
+              border: Border.all(color: borderColor, width: borderWidth),
+              boxShadow: [
+                const BoxShadow(
                   color: Color(0x66000000),
                   blurRadius: 20,
                   spreadRadius: -2,
                   offset: Offset(0, 8),
+                ),
+                BoxShadow(
+                  color: Color(((glowAlpha * 255).toInt() << 24) | 0x5E6AD2),
+                  blurRadius: glowBlur,
                 ),
               ],
             ),
@@ -3949,6 +3965,74 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           ),
         ],
       ),
+    );
+  }
+}
+
+// Typedef for the hero card body builder: builds the card body with the
+// current pulsing border/glow values from the breathing animation.
+typedef _HeroCardBodyBuilder = Widget Function({
+  required _AlarmItem alarm,
+  required VoidCallback onTap,
+  required Color borderColor,
+  required double borderWidth,
+  required double glowAlpha,
+  required double glowBlur,
+});
+
+// Hero Upcoming Alarm Card with a breathing purple border and pulsing outer
+// glow. Wraps the card body (built by the parent state's _buildHeroCardBody)
+// and drives the border alpha (peak ~60%) plus a subtle glow pulse on a
+// 2400ms cycle.
+class _BreathingHeroCard extends StatefulWidget {
+  final _AlarmItem alarm;
+  final VoidCallback onTap;
+  final _HeroCardBodyBuilder bodyBuilder;
+
+  const _BreathingHeroCard({
+    required this.alarm,
+    required this.onTap,
+    required this.bodyBuilder,
+  });
+
+  @override
+  State<_BreathingHeroCard> createState() => _BreathingHeroCardState();
+}
+
+class _BreathingHeroCardState extends State<_BreathingHeroCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _breathController;
+  late final Animation<double> _breath;
+
+  @override
+  void initState() {
+    super.initState();
+    _breathController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    )..repeat(reverse: true);
+    _breath = CurvedAnimation(
+      parent: _breathController,
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
+  void dispose() {
+    _breathController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final alpha = (0x55 + (0x99 - 0x55) * _breath.value).toInt();
+    return widget.bodyBuilder(
+      alarm: widget.alarm,
+      onTap: widget.onTap,
+      borderColor: Color((alpha << 24) | 0x5E6AD2),
+      borderWidth: 1.5,
+      glowAlpha: 0.10 + 0.10 * _breath.value,
+      glowBlur: 14 + 4 * _breath.value,
     );
   }
 }
