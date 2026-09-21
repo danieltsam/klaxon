@@ -1,218 +1,254 @@
 # Remote Alarm
 
-A personal system to remotely create, update, and dismiss loud, full-screen alarms on my Android phone directly from my laptop or terminal.
+A personal system that makes loud alarms ring on an Android phone. You control the alarms from a computer. You can create, change, and stop an alarm from that computer.
 
-Built with a Fastify (Node.js + TypeScript + SQLite) backend, a Flutter Android client using native `AlarmManager`, and Firebase Cloud Messaging (FCM) high-priority data payloads over a private Tailscale network.
+The system has three parts:
+
+- A backend. It uses Fastify, Node.js, TypeScript, and SQLite.
+- An Android client. It uses Flutter and the native `AlarmManager`.
+- Firebase Cloud Messaging (FCM). It sends high-priority data messages.
+
+All traffic goes through a private Tailscale network.
 
 ---
 
-## Why I Built This
+## Why I built this
 
 I forget things easily.
 
-Standard reminders (Google Calendar, Apple Reminders, Todoist, etc.) just don't work for me:
-- **They are too polite.** A quiet little banner in the notification shade is too easy to ignore or swipe away without doing the task.
-- **DND & battery savers silence them.** Android loves to suppress or delay background notifications when the screen is off or Do Not Disturb is on.
-- **Friction when working.** When I'm locked in at my laptop, stopping to grab my phone, unlock it, and fiddle with the clock app breaks my flow.
+Standard reminders do not work for me. Examples are Google Calendar, Apple Reminders, and Todoist. They have three problems:
 
-I needed **actual alarms** — full-screen, continuous ringtone, overriding silent mode — that I can set, edit, or dismiss straight from my computer (via a web dashboard or a quick `curl` command) without touching my phone.
+- The notification is quiet. You can ignore it. You can clear it, and the task stays undone.
+- Android can hold back the notification. When the screen is off, or when Do Not Disturb is on, the notification can arrive late or not at all.
+- The reminder stops your work. You must find the phone, unlock it, and open the clock app.
 
-### Why not existing apps?
-- **Galarm:** Decent concept, but closed ecosystem, subscription paywalls, and no easy way to hook into my own scripts or terminal.
-- **TickTick:** Great task manager, but its alarms are just standard notification banners, not persistent hardware-level alarms.
-- **notify.sh / Pushover:** One-way notification pushes. They can't schedule native Android `AlarmManager` events or cancel/modify an alarm that's already set.
+I need real alarms. A real alarm uses the full screen. It plays a continuous ringtone. It overrides silent mode. I can set it, change it, or stop it from my computer.
+
+### Why I did not use other apps
+
+- Galarm: The idea is good. The system is closed, and it needs a paid subscription. You cannot connect your own scripts.
+- TickTick: It is a good task manager. Its alarms are only notification banners. They are not hardware alarms.
+- notify.sh and Pushover: These tools send notifications in one direction only. They cannot schedule an Android `AlarmManager` event. They cannot cancel or change an alarm that is already set.
 
 ---
 
-## How It Works
+## How it works
 
 ```mermaid
 graph TD
-    subgraph "Workstation (Laptop)"
-        A[Web Dashboard / CLI]
+    subgraph "Workstation"
+        A[Web dashboard or CLI]
     end
 
-    subgraph "Private Tailscale Mesh"
-        B[Fastify Backend<br/>Node.js + SQLite]
+    subgraph "Private Tailscale network"
+        B[Backend: Node.js and SQLite]
     end
 
-    subgraph "Cloud Dispatch"
-        C[Firebase Cloud Messaging<br/>High-Priority Data Message]
+    subgraph "Cloud"
+        C[Firebase Cloud Messaging]
     end
 
-    subgraph "Android Phone"
-        D[Flutter Background Handler]
-        E[Native AlarmManager<br/>Full-Screen Audio Alarm]
+    subgraph "Android phone"
+        D[Flutter background handler]
+        E[AlarmManager: full-screen alarm]
     end
 
     subgraph "Calendar"
-        F[Google / Apple Calendar<br/>GET /api/calendar.ics]
+        F[Google or Apple Calendar]
     end
 
     A -->|HTTP REST| B
-    B -->|FCM Push| C
-    C -->|Instant Data Payload| D
-    D -->|Schedule| E
-    D -->|Report Status: Ringing/Snoozed/Dismissed| B
-    F -->|Subscribe to Alarms| B
+    B -->|FCM push| C
+    C -->|data message| D
+    D -->|schedule| E
+    D -->|status| B
+    F -->|subscribe| B
 ```
 
-### Key Features for My Workflow
-- **Loud & Intrusive:** Uses Android's `AlarmManager` and full-screen intents. It rings like a morning alarm, bypassing DND and silent mode.
-- **Remote Control:** Set, snooze, or cancel alarms from my browser (`http://localhost:3000`) or automated shell scripts.
-- **Day-of-Week Recurrence:** Select `M T W T F S S` for repeating alarms.
-- **Persistent Snooze Tracking:** Shows an amber `⚡ SNOOZED` badge on both phone and dashboard so I know what's been snoozed.
-- **Calendar Subscription:** Exposes an RFC 5545 feed at `GET /api/calendar.ics` so all my alarms show up on my Google/Apple Calendar.
-- **Zero Open Ports:** Everything communicates over my private Tailscale mesh network.
+### Features
+
+- Loud alarms. The system uses the Android `AlarmManager` and a full-screen intent. The alarm overrides Do Not Disturb and silent mode.
+- Remote control. You can set, snooze, or cancel an alarm from a browser or from a shell script.
+- Recurrence. You can select the days of the week for an alarm that repeats.
+- Snooze status. The phone and the dashboard show a SNOOZED badge for a snoozed alarm.
+- Calendar subscription. The backend supplies an RFC 5545 feed at `GET /api/calendar.ics`.
+- No open ports. All traffic goes through a private Tailscale network.
 
 ---
 
-## Quick Start & Homelab Deployment
+## Setup
 
-### 1. Homelab Deployment (Docker Compose / Tailscale)
+### 1. Homelab deployment (Docker Compose and Tailscale)
 
-Deploying to a personal homelab server (Linux / Proxmox / TrueNAS / Unraid) on a private Tailscale network:
+Do these steps on the homelab server. The server can run Linux, Proxmox, TrueNAS, or Unraid.
 
-```bash
-# 1. Clone repository on homelab server
-git clone https://github.com/danieltsam/remotealarm.git
-cd remotealarm
+1. Clone the repository.
 
-# 2. Place Firebase service-account.json in backend/
-cp /path/to/service-account.json backend/service-account.json
+   ```bash
+   git clone https://github.com/danieltsam/remotealarm.git
+   cd remotealarm
+   ```
 
-# 3. Start via Docker Compose
-docker compose up -d
-```
+2. Copy the Firebase service account file into `backend/`.
 
-The server binds to `0.0.0.0:3000`. On your Tailscale network, access the dashboard at `http://<homelab-tailscale-name>:3000` or `http://<100.x.y.z>:3000`.
+   ```bash
+   cp /path/to/service-account.json backend/service-account.json
+   ```
 
-### 2. Local Development (Node.js)
+3. Start the containers.
+
+   ```bash
+   docker compose up -d
+   ```
+
+The server listens on `0.0.0.0:3000`. To open the dashboard, use the Tailscale name of the server, or its Tailscale address. For example, `http://<homelab-tailscale-name>:3000` or `http://<100.x.y.z>:3000`.
+
+### 2. Local development (Node.js)
+
+To run the backend on the same computer, do these steps:
 
 ```bash
 cd backend
 npm install
-# Place service-account.json in backend/
+# Copy service-account.json into backend/
 npm run dev
 ```
 
-### 3. Mobile Client (Android)
+### 3. Mobile client (Android)
 
-1. Open the Remote Alarm app on Android.
-2. Open **Settings** (slider icon in top bar).
-3. Under **Backend Server URL**, enter your homelab Tailscale address (e.g. `http://homelab:3000` or `http://100.x.y.z:3000`).
-4. Tap **Save**. The app will immediately test connectivity, register its FCM token with battery telemetry, and synchronize alarms.
+1. Open the Remote Alarm app.
+2. Open Settings. Tap the slider icon in the top bar.
+3. Find Backend Server URL. Enter the Tailscale address of the homelab. For example, `http://homelab:3000` or `http://100.x.y.z:3000`.
+4. Tap Save.
+5. The app does three steps. It tests the connection. It sends its FCM token and the battery data to the backend. It synchronizes the alarms.
 
 ---
 
-## API Summary
+## API
 
-| Method | Endpoint | Description |
+| Method | Endpoint | Function |
 | :--- | :--- | :--- |
-| `GET` | `/api/alarms?view=active\|all` | List active or all alarms |
-| `POST` | `/api/alarms` | Schedule new alarm (`{ target_time, label, repeat_days, sound_tone, ramp_seconds, description }`) |
-| `DELETE` | `/api/alarms/:id` | Cancel alarm and remove from phone via FCM `CANCEL` |
-| `POST` | `/api/alarms/:id/silence` | Remotely silence active ringing phone ringer via FCM `DISMISS` |
-| `POST` | `/api/alarms/:id/state` | Update state (`pending`, `disabled`, `ringing`, `snoozed`, `dismissed`) |
-| `GET` | `/api/settings` | Retrieve user preferences (sound tone, ramp seconds, 12h/24h, date formats) |
-| `POST` | `/api/settings` | Update user preferences bidirectionally |
-| `GET` | `/api/calendar.ics` | Live RFC 5545 iCal feed for Google/Apple Calendar |
-| `GET` | `/api/calendar/status` | Google Calendar mirror configuration and sync health |
-| `POST` | `/api/devices/register` | Register phone's FCM token with battery/charging telemetry |
-| `GET` | `/api/devices` | Query connected devices, battery percentage, and charging state |
+| `GET` | `/api/alarms?view=active\|all` | List the active alarms, or all alarms |
+| `POST` | `/api/alarms` | Schedule a new alarm. The body contains `target_time`, `label`, `repeat_days`, `sound_tone`, `ramp_seconds`, and `description` |
+| `DELETE` | `/api/alarms/:id` | Cancel an alarm. The backend removes it from the phone with the FCM `CANCEL` message |
+| `POST` | `/api/alarms/:id/silence` | Stop an alarm that is ringing. The backend sends the FCM `DISMISS` message |
+| `POST` | `/api/alarms/:id/state` | Change the state to `pending`, `disabled`, `ringing`, `snoozed`, or `dismissed` |
+| `GET` | `/api/settings` | Get the user preferences. These are the sound tone, the ramp seconds, the time format, and the date format |
+| `POST` | `/api/settings` | Change the user preferences |
+| `GET` | `/api/calendar.ics` | Get the RFC 5545 iCal feed for Google Calendar or Apple Calendar |
+| `GET` | `/api/calendar/status` | Get the configuration and the sync status of the Google Calendar mirror |
+| `POST` | `/api/devices/register` | Register the FCM token of the phone, with the battery and charging data |
+| `GET` | `/api/devices` | Get the connected devices, the battery level, and the charging state |
 
 ---
 
-## Google Calendar Sync
+## Google Calendar sync
 
-When enabled, every alarm is mirrored into a dedicated **"Remote Alarms"** Google Calendar
-(created automatically if missing), alongside the read-only `GET /api/calendar.ics` subscription
-feed. This gives event-style reminders with real Google notifications, while the phone still
-receives the actual hardware alarm over FCM.
+When you enable this function, the backend copies each alarm into a Google Calendar with the name "Remote Alarms". The backend makes this calendar if it does not exist. The read-only `GET /api/calendar.ics` feed stays available.
 
-> **Remote Alarm is the single source of truth.** Events are pushed from this backend and drift is
-> repaired every 15 minutes. Any edit made directly in Google Calendar (moving, renaming, or
-> deleting an event, or adding a new one) is **overwritten or removed** on the next reconcile.
-> Always make changes through Remote Alarm.
+The mirror gives you event reminders in Google Calendar. The phone receives the hardware alarm through FCM.
 
-`GET /api/calendar/status` reports whether the mirror is configured and healthy, the mirror
-calendar id, and the last sync/error timestamps. It never returns credentials.
+> Remote Alarm is the only source of the data. The backend sends the events, and it repairs differences every 15 minutes. If you change or delete an event directly in Google Calendar, the next repair step overwrites or removes it. Always make your changes in Remote Alarm.
 
-**If the stored credential is rejected or expires**, the mirror does not fail silently:
+`GET /api/calendar/status` shows if the mirror is configured and healthy. It also shows the calendar id, the time of the last sync, and the time of the last error. It never returns the credentials.
 
-- it logs a loud `[gcal] AUTH FAILED` line, emitted from both the push path and the 15-minute
-  reconcile path — so it appears even when no alarms are being created, which is precisely when a
-  dead credential would otherwise go unnoticed;
-- `GET /api/calendar/status` reports `needs_reauth: true` with `last_error_kind: "auth"`.
+If Google rejects the stored credential, or if the credential expires, the mirror does not fail in silence. The system does two things:
 
-Recovery is to re-run `npm run gcal:auth` and copy the new token file. **Alarms keep working
-throughout** — only the calendar mirror pauses.
+- It writes a `[gcal] AUTH FAILED` message to the log. The message comes from the push path and from the 15-minute repair path. Thus the message also appears when you do not make new alarms. That is the time when a dead credential is difficult to find.
+- The `GET /api/calendar/status` endpoint reports `needs_reauth: true` and `last_error_kind: "auth"`.
 
-### Setup (one-time, manual)
+To correct this condition, run `npm run gcal:auth` again. Then copy the new token file. The alarms work during this condition. Only the calendar mirror stops.
 
-1. Create a GCP project and enable the **Google Calendar API**.
-2. Configure the OAuth consent screen: user type **External**, and set **publishing status =
-   In production**. In **Testing** status Google issues a refresh token that expires after 7 days,
-   so sync stops until you re-consent; publishing removes that limit. Verification is *not* required
-   for personal use under 100 users, but the console gates publishing behind the **Branding** page:
-   app name, support email, a **homepage URL**, a **privacy policy URL**, and an **authorized
-   domain**. (Terms of Service and a logo are only needed for *verification*, not publishing.)
-   If you have no public page on a domain you own, staying in Testing is workable: re-run
-   `npm run gcal:auth` when the credential expires, and the logs and status endpoint will tell you
-   when that is. Two caveats: publishing does not revoke an existing grant, and the 7-day limit is
-   applied when a token is *issued*, so an older credential can outlive the rule that governs a
-   newly issued one.
-3. Confirm the scope classification under **Data Access** uses
-   `.../auth/calendar.app.created` (the app only sees calendars it created).
-4. Create an OAuth client of type **Desktop app**; record the client ID and secret.
-5. Add the credentials to `backend/.env` (see `backend/.env.example`), then run
-   `npm run gcal:auth` and copy the written token file (`google-oauth-token.json`, mode `600`) to
-   the homelab data directory.
+### Setup (one time, manual)
 
-The mirror is disabled unless `GCAL_ENABLED=true`; an unconfigured server is a supported no-op.
-`GCAL_TIMEZONE` must be the **phone's** IANA zone (e.g. `Australia/Brisbane`), not the server's —
-it drives recurrence expansion. The container does not need a `TZ` setting for correctness, though
-setting one improves log timestamps.
+1. Make a Google Cloud project. Enable the Google Calendar API.
+2. Configure the OAuth consent screen. Set the user type to External. Set the publishing status to In production.
+   - In Testing status, Google issues a refresh token that expires after 7 days. The sync stops until you agree to the conditions again. The In production status removes this limit.
+   - You do not need verification for personal use with less than 100 users.
+   - The Google Cloud console blocks the In production status until you complete the Branding page. The page needs the app name, the support email address, a homepage URL, a privacy policy URL, and an authorized domain. The Terms of Service URL and the logo are necessary only for verification, not for publishing.
+   - If you have no public page on a domain that you own, you can stay in Testing status. Run `npm run gcal:auth` again when the credential expires. The log and the status endpoint tell you when this is necessary.
+   - Two cautions. First, the In production status does not revoke a credential that already exists. Second, Google applies the 7-day limit when it issues a token. Thus an old credential can live longer than the limit that applies to a new credential.
+3. Examine the scope in the Data Access page. The scope must be `.../auth/calendar.app.created`. The app can see only the calendars that it made.
+4. Make an OAuth client of the type Desktop app. Record the client ID and the client secret.
+5. Put the credentials in `backend/.env`. See `backend/.env.example`. Then run `npm run gcal:auth`, and copy the token file `google-oauth-token.json` to the data directory on the homelab. The file has the mode 600.
+
+The mirror is off until you set `GCAL_ENABLED=true`. A server without this setting is correct and does nothing.
+
+The variable `GCAL_TIMEZONE` must contain the IANA zone of the phone, for example `Australia/Brisbane`. Do not use the zone of the server. This variable controls the expansion of a recurrence. The container does not need a `TZ` setting for correct operation, but a `TZ` setting gives better timestamps in the log.
 
 ---
 
-## Tests & Verification
+## Tests
 
-### 1. Automated Test Suites (CI / Local Offline)
-Run the full in-memory backend suite and mobile Flutter test harness:
+### 1. Automatic test suites
+
+Run this command to start the backend suite and the mobile Flutter suite. The backend suite uses a memory database.
+
 ```bash
 ./run_tests.sh
 ```
-- **Backend (`backend/test/`):** 37 tests across 13 suites verifying REST APIs, iCalendar feeds, state transitions, FCM dispatch payloads, disabled/pending slider states, and isolated in-memory persistence.
-- **Mobile (`mobile/test/`):** 46 tests verifying recurrence calculations, payload sanitization, audio tone mappings, rich text notes storage, reconnection catch-up reconciliation, and offline safety.
 
-### 2. Live Physical Device E2E Verification (via ADB)
-When an Android device is connected via USB:
+- Backend: The directory `backend/test/` contains 37 tests in 13 suites. The tests examine these items:
+
+  - The REST API.
+  - The iCalendar feed.
+  - The state changes.
+  - The FCM payloads.
+  - The slider states.
+  - The memory database.
+
+- Mobile: The directory `mobile/test/` contains 46 tests. The tests examine these items:
+
+  - The recurrence calculations.
+  - The payload data.
+  - The audio tones.
+  - The notes.
+  - The reconnection.
+  - The offline operation.
+
+### 2. Live test on a physical device (ADB)
+
+Connect the Android device with a USB cable. Then run one of these commands:
+
 ```bash
-# Run standalone on-device sync test
+# Only the sync test on the device
 ./scripts/test_live_device_sync.sh
 
-# Or run full suite including device test
+# The full suite, with the device test
 ./run_tests.sh --with-device
 ```
 
-### 3. Chaos Engineering & Fault Injection
-Run the automated hardware chaos suite to test resilience against process death, Doze deep sleep, server connection failures, and poison pill payloads:
+### 3. Chaos test
+
+The chaos suite examines the operation after these events:
+
+- A process stop.
+- A Doze deep sleep.
+- A connection failure.
+- A bad payload.
+
 ```bash
-# Run chaos suite
 ./run_tests.sh --with-chaos
 ```
 
 ---
 
-## Acknowledgements & Core Libraries
+## Libraries
 
-- **[`alarm`](https://pub.dev/packages/alarm)** (Flutter plugin by [Gregory Foret](https://github.com/gdelataillade)): The core hardware-level alarm engine for this project. It reliably manages Android exact alarms via native `AlarmManager`, Android foreground services, CPU wake locks, audio focus management, and full-screen intent launches that override Do Not Disturb (DND) and silent mode.
-- **[Firebase Cloud Messaging (FCM)](https://firebase.google.com/docs/cloud-messaging)**: Powers the instant, high-priority background data synchronization between workstation and phone with zero open inbound ports.
-- **[Fastify](https://fastify.dev/) & [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)**: Powers the fast, local-first backend with WAL mode concurrency and iCalendar RFC 5545 feed generation.
+- [`alarm`](https://pub.dev/packages/alarm) is a Flutter plugin from Gregory Foret. It is the alarm engine of this project. It controls these parts of Android:
+
+  - The exact alarms, through the native `AlarmManager`.
+  - The foreground services.
+  - The CPU wake locks.
+  - The audio focus.
+  - The full-screen intents.
+
+  The full-screen intents override Do Not Disturb and silent mode.
+- [Firebase Cloud Messaging (FCM)](https://firebase.google.com/docs/cloud-messaging) sends the high-priority data between the workstation and the phone. It needs no open inbound port.
+- [Fastify](https://fastify.dev/) and [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) are the backend. They give WAL concurrency and the RFC 5545 feed.
 
 ---
 
-## Features & Roadmap
+## Roadmap
 
-See [docs/ROADMAP.md](file:///Users/dsam/Documents/remotealarm/docs/ROADMAP.md) for full architecture details and future expansions (calendar auto-ingest, mission dismissal challenges, morning TTS briefings).
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the architecture and for the future work. The future work includes automatic calendar input, dismissal tasks, and a spoken morning report.
