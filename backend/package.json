@@ -17,6 +17,7 @@
     "dotenv": "^16.4.7",
     "fastify": "^4.28.1",
     "firebase-admin": "^12.7.0",
+    "googleapis": "^181.0.0",
     "uuid": "^10.0.0"
   },
   "devDependencies": {

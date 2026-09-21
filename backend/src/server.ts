@@ -6,6 +6,10 @@ import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
 import { AlarmRepo, DeviceRepo, SettingsRepo, AlarmRecord, AppSettings } from './db.js';
 import { initFirebase, sendFcmDataMessage, FcmPayload } from './fcm.js';
+import { GcalMirror, unconfiguredTransport } from './gcal.js';
+import { createGcalTransport } from './gcal-google.js';
+import { resolveGcalConfig } from './gcal-config.js';
+import { reconcile } from './gcal-reconcile.js';
 
 dotenv.config();
 
@@ -25,6 +29,44 @@ await app.register(fastifyStatic, {
 
 // Initialize Firebase
 initFirebase();
+
+// Google Calendar mirror. Unconfigured is a supported, silent state: it must
+// never prevent an alarm from being created or delivered (spec §10).
+const gcalResolution = resolveGcalConfig();
+const gcal = new GcalMirror({
+  config: gcalResolution.config,
+  // Build the Google-backed transport ONLY when configured. Constructing it
+  // eagerly would throw on a missing token file, but unconfigured is a normal,
+  // supported state — so we must not touch the token here.
+  transport: gcalResolution.config
+    ? createGcalTransport(gcalResolution.config)
+    : unconfiguredTransport(),
+  reason: gcalResolution.reason,
+});
+
+if (!gcal.isConfigured() && gcalResolution.reason) {
+  console.error(`[gcal] disabled: ${gcalResolution.reason}`);
+} else if (gcal.isConfigured()) {
+  console.log(`[gcal] enabled for timezone ${gcal.timeZone()}`);
+}
+
+const GCAL_PUSH_TIMEOUT_MS = 3_000;
+const GCAL_RECONCILE_INTERVAL_MS = 15 * 60 * 1_000;
+
+/** Time-boxed mirror. Never throws: a Google failure must not affect the caller. */
+export async function mirrorSafely(alarm: AlarmRecord): Promise<void> {
+  if (!gcal.isConfigured()) return;
+  try {
+    await Promise.race([
+      gcal.syncAlarm(alarm),
+      new Promise((_resolve, reject) =>
+        setTimeout(() => reject(new Error('gcal push timed out')), GCAL_PUSH_TIMEOUT_MS)
+      ),
+    ]);
+  } catch (err) {
+    console.error('[gcal] mirror failed:', err instanceof Error ? err.message : err);
+  }
+}
 
 // 0. GET /api/health: Healthcheck and connectivity test
 app.get('/api/health', async (_request, reply) => {
@@ -199,6 +241,8 @@ app.post<{
 
   const dispatchResult = await sendFcmDataMessage('CREATE', fcmPayload);
 
+  await mirrorSafely(newAlarm);
+
   return reply.status(201).send({
     ...newAlarm,
     fcm_dispatch: dispatchResult
@@ -220,6 +264,8 @@ app.delete<{
 
   // Broadcast cancel event
   const dispatchResult = await sendFcmDataMessage('CANCEL', { id });
+
+  await mirrorSafely({ ...existing, status: 'canceled' });
 
   return reply.send({
     success: true,
@@ -244,6 +290,8 @@ app.post<{
 
   // Broadcast remote silence/dismiss event to phone
   const dispatchResult = await sendFcmDataMessage('DISMISS', { id });
+
+  await mirrorSafely({ ...existing, status: 'dismissed' });
 
   return reply.send({
     success: true,
@@ -338,6 +386,8 @@ app.patch<{
   if (updated.repeat_days) fcmPayload.repeat_days = updated.repeat_days;
 
   const dispatchResult = await sendFcmDataMessage('CREATE', fcmPayload);
+
+  await mirrorSafely(updated);
 
   return reply.send({
     ...updated,
@@ -453,6 +503,8 @@ app.post<{
     fcmResult = await sendFcmDataMessage('CREATE', fcmPayload);
   }
 
+  await mirrorSafely({ ...existing, status });
+
   return reply.send({
     success: true,
     id,
@@ -566,6 +618,12 @@ app.post<{
     success: true,
     settings: updated
   });
+});
+
+// 9. GET /api/calendar/status: visibility into the Google Calendar mirror.
+// Reports configuration and sync health only; never credentials (spec §10).
+app.get('/api/calendar/status', async (_request, reply) => {
+  return reply.send(gcal.status());
 });
 
 export { app };
