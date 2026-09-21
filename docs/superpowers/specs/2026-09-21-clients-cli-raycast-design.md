@@ -99,7 +99,20 @@ own bundled Node 22 — core must not depend on Node-24+ APIs.
 - `fcm_dispatch` (`{sent, failed}`) is **omitted entirely** for state transitions to
   `ringing`/`dismissed`/`snoozed`. In Firebase mock mode it reports
   `sent = deviceCount` **while delivering nothing** (`fcm.ts:105-108`).
-- Errors are `{ error: string }`. `404` for unknown ids, `400` for validation.
+- `400` validation errors are `{ error: string }`. **`404` has two different shapes**, verified
+  live: an unknown alarm id returns `{ "error": "Alarm not found" }`, but an unmatched route
+  returns Fastify's default
+  `{ "message": "Route GET:/x not found", "error": "Not Found", "statusCode": 404 }`.
+  Error mapping must therefore read `body.error ?? body.message`, or the useful message is
+  replaced by the useless string `"Not Found"`.
+- Absent optional fields are returned as **explicit `null`**, not omitted — verified:
+  `repeat_days: null`, `description: null`. Null-coercion is mandatory; a
+  `Weekday[] | undefined` type silently receives `null`.
+- `sound_tone` fails open **silently** on create/edit — verified: `"BOGUS"` was stored as
+  `"alarm"` with no error. Client-side validation is the only real guard; the server will
+  not reject a bad tone.
+- `created_at` is SQLite `datetime('now')` format (`"2026-09-21 09:56:15"`), not ISO — do
+  not `Date.parse` it blindly.
 - **No authentication of any kind.** CORS is `origin: true`.
 - `GET /api/devices` returns masked tokens, battery, charging, and a SQLite
   `datetime('now')` timestamp (not ISO).
@@ -215,14 +228,16 @@ export interface Alarm {
   created_at?: string;
 }
 
-export interface CreateAlarmInput {
+export type CreateAlarmInput = {
   label: string;
-  when: string;                 // natural language, parsed by core
   description?: string;
   repeat_days?: Weekday[];
   sound_tone?: SoundTone;
   ramp_seconds?: number;
-}
+} & (
+  | { when: string; targetTime?: never }   // natural language, parsed by core
+  | { targetTime: Date; when?: never }     // absolute local instant, no parsing
+);
 
 export interface FcmDispatch { sent: number; failed: number }
 
@@ -290,8 +305,9 @@ class RemoteAlarmClient {
 ### 5.3 Normalization rules (all at the boundary)
 
 1. **`repeat_days` in:** `Weekday[]` → `"1,2,3,4,5"`. **Out:** comma-string → `Weekday[]`,
-   discarding out-of-range entries. The overloaded wire type is the easiest place to ship a
-   silent bug.
+   discarding out-of-range entries. The wire type is overloaded (`string | number[]`) and
+   **also uses `null` for absent values** — coerce `null` → `undefined` so `null` never
+   reaches the domain type. This is the easiest place to ship a silent bug.
 2. **`target_time` out:** zero seconds and milliseconds before send, mirroring
    `server.ts:150`, so the value we echo to the user is byte-identical to what is stored.
 3. **`target_time` in:** `Alarm.target_time` stays the raw UTC string exactly as returned.
@@ -302,6 +318,14 @@ class RemoteAlarmClient {
 5. **Timeouts:** `AbortSignal.timeout()` on every request (health 4s, writes 8s, reads 10s —
    matching the mobile client). undici's defaults are far too long to fail fast behind a
    hotkey.
+6. **Absolute time input:** `createAlarm`/`updateAlarm` accept either `when` (natural
+   language) or `targetTime` (an absolute local instant). `targetTime` bypasses parsing but
+   goes through the *same* conversion point as parsed times — it must never introduce a
+   second timezone path (§6.5). For create the two are mutually exclusive at compile time
+   (discriminated union); for update, at most one, rejected at runtime. **An empty
+   `repeatDays` must be sent as `undefined`, never `[]`** — sending `[]` turns a one-time
+   alarm into a recurrence. The form-based clients (§8.4) depend on this path, since a
+   `DatePicker` cannot express an arbitrary date as natural language.
 
 ### 5.4 Error handling
 
@@ -314,9 +338,10 @@ class RemoteAlarmNetworkError extends RemoteAlarmError {}  // unreachable / DNS 
 class RemoteAlarmNotFoundError extends RemoteAlarmError {} // 404
 ```
 
-The client **always** surfaces the server's own `error` string rather than replacing it with
-a generic message — the backend's validation messages are specific and useful
-(e.g. `"Missing required fields: target_time and label are required."`).
+The client **always** surfaces the server's own message rather than replacing it with a
+generic one — the backend's validation messages are specific and useful
+(e.g. `"Missing required fields: target_time and label are required."`). Because `404`
+arrives in two shapes (§3.2), the extractor is `body.error ?? body.message ?? fallback`.
 
 `fcm_dispatch` is carried as a **separate, explicitly-untrusted** field. It is never folded
 into a boolean `success`. See §9.
@@ -497,6 +522,14 @@ user-facing half of the §6.5 mitigation — it makes a timezone error obvious b
 mode), `Form.Dropdown` for recurrence and tone, `Form.TextField` for ramp. Validation via
 `useForm` + `FormValidation.Required`.
 
+The `DatePicker` feeds the client's absolute `targetTime` path (§5.3 rule 6), so **any**
+date is selectable. An earlier implementation converted the picked `Date` back into a
+natural-language string and was therefore limited to the next 7 days; that workaround is
+gone. `Quick Create` likewise passes `leading.parsed.targetTime` directly rather than
+re-parsing a re-derived string, and **must forward `parseLeadingTime(...).parsed.repeatDays`
+explicitly** — because `targetTime` bypasses parsing, omitting it would silently downgrade
+`weekdays 7am Walk` to a one-time alarm.
+
 ### 8.5 Preferences
 
 | Preference | Type | Required | Notes |
@@ -626,6 +659,29 @@ round-trip unit test (§11.1), and the mandatory resolved-time echo in both surf
 
 `alarm` is not taken by any default macOS binary, but it is generic. Mitigated by install
 via `npm link` from `clients/cli` (explicit, reversible) rather than a global install.
+
+### 12.6 Duration inputs fire up to 59s early — accepted, inherited
+
+Discovered during implementation verification. `server.ts:150` unconditionally truncates
+seconds (`dateObj.setSeconds(0, 0)`), and the client mirrors it per §5.3 rule 2. For
+**clock** times this is a no-op, but for **duration** inputs it shortens the interval:
+
+```
+alarm 25m  at 10:00:45  ->  10:25:45  ->  truncated to 10:25:00   (45s early)
+alarm 1m   at 10:00:45  ->  10:01:45  ->  truncated to 10:01:00   (15s, not 60s)
+```
+
+The worst case is a short timer firing in a fraction of the requested interval.
+
+**Accepted as-is, deliberately.** No client-side change can fix it — the server truncates
+the value regardless of what is sent. More importantly, the existing mobile app and web
+dashboard have identical behaviour, so patching only the CLI and Raycast would make the
+phone's alarms disagree with the laptop's.
+
+**The correct fix is a backend change:** skip the seconds truncation when `target_time` is
+duration-derived rather than clock-derived. That requires distinguishing the two at the API
+boundary, which is out of scope for this design (§2). Recorded here so the behaviour is a
+known, documented property rather than a silent surprise.
 
 ---
 

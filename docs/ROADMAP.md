@@ -48,5 +48,6 @@ This document tracks implemented features and future enhancements for the Remote
 ### 2.3 Post-Alarm Smart Morning Briefing
 - When alarm is dismissed, text-to-speech (TTS) reads greeting, current weather, and first calendar events.
 
-### 2.4 CLI Companion & Raycast Extension
+### 2.4 CLI Companion & Raycast Extension — IN PROGRESS
 - Rapid terminal command (`alarm 25m "Oven"`) or Raycast extension for zero-friction scheduling without opening the browser.
+- **Design approved** 2026-09-21: [`docs/superpowers/specs/2026-09-21-clients-cli-raycast-design.md`](superpowers/specs/2026-09-21-clients-cli-raycast-design.md). A shared dependency-free core (`clients/core`) with two presentation shells (`clients/cli`, `clients/raycast`). Requires **no backend changes**.

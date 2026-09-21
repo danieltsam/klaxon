@@ -1,0 +1,87 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "remotealarm-raycast",
+  "title": "Remote Alarm",
+  "description": "Create, inspect, edit, silence, and cancel hardware alarms over your Remote Alarm backend.",
+  "icon": "icon.png",
+  "author": "danieltsam",
+  "license": "MIT",
+  "platforms": ["macOS"],
+  "categories": ["Productivity"],
+  "private": true,
+  "commands": [
+    {
+      "name": "list-alarms",
+      "title": "List Alarms",
+      "description": "Browse, search, and act on your alarms.",
+      "mode": "view"
+    },
+    {
+      "name": "quick-create",
+      "title": "Quick Create Alarm",
+      "description": "Create an alarm from one natural-language sentence, with a live time preview.",
+      "mode": "view"
+    },
+    {
+      "name": "create-alarm",
+      "title": "Create Alarm",
+      "description": "Create an alarm with the full precision form.",
+      "mode": "view"
+    },
+    {
+      "name": "edit-alarm",
+      "title": "Edit Alarm",
+      "description": "Edit an existing alarm.",
+      "mode": "view",
+      "arguments": [
+        {
+          "name": "id",
+          "type": "text",
+          "placeholder": "Alarm ID",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "device-status",
+      "title": "Device Status",
+      "description": "Check phone battery, charging state, and last ping age.",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "backendUrl",
+      "type": "textfield",
+      "required": true,
+      "title": "Backend URL",
+      "description": "The URL of your Remote Alarm backend (homelab or Tailscale).",
+      "placeholder": "http://remotealarm.tailnet:3000"
+    },
+    {
+      "name": "confirmDestructive",
+      "type": "checkbox",
+      "required": false,
+      "title": "Confirm destructive actions",
+      "description": "Show a confirmation alert before canceling an alarm.",
+      "label": "Confirm before cancel",
+      "default": true
+    }
+  ],
+  "dependencies": {
+    "@remotealarm/core": "file:../core",
+    "@raycast/api": "^2.4.1",
+    "@raycast/utils": "^2.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.17",
+    "@types/react": "19.0.10",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "ray build -o dist",
+    "dev": "ray develop",
+    "lint": "ray lint",
+    "fix-lint": "ray lint --fix"
+  }
+}

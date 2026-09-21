@@ -8,14 +8,19 @@ echo "Running Remote Alarm Test Suite"
 echo "========================================="
 
 echo ""
-echo "[1/2] Running Backend Tests (Fastify + SQLite Memory + FCM + Sync Contracts)..."
+echo "[1/3] Running Backend Tests (Fastify + SQLite Memory + FCM + Sync Contracts)..."
 cd "$ROOT_DIR/backend"
 npm test
 
 echo ""
-echo "[2/2] Running Mobile Tests (Flutter + Alarm + IdMapper + Reconnection)..."
+echo "[2/3] Running Mobile Tests (Flutter + Alarm + IdMapper + Reconnection)..."
 cd "$ROOT_DIR/mobile"
 flutter test
+
+echo ""
+echo "[3/3] Running Clients Tests (Core API Client + Time Parser + Formatters)..."
+cd "$ROOT_DIR/clients"
+npm test
 
 if [ "$1" == "--with-device" ] || [ "$2" == "--with-device" ]; then
   echo ""

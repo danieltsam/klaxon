@@ -18,6 +18,13 @@ backend/alarms.db-shm
 backend/.env
 backend/service-account.json
 
+# Clients (shared core / CLI / Raycast extension)
+clients/**/dist/
+clients/**/build/
+clients/**/*.tsbuildinfo
+clients/raycast/.raycast/
+clients/raycast/raycast-env.d.ts
+
 # Flutter / Dart
 .dart_tool/
 .flutter-plugins
