@@ -148,8 +148,19 @@ describe('toGoogleEvent', () => {
   });
 
   it('never leaks credentials into any field', () => {
+    // Adversarial fixture: `description` is stuffed with every forbidden word.
+    // The mapper builds the Google description from a fixed set of alarm
+    // fields and must ignore `alarm.description`, so this test would fail if
+    // arbitrary alarm fields were ever copied into the payload.
+    //
+    // `alarm.label` is deliberately NOT poisoned: toGoogleEvent sets
+    // `summary: alarm.label` by design (the user's own event title), so label
+    // text appearing in the payload is not a credential leak.
     const serialized = JSON.stringify(
-      toGoogleEvent(alarm({ description: 'Take minutes' }), TZ)
+      toGoogleEvent(
+        alarm({ description: 'refresh client_id password fcm token secret' }),
+        TZ
+      )
     ).toLowerCase();
     for (const forbidden of ['token', 'secret', 'refresh', 'client_id', 'password', 'fcm']) {
       assert.ok(!serialized.includes(forbidden), `payload leaked "${forbidden}"`);

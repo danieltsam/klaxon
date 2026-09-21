@@ -183,7 +183,7 @@ describe('GcalMirror', () => {
     assert.strictEqual(stored?.value, 'cal-1');
   });
 
-  it('records a failure in status instead of propagating it', async () => {
+  it('records a failure in status and propagates it', async () => {
     const transport = new FakeTransport({ insert: new GcalApiError('boom', 500) });
     const mirror = new GcalMirror({ config: CONFIG, transport });
     await assert.rejects(() => mirror.syncAlarm(alarm()));

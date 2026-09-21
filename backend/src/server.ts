@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
 import { AlarmRepo, DeviceRepo, SettingsRepo, AlarmRecord, AppSettings } from './db.js';
 import { initFirebase, sendFcmDataMessage, FcmPayload } from './fcm.js';
-import { GcalMirror, unconfiguredTransport } from './gcal.js';
+import { GcalMirror, unconfiguredTransport, type GcalTransport } from './gcal.js';
 import { createGcalTransport } from './gcal-google.js';
 import { resolveGcalConfig } from './gcal-config.js';
 import { reconcile } from './gcal-reconcile.js';
@@ -33,19 +33,36 @@ initFirebase();
 // Google Calendar mirror. Unconfigured is a supported, silent state: it must
 // never prevent an alarm from being created or delivered (spec §10).
 const gcalResolution = resolveGcalConfig();
+let gcalConfig = gcalResolution.config;
+let gcalReason = gcalResolution.reason;
+let gcalTransport: GcalTransport;
+
+if (gcalConfig) {
+  try {
+    gcalTransport = createGcalTransport(gcalConfig);
+  } catch (err) {
+    // A missing/unreadable token file is the *normal* state before the owner
+    // runs `npm run gcal:auth`. It must degrade to genuinely unconfigured —
+    // never crash the process, and never claim to be configured while every
+    // call throws. Passing config: null forces isConfigured() to false, so
+    // operations are no-ops and /api/calendar/status honestly reports the
+    // reason (spec §10).
+    gcalReason = `token unavailable: ${err instanceof Error ? err.message : String(err)}`;
+    gcalConfig = null;
+    gcalTransport = unconfiguredTransport();
+  }
+} else {
+  gcalTransport = unconfiguredTransport();
+}
+
 const gcal = new GcalMirror({
-  config: gcalResolution.config,
-  // Build the Google-backed transport ONLY when configured. Constructing it
-  // eagerly would throw on a missing token file, but unconfigured is a normal,
-  // supported state — so we must not touch the token here.
-  transport: gcalResolution.config
-    ? createGcalTransport(gcalResolution.config)
-    : unconfiguredTransport(),
-  reason: gcalResolution.reason,
+  config: gcalConfig,
+  transport: gcalTransport,
+  reason: gcalReason,
 });
 
-if (!gcal.isConfigured() && gcalResolution.reason) {
-  console.error(`[gcal] disabled: ${gcalResolution.reason}`);
+if (!gcal.isConfigured() && gcalReason) {
+  console.error(`[gcal] disabled: ${gcalReason}`);
 } else if (gcal.isConfigured()) {
   console.log(`[gcal] enabled for timezone ${gcal.timeZone()}`);
 }

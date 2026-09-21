@@ -9,7 +9,7 @@
  */
 import { createServer } from 'node:http';
 import { writeFileSync, chmodSync } from 'node:fs';
-import { google } from 'googleapis';
+import { google, Auth } from 'googleapis';
 import dotenv from 'dotenv';
 import { DEFAULT_TOKEN_PATH, GCAL_SCOPE } from '../src/gcal-config.js';
 
@@ -31,10 +31,21 @@ server.listen(0, '127.0.0.1', async () => {
   const redirectUri = `http://127.0.0.1:${address.port}`;
 
   const oauth2 = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+
+  // PKCE (spec §6). The loopback redirect is a public client: any local
+  // process can intercept the authorization code, so we must prove we hold the
+  // matching code_verifier at exchange time. OAuth2 does NOT add PKCE
+  // automatically — do not remove these two lines.
+  const { codeVerifier, codeChallenge } = await oauth2.generateCodeVerifierAsync();
+  if (!codeChallenge) {
+    throw new Error('PKCE code_challenge generation failed');
+  }
   const authUrl = oauth2.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
     scope: [GCAL_SCOPE],
+    code_challenge: codeChallenge,
+    code_challenge_method: Auth.CodeChallengeMethod.S256,
   });
 
   console.log('\n1. Open this URL and grant access:\n');
@@ -49,7 +60,7 @@ server.listen(0, '127.0.0.1', async () => {
       return;
     }
     try {
-      const { tokens } = await oauth2.getToken(code);
+      const { tokens } = await oauth2.getToken({ code, codeVerifier });
       if (!tokens.refresh_token) {
         res.writeHead(500).end('No refresh token returned. Re-run with prompt=consent.');
         console.error('\nNo refresh token returned. Revoke prior access and re-run.');

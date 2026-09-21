@@ -4,8 +4,14 @@ import { GcalApiError, type GcalTransport } from './gcal.js';
 import type { GcalConfig } from './gcal-config.js';
 import type { GoogleEvent } from './gcal-events.js';
 
-/** googleapis surfaces HTTP failures as an error carrying `response.status`. */
-function toApiError(err: unknown, context: string): GcalApiError {
+/**
+ * googleapis surfaces HTTP failures as an error carrying `response.status`.
+ * An existing `GcalApiError` is returned untouched: re-wrapping it would read
+ * a non-existent `response.status` (yielding 0) and double-prefix the message,
+ * destroying the status that `classifyGcalError` relies on.
+ */
+export function toApiError(err: unknown, context: string): GcalApiError {
+  if (err instanceof GcalApiError) return err;
   const status = (err as { response?: { status?: number } })?.response?.status ?? 0;
   const message = err instanceof Error ? err.message : String(err);
   return new GcalApiError(`${context}: ${message}`, status);
