@@ -18,6 +18,29 @@ class BackendClient {
     await prefs.setString(_prefBackendUrlKey, cleanUrl);
   }
 
+  /// Check if the backend is reachable (GET /api/health or GET /api/settings fallback)
+  static Future<bool> checkHealth([String? testUrl]) async {
+    try {
+      final baseUrl = testUrl != null
+          ? (testUrl.trim().endsWith('/') ? testUrl.trim().substring(0, testUrl.trim().length - 1) : testUrl.trim())
+          : await getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/health');
+      final response = await http.get(uri).timeout(const Duration(seconds: 4));
+      if (response.statusCode == 200) return true;
+    } catch (_) {}
+
+    try {
+      final baseUrl = testUrl != null
+          ? (testUrl.trim().endsWith('/') ? testUrl.trim().substring(0, testUrl.trim().length - 1) : testUrl.trim())
+          : await getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/settings');
+      final response = await http.get(uri).timeout(const Duration(seconds: 4));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Register device FCM token with backend along with battery/hardware telemetry
   static Future<bool> registerDeviceToken(
     String token, {
