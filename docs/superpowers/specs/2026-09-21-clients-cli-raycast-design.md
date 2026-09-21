@@ -411,11 +411,18 @@ behaviour the backend is built against.
 local time** before committing (`→ Tue 22 Sep, 7:00am`). A timezone error is then visible
 at creation time rather than at 3am. This echo is a hard requirement, not a nicety.
 
-**Inherited limitation (documented, not fixed):** the backend stores UTC instants and never
-re-derives local time, so a recurring alarm set during one DST offset would drift by an hour
-after a DST transition. **This already affects the existing mobile app and dashboard** — it
-is not introduced here. Fixing it would require a backend change and is out of scope. In a
-no-DST zone the limitation is moot.
+**DST behaviour — verified, correcting an earlier draft of this spec.** The client does *not*
+hold a fixed UTC instant per recurrence. The Android client converts the stored UTC
+`target_time` to **local** (`mobile/lib/services/alarm_service.dart:79` `.toLocal()`), keeps
+only hours/minutes (`:86-94`), and `getNextOccurrence` (`:415`) rebuilds each candidate from
+*local* `year/month/day` plus the stored local `hour`/`minute`, matching on the local
+`weekday`. A recurring alarm is therefore scheduled at a fixed **local wall-clock** time and
+does **not** drift across a DST transition.
+
+An earlier draft of this spec asserted the opposite and recorded it as an inherited
+limitation. That was incorrect and is corrected here so the mistake is not propagated.
+(The backend's `rollTargetTimeToFuture` does reason in UTC, but it is only exercised on a
+`disabled → pending` transition, and the phone re-derives local wall-clock on receipt.)
 
 ---
 
