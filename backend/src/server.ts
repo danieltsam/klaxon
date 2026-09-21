@@ -26,6 +26,11 @@ await app.register(fastifyStatic, {
 // Initialize Firebase
 initFirebase();
 
+// 0. GET /api/health: Healthcheck and connectivity test
+app.get('/api/health', async (_request, reply) => {
+  return reply.send({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // 1. GET /api/alarms: Return alarms filtered by view ('active' | 'history' | 'all')
 app.get<{
   Querystring: { view?: 'active' | 'history' | 'all' }
