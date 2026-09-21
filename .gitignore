@@ -17,6 +17,7 @@ backend/alarms.db-wal
 backend/alarms.db-shm
 backend/.env
 backend/service-account.json
+backend/google-oauth-token.json
 
 # Clients (shared core / CLI / Raycast extension)
 clients/**/dist/

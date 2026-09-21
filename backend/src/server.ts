@@ -640,4 +640,22 @@ if (process.env.NODE_ENV !== 'test') {
     app.log.error(err);
     process.exit(1);
   }
+
+  // Periodic drift repair (spec §9.4). This MUST stay inside the
+  // NODE_ENV !== 'test' guard: it opens a timer and, once configured, makes
+  // outbound Google calls. Under test the guard keeps the suite fast, silent
+  // and offline.
+  if (gcal.isConfigured()) {
+    const runReconcile = () => {
+      reconcile(gcal)
+        .then((result) => {
+          if (result.created || result.deleted || result.failed) {
+            console.log('[gcal] reconcile:', result);
+          }
+        })
+        .catch((err) => console.error('[gcal] reconcile failed:', err));
+    };
+    runReconcile();
+    setInterval(runReconcile, GCAL_RECONCILE_INTERVAL_MS);
+  }
 }

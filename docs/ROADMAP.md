@@ -35,9 +35,14 @@ This document tracks implemented features and future enhancements for the Remote
  
 ## 2. Future Backlog (Roadmap)
 
-### 2.1 Google Calendar Upstream Auto-Ingest
-- A background polling worker inspects the user's primary work/personal calendar via Google Calendar API or CalDAV.
-- Automatically schedules an alarm (e.g. 45 minutes before the first morning meeting) and dispatches it through FCM.
+### 2.1 Google Calendar Auto-Ingest
+- **Export direction — IMPLEMENTED:** alarms mirror out into a dedicated "Remote Alarms" Google
+  Calendar, with push-on-mutation, a 15-minute drift reconcile, and health at
+  `GET /api/calendar/status`. See the **Google Calendar Sync** section in `README.md`.
+- **Ingest direction — BACKLOG:** a background polling worker inspects the user's primary
+  work/personal calendar via Google Calendar API or CalDAV.
+- It would then automatically schedule an alarm (e.g. 45 minutes before the first morning meeting)
+  and dispatch it through FCM.
 
 ### 2.2 Dismissal Challenges ("Mission Alarms")
 - Optional challenges to prevent accidental dismissals:

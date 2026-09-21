@@ -116,9 +116,46 @@ npm run dev
 | `POST` | `/api/alarms/:id/state` | Update state (`pending`, `disabled`, `ringing`, `snoozed`, `dismissed`) |
 | `GET` | `/api/settings` | Retrieve user preferences (sound tone, ramp seconds, 12h/24h, date formats) |
 | `POST` | `/api/settings` | Update user preferences bidirectionally |
-| `GET` | `/ical/feed` | Live RFC 5545 iCal feed for Google/Apple Calendar |
+| `GET` | `/api/calendar.ics` | Live RFC 5545 iCal feed for Google/Apple Calendar |
+| `GET` | `/api/calendar/status` | Google Calendar mirror configuration and sync health |
 | `POST` | `/api/devices/register` | Register phone's FCM token with battery/charging telemetry |
 | `GET` | `/api/devices` | Query connected devices, battery percentage, and charging state |
+
+---
+
+## Google Calendar Sync
+
+When enabled, every alarm is mirrored into a dedicated **"Remote Alarms"** Google Calendar
+(created automatically if missing), alongside the read-only `GET /api/calendar.ics` subscription
+feed. This gives event-style reminders with real Google notifications, while the phone still
+receives the actual hardware alarm over FCM.
+
+> **Remote Alarm is the single source of truth.** Events are pushed from this backend and drift is
+> repaired every 15 minutes. Any edit made directly in Google Calendar (moving, renaming, or
+> deleting an event, or adding a new one) is **overwritten or removed** on the next reconcile.
+> Always make changes through Remote Alarm.
+
+`GET /api/calendar/status` reports whether the mirror is configured and healthy, the mirror
+calendar id, and the last sync/error timestamps. It never returns credentials.
+
+### Setup (one-time, manual)
+
+1. Create a GCP project and enable the **Google Calendar API**.
+2. Configure the OAuth consent screen: user type **External**, and set **publishing status =
+   In production**. This is required: in **Testing** status Google issues a refresh token that
+   expires every 7 days, silently breaking sync. Verification is not required for personal use
+   under 100 users.
+3. Confirm the scope classification under **Data Access** uses
+   `.../auth/calendar.app.created` (the app only sees calendars it created).
+4. Create an OAuth client of type **Desktop app**; record the client ID and secret.
+5. Add the credentials to `backend/.env` (see `backend/.env.example`), then run
+   `npm run gcal:auth` and copy the written token file (`google-oauth-token.json`, mode `600`) to
+   the homelab data directory.
+
+The mirror is disabled unless `GCAL_ENABLED=true`; an unconfigured server is a supported no-op.
+`GCAL_TIMEZONE` must be the **phone's** IANA zone (e.g. `Australia/Brisbane`), not the server's —
+it drives recurrence expansion. The container does not need a `TZ` setting for correctness, though
+setting one improves log timestamps.
 
 ---
 
