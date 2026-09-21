@@ -274,5 +274,31 @@ export const SettingsRepo = {
 
     tx(settings);
     return this.getAll();
-  }
+  },
+
+  /**
+   * Generic accessor for settings that are not part of AppSettings
+   * (e.g. gcal_calendar_id). Kept separate from getAll/update so the typed
+   * preferences path is unaffected.
+   */
+  getRaw(key: string): string | null {
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as
+      | { value: string }
+      | undefined;
+    return row ? row.value : null;
+  },
+
+  setRaw(key: string, value: string): void {
+    db.prepare(`
+      INSERT INTO settings (key, value, updated_at)
+      VALUES (?, ?, datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = datetime('now')
+    `).run(key, value);
+  },
+
+  deleteRaw(key: string): void {
+    db.prepare('DELETE FROM settings WHERE key = ?').run(key);
+  },
 };
