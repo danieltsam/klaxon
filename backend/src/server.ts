@@ -70,6 +70,16 @@ if (!gcal.isConfigured() && gcalReason) {
 const GCAL_PUSH_TIMEOUT_MS = 3_000;
 const GCAL_RECONCILE_INTERVAL_MS = 15 * 60 * 1_000;
 
+/**
+ * A rejected or expired credential stalls the calendar silently, so it gets a
+ * loud, actionable message distinct from a transient Google failure. Both the
+ * push path and the reconcile path emit it: a dead token is most likely to be
+ * discovered during reconciliation, when nobody is creating alarms.
+ */
+const GCAL_AUTH_FAILED_MESSAGE =
+  '[gcal] AUTH FAILED — Google rejected the stored credential. Calendar sync is paused.\n' +
+  '       Re-run `npm run gcal:auth` on a machine with a browser, then copy the token file.';
+
 /** Time-boxed mirror. Never throws: a Google failure must not affect the caller. */
 export async function mirrorSafely(alarm: AlarmRecord): Promise<void> {
   if (!gcal.isConfigured()) return;
@@ -82,12 +92,7 @@ export async function mirrorSafely(alarm: AlarmRecord): Promise<void> {
     ]);
   } catch (err) {
     if (classifyGcalError(err) === 'auth') {
-      // Loud, actionable, and distinct from a transient Google failure: a
-      // rejected/expired credential silently stalls the calendar otherwise.
-      console.error(
-        '[gcal] AUTH FAILED — Google rejected the stored credential. Calendar sync is paused.\n' +
-          '       Re-run `npm run gcal:auth` on a machine with a browser, then copy the token file.'
-      );
+      console.error(GCAL_AUTH_FAILED_MESSAGE);
     } else {
       console.error('[gcal] mirror failed:', err instanceof Error ? err.message : err);
     }
@@ -677,6 +682,13 @@ if (process.env.NODE_ENV !== 'test') {
         .then((result) => {
           if (result.created || result.deleted || result.failed) {
             console.log('[gcal] reconcile:', result);
+          }
+          // reconcile() catches its own errors, so a credential failure here
+          // never reaches mirrorSafely's handler. Without this check a dead
+          // token would surface only as an unexplained `failed: 1` each
+          // interval — which is the state nobody is watching for.
+          if (result.failed > 0 && gcal.status().needs_reauth) {
+            console.error(GCAL_AUTH_FAILED_MESSAGE);
           }
         })
         .catch((err) => console.error('[gcal] reconcile failed:', err));
