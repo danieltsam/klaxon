@@ -8,7 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "NODE_ENV=test DB_PATH=:memory: tsx --test test/**/*.test.ts",
+    "test": "NODE_ENV=test DB_PATH=:memory: GCAL_ENABLED=false tsx --test test/**/*.test.ts",
     "gcal:auth": "tsx scripts/gcal-auth.ts"
   },
   "dependencies": {

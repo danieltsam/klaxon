@@ -83,6 +83,21 @@ const GCAL_AUTH_FAILED_MESSAGE =
 /** Time-boxed mirror. Never throws: a Google failure must not affect the caller. */
 export async function mirrorSafely(alarm: AlarmRecord): Promise<void> {
   if (!gcal.isConfigured()) return;
+
+  // Tests must never write to a real Google account.
+  //
+  // dotenv loads backend/.env into test processes, so a developer with real
+  // credentials in .env resolves a LIVE gcal config. A :memory: database never
+  // holds a gcal_calendar_id, so an unguarded push calls calendars.insert and
+  // creates a real calendar -- once per test file. That happened: 20 stray
+  // "Remote Alarms" calendars.
+  //
+  // The reconcile scheduler is guarded the same way, for the same reason.
+  // GCAL_ENABLED=false in the test script stops this at the config layer; this
+  // guard stops it at the call site, so a test that opts into live config still
+  // cannot push.
+  if (process.env.NODE_ENV === 'test') return;
+
   try {
     await Promise.race([
       gcal.syncAlarm(alarm),
