@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
 import { AlarmRepo, DeviceRepo, SettingsRepo, AlarmRecord, AppSettings } from './db.js';
 import { initFirebase, sendFcmDataMessage, FcmPayload } from './fcm.js';
-import { GcalMirror, unconfiguredTransport, type GcalTransport } from './gcal.js';
+import { GcalMirror, unconfiguredTransport, classifyGcalError, type GcalTransport } from './gcal.js';
 import { createGcalTransport } from './gcal-google.js';
 import { resolveGcalConfig } from './gcal-config.js';
 import { reconcile } from './gcal-reconcile.js';
@@ -81,7 +81,16 @@ export async function mirrorSafely(alarm: AlarmRecord): Promise<void> {
       ),
     ]);
   } catch (err) {
-    console.error('[gcal] mirror failed:', err instanceof Error ? err.message : err);
+    if (classifyGcalError(err) === 'auth') {
+      // Loud, actionable, and distinct from a transient Google failure: a
+      // rejected/expired credential silently stalls the calendar otherwise.
+      console.error(
+        '[gcal] AUTH FAILED — Google rejected the stored credential. Calendar sync is paused.\n' +
+          '       Re-run `npm run gcal:auth` on a machine with a browser, then copy the token file.'
+      );
+    } else {
+      console.error('[gcal] mirror failed:', err instanceof Error ? err.message : err);
+    }
   }
 }
 

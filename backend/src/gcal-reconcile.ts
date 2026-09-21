@@ -35,7 +35,11 @@ export async function reconcile(mirror: GcalMirror): Promise<ReconcileResult> {
   let existing: string[];
   try {
     existing = await mirror.listEventIds();
-  } catch {
+  } catch (err) {
+    // Record it on the mirror too. Swallowing the error here would leave
+    // status() claiming all is well — so a dead credential during a periodic
+    // reconcile would be completely invisible (needs_reauth stays false).
+    mirror.noteError(err);
     result.failed += 1;
     return result;
   }

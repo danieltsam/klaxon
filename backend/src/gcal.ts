@@ -69,6 +69,14 @@ export interface GcalStatus {
   last_error: string | null;
   last_error_at: string | null;
   reason: string | null;
+  /** Classification of the most recent error, or null if none has occurred. */
+  last_error_kind: GcalErrorKind | null;
+  /**
+   * True when the last error classified as 'auth'. A rejected/expired
+   * credential must be loud: without this the mirror silently no-ops and the
+   * calendar goes stale with nothing surfacing (spec §10).
+   */
+  needs_reauth: boolean;
 }
 
 export class GcalMirror {
@@ -79,6 +87,7 @@ export class GcalMirror {
   private lastSyncAt: string | null = null;
   private lastError: string | null = null;
   private lastErrorAt: string | null = null;
+  private lastErrorKind: GcalErrorKind | null = null;
 
   constructor(options: {
     config: GcalConfig | null;
@@ -208,11 +217,22 @@ export class GcalMirror {
     this.lastSyncAt = new Date().toISOString();
     this.lastError = null;
     this.lastErrorAt = null;
+    this.lastErrorKind = null;
   }
 
   private recordError(err: unknown): void {
     this.lastError = err instanceof Error ? err.message : String(err);
     this.lastErrorAt = new Date().toISOString();
+    this.lastErrorKind = classifyGcalError(err);
+  }
+
+  /**
+   * Record an error without throwing. The reconciler catches its own failures
+   * and must still surface them in `status()`; it cannot use `syncAlarm`
+   * (which rethrows) for that.
+   */
+  noteError(err: unknown): void {
+    this.recordError(err);
   }
 
   status(): GcalStatus {
@@ -224,6 +244,8 @@ export class GcalMirror {
       last_error: this.lastError,
       last_error_at: this.lastErrorAt,
       reason: this.reasonText,
+      last_error_kind: this.lastErrorKind,
+      needs_reauth: this.lastErrorKind === 'auth',
     };
   }
 }

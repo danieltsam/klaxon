@@ -2,7 +2,7 @@ import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from '../src/server.js';
 import { db, AlarmRepo } from '../src/db.js';
-import { GcalMirror } from '../src/gcal.js';
+import { GcalApiError, GcalMirror } from '../src/gcal.js';
 import { reconcile } from '../src/gcal-reconcile.js';
 import type { GcalTransport } from '../src/gcal.js';
 import type { GoogleEvent } from '../src/gcal-events.js';
@@ -117,6 +117,20 @@ describe('reconcile', () => {
     assert.deepStrictEqual(result, { created: 0, deleted: 0, failed: 1 });
     assert.deepStrictEqual(transport.inserted, []);
     assert.deepStrictEqual(transport.deleted, []);
+  });
+
+  it('surfaces an auth failure while listing as needs_reauth', async () => {
+    class AuthFailListTransport extends RecordingTransport {
+      override async listEventIds(): Promise<string[]> {
+        throw new GcalApiError('invalid_grant', 401);
+      }
+    }
+    const mirror = new GcalMirror({ config: CONFIG, transport: new AuthFailListTransport([]) });
+    const result = await reconcile(mirror);
+    assert.deepStrictEqual(result, { created: 0, deleted: 0, failed: 1 });
+    // Before the fix the swallowed list error left status() looking healthy.
+    assert.strictEqual(mirror.status().needs_reauth, true);
+    assert.strictEqual(mirror.status().last_error_kind, 'auth');
   });
 
   it('continues to the next alarm when syncing one fails', async () => {

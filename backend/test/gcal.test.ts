@@ -191,6 +191,38 @@ describe('GcalMirror', () => {
     assert.match(mirror.status().last_error ?? '', /boom/);
   });
 
+  it('flags needs_reauth when the failure is an auth failure', async () => {
+    const transport = new FakeTransport({ insert: new GcalApiError('invalid_grant', 401) });
+    const mirror = new GcalMirror({ config: CONFIG, transport });
+    await assert.rejects(() => mirror.syncAlarm(alarm()));
+    assert.strictEqual(mirror.status().needs_reauth, true);
+    assert.strictEqual(mirror.status().last_error_kind, 'auth');
+  });
+
+  it('does not flag needs_reauth for a non-auth failure', async () => {
+    const transport = new FakeTransport({ insert: new GcalApiError('boom', 500) });
+    const mirror = new GcalMirror({ config: CONFIG, transport });
+    await assert.rejects(() => mirror.syncAlarm(alarm()));
+    assert.strictEqual(mirror.status().needs_reauth, false);
+    assert.strictEqual(mirror.status().last_error_kind, 'transient');
+  });
+
+  it('clears needs_reauth after a later successful sync', async () => {
+    const mirror = new GcalMirror({ config: CONFIG, transport: new FakeTransport() });
+    // Nothing has failed yet.
+    assert.strictEqual(mirror.status().needs_reauth, false);
+    assert.strictEqual(mirror.status().last_error_kind, null);
+    // noteError records without throwing (the reconciler's path).
+    mirror.noteError(new GcalApiError('invalid_grant', 401));
+    assert.strictEqual(mirror.status().needs_reauth, true);
+    assert.strictEqual(mirror.status().last_error_kind, 'auth');
+    // A later success resets the flags.
+    await mirror.syncAlarm(alarm());
+    assert.strictEqual(mirror.status().needs_reauth, false);
+    assert.strictEqual(mirror.status().last_error_kind, null);
+    assert.strictEqual(mirror.status().last_error, null);
+  });
+
   it('isStatus only matches GcalApiError', () => {
     assert.ok(isStatus(new GcalApiError('x', 409), 409));
     assert.ok(!isStatus(new Error('409'), 409));
