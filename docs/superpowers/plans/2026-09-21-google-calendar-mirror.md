@@ -707,7 +707,7 @@ A fake `GcalTransport` is injected in tests, so no network and no token are need
 Create `backend/test/gcal.test.ts`:
 
 ```ts
-import { describe, it, beforeEach, after } from 'node:test';
+import { describe, it, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from '../src/server.js';
 import { db } from '../src/db.js';
@@ -786,6 +786,9 @@ describe('gcal error classification', () => {
 });
 
 describe('GcalMirror', () => {
+  before(async () => {
+    await app.ready();
+  });
   beforeEach(() => {
     db.prepare("DELETE FROM settings WHERE key LIKE 'gcal_%'").run();
   });
@@ -872,16 +875,18 @@ describe('GcalMirror', () => {
     assert.match(mirror.status().last_error ?? '', /cannot derive/i);
   });
 
-  it('caches the calendar id in settings and does not re-create it', async () => {
+  it('persists the calendar id so a later run does not create a second calendar', async () => {
     const transport = new FakeTransport();
     await new GcalMirror({ config: CONFIG, transport }).syncAlarm(alarm());
+    // A second, fresh mirror (as after a process restart) must reuse the
+    // stored id rather than calling calendars.insert a second time.
     await new GcalMirror({ config: CONFIG, transport }).syncAlarm(alarm());
     const ensureCalls = transport.calls.filter((call) => call === 'ensureCalendar').length;
-    assert.strictEqual(ensureCalls, 2); // transport still asked...
+    assert.strictEqual(ensureCalls, 1);
     const stored = db.prepare("SELECT value FROM settings WHERE key = 'gcal_calendar_id'").get() as
       | { value: string }
       | undefined;
-    assert.strictEqual(stored?.value, 'cal-1'); // ...but the id is persisted
+    assert.strictEqual(stored?.value, 'cal-1');
   });
 
   it('records a failure in status instead of propagating it', async () => {
@@ -1067,6 +1072,13 @@ export class GcalMirror {
       if (isStatus(err, 404) || isStatus(err, 410)) return; // already gone
       throw err;
     }
+  }
+
+  /** Delete an event by id. Used by the reconciler for orphans (Task 5). */
+  async deleteEventById(eventId: string): Promise<void> {
+    if (!this.config) return;
+    const calendarId = await this.ensureCalendar();
+    await this.removeEvent(calendarId, eventId);
   }
 
   /**
@@ -1329,16 +1341,8 @@ export async function reconcile(mirror: GcalMirror): Promise<ReconcileResult> {
 }
 ```
 
-`GcalMirror` needs one more public method for this. Add to `backend/src/gcal.ts`, after `removeEvent`:
-
-```ts
-  /** Delete an event by id. Used by the reconciler for orphans. */
-  async deleteEventById(eventId: string): Promise<void> {
-    if (!this.config) return;
-    const calendarId = await this.ensureCalendar();
-    await this.removeEvent(calendarId, eventId);
-  }
-```
+`GcalMirror.deleteEventById` is already present from Task 4 Step 3 — do not re-add it. If it is
+missing, the Task 4 implementation was incomplete; add it there rather than here.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -1858,11 +1862,11 @@ one open item is a *verification instruction*, not a placeholder: the `googleapi
 objects (keep the documented wire shape, add one narrow documented cast) and what not to do
 (change the payload).
 
-**3. Type consistency** — `GcalTransport` has six methods; the fakes in Task 4 and Task 5
-implement all six. `GcalMirror.deleteEventById` added in Task 5 is used by Task 5's reconciler
-and defined in Task 5 Step 3. `GcalStatus` fields match the Task 6 test's assertions.
-`deriveEventId`, `toGoogleEvent`, `actionForStatus`, `reconcile`, `mirrorSafely` names are used
-identically across tasks.
+**3. Type consistency** — `GcalTransport` has five methods; the fakes in Task 4 and Task 5
+implement all five. `GcalMirror.deleteEventById` is defined in Task 4 Step 3 and consumed by
+Task 5's reconciler. `GcalStatus` fields match the Task 6 test's assertions. `deriveEventId`,
+`toGoogleEvent`, `actionForStatus`, `reconcile`, `mirrorSafely` names are used identically
+across tasks.
 
 **4. Review Focus** — each of the five lines has an owning test: (1) Task 2's DST-boundary and
 `recurrence` tests; (2) Task 4's malformed-id test; (3) Task 4's 409/404 fallback tests;
