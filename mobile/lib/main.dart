@@ -361,6 +361,17 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     }
   }
 
+  Future<bool> _runConnectionTest(String url) async {
+    final stopwatch = Stopwatch()..start();
+    final ok = await BackendClient.checkHealth(url);
+    final elapsed = stopwatch.elapsed;
+    const minDuration = Duration(milliseconds: 300);
+    if (elapsed < minDuration) {
+      await Future.delayed(minDuration - elapsed);
+    }
+    return ok;
+  }
+
   void _showBackendConnectionModal() {
     final controller = TextEditingController(text: _backendUrl);
     bool isTesting = false;
@@ -574,19 +585,40 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                     isTesting = true;
                                     testResult = 'Testing connection...';
                                   });
-                                  final ok = await BackendClient.checkHealth(controller.text.trim());
-                                  setModalState(() {
-                                    isTesting = false;
-                                    testSuccess = ok;
-                                    testResult = ok
-                                        ? '✓ Reachable (HTTP 200 OK)'
-                                        : '✕ Unreachable: verify URL or adb reverse';
-                                  });
+                                  final ok = await _runConnectionTest(controller.text.trim());
+                                  if (builderCtx.mounted) {
+                                    setModalState(() {
+                                      isTesting = false;
+                                      testSuccess = ok;
+                                      testResult = ok
+                                          ? '✓ Reachable (HTTP 200 OK)'
+                                          : '✕ Unreachable: verify URL or adb reverse';
+                                    });
+                                  }
                                 },
-                          child: Text(
-                            isTesting ? 'Testing...' : 'Test Connection',
-                            style: const TextStyle(fontSize: 12, color: Color(0xFFF7F8F8)),
-                          ),
+                          child: isTesting
+                              ? Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFF7F8F8)),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'Testing...',
+                                      style: TextStyle(fontSize: 12, color: Color(0xFFF7F8F8)),
+                                    ),
+                                  ],
+                                )
+                              : const Text(
+                                  'Test Connection',
+                                  style: TextStyle(fontSize: 12, color: Color(0xFFF7F8F8)),
+                                ),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -2268,6 +2300,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   // SETTINGS & CONFIGURATION MODAL
   void _showSettingsModal() {
     final controller = TextEditingController(text: _backendUrl);
+    bool isTesting = false;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2534,12 +2567,40 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                               side: const BorderSide(color: Color(0xFF26282E)),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             ),
-                            onPressed: () async {
-                              final testUrl = controller.text.trim();
-                              final ok = await BackendClient.checkHealth(testUrl);
-                              _showToast(ok ? '✓ Backend Reachable (200 OK)' : '✕ Cannot reach $testUrl');
-                            },
-                            child: const Text('Test', style: TextStyle(fontSize: 13)),
+                            onPressed: isTesting
+                                ? null
+                                : () async {
+                                    setModalState(() => isTesting = true);
+                                    final testUrl = controller.text.trim();
+                                    final ok = await _runConnectionTest(testUrl);
+                                    if (bottomSheetContext.mounted) {
+                                      setModalState(() => isTesting = false);
+                                    }
+                                    _showToast(ok ? '✓ Backend Reachable (200 OK)' : '✕ Cannot reach $testUrl');
+                                  },
+                            child: isTesting
+                                ? Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFF7F8F8)),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Text(
+                                        'Testing...',
+                                        style: TextStyle(fontSize: 13, color: Color(0xFFF7F8F8)),
+                                      ),
+                                    ],
+                                  )
+                                : const Text(
+                                    'Test',
+                                    style: TextStyle(fontSize: 13, color: Color(0xFFF7F8F8)),
+                                  ),
                           ),
                         ),
                         const SizedBox(width: 8),
