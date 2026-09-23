@@ -62,6 +62,7 @@ export default function ListAlarmsCommand() {
 
   const hasAlarms =
     groups.ringing.length > 0 ||
+    groups.missed.length > 0 ||
     groups.today.length > 0 ||
     groups.upcoming.length > 0 ||
     groups.recurring.length > 0;
@@ -119,6 +120,21 @@ export default function ListAlarmsCommand() {
               />
             ))}
           </List.Section>
+          {groups.missed.length > 0 && (
+            <List.Section title="Missed" subtitle={`${groups.missed.length}`}>
+              {groups.missed.map((alarm) => (
+                <AlarmItem
+                  key={alarm.id}
+                  alarm={alarm}
+                  now={now}
+                  summary={summary}
+                  client={client}
+                  onChange={revalidate}
+                  confirmDestructive={prefs.confirmDestructive}
+                />
+              ))}
+            </List.Section>
+          )}
           <List.Section title="Today" subtitle={`${groups.today.length}`}>
             {groups.today.map((alarm) => (
               <AlarmItem
@@ -198,14 +214,16 @@ function AlarmItem({
               }}
             />
           )}
-          <Action
-            title={alarm.status === "disabled" ? "Enable" : "Disable"}
-            icon={alarm.status === "disabled" ? Icon.Play : Icon.Pause}
-            onAction={async () => {
-              await toggleAlarmState(client, alarm);
-              onChange();
-            }}
-          />
+          {alarm.status !== "missed" && (
+            <Action
+              title={alarm.status === "disabled" ? "Enable" : "Disable"}
+              icon={alarm.status === "disabled" ? Icon.Play : Icon.Pause}
+              onAction={async () => {
+                await toggleAlarmState(client, alarm);
+                onChange();
+              }}
+            />
+          )}
           <Action.Push
             title="Edit Alarm"
             icon={Icon.Pencil}

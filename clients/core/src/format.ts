@@ -5,7 +5,7 @@
  * into a local wall-clock `Date`. Callers must never hand-roll a conversion.
  */
 
-import type { Alarm } from "./types.js";
+import type { Alarm, AlarmStatus } from "./types.js";
 
 const WEEKDAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS_SHORT = [
@@ -31,6 +31,31 @@ const MONTHS_SHORT = [
  */
 export function toLocalDate(alarm: Alarm): Date {
   return new Date(alarm.target_time);
+}
+
+/**
+ * Human-readable status label — the one place a status becomes display text,
+ * so every surface renders a new status the same way.
+ *
+ * `missed` means the alarm's time passed and it never rang, so it will not
+ * ring. Never describe it as delivered, skipped, failed to deliver, or
+ * disabled — nothing was delivered.
+ *
+ * The `Record` is exhaustive on purpose: adding a status to `AlarmStatus`
+ * without a label here is a compile error, not a silent raw token.
+ */
+const STATUS_LABELS: Record<AlarmStatus, string> = {
+  pending: "Pending",
+  ringing: "Ringing",
+  dismissed: "Dismissed",
+  snoozed: "Snoozed",
+  canceled: "Canceled",
+  disabled: "Disabled",
+  missed: "Missed",
+};
+
+export function formatStatus(status: AlarmStatus): string {
+  return STATUS_LABELS[status];
 }
 
 /** 12-hour clock, lower-case meridiem: `7:00am`, `12:00am`, `7:05pm`. */

@@ -14,7 +14,9 @@ export type AlarmStatus =
   | "dismissed"
   | "snoozed"
   | "canceled"
-  | "disabled";
+  | "disabled"
+  /** System-set: the time passed and it never rang, so it will not ring. */
+  | "missed";
 
 export type SoundTone = "alarm" | "chime" | "digital";
 
@@ -64,8 +66,12 @@ export interface AlarmMutationResult {
   dispatch?: FcmDispatch;
 }
 
-/** `POST /api/alarms/:id/state` accepts a strict subset — `canceled` is rejected (400). */
-export type SetStateStatus = Exclude<AlarmStatus, "canceled">;
+/**
+ * `POST /api/alarms/:id/state` accepts a strict subset — `canceled` is rejected
+ * (400), and the system-set `missed` is rejected the same way. A client can
+ * never declare its own alarm missed.
+ */
+export type SetStateStatus = Exclude<AlarmStatus, "canceled" | "missed">;
 
 export interface UpdateAlarmInput {
   /** Natural language; re-parsed by core. At most one of `when`/`targetTime`. */

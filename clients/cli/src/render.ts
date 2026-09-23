@@ -8,6 +8,7 @@
 import {
   formatAlarm,
   formatRelative,
+  formatStatus,
   toLocalDate,
   type Alarm,
   type AlarmStatus,
@@ -75,17 +76,21 @@ export function parseSqliteUtc(value: string): Date | null {
 function statusStyle(status: AlarmStatus, palette: Palette): string {
   switch (status) {
     case "ringing":
-      return palette.red(status);
+      return palette.red(formatStatus(status));
     case "pending":
-      return palette.green(status);
+      return palette.green(formatStatus(status));
     case "snoozed":
-      return palette.yellow(status);
+      return palette.yellow(formatStatus(status));
     case "disabled":
     case "canceled":
     case "dismissed":
-      return palette.dim(status);
+      return palette.dim(formatStatus(status));
+    case "missed":
+      // Time passed and it never rang, so it will not ring. Not a live alarm,
+      // but a failure worth noticing rather than dimming away.
+      return palette.yellow(formatStatus(status));
     default:
-      return status;
+      return formatStatus(status);
   }
 }
 
@@ -179,7 +184,7 @@ export function renderAlarmTable(alarms: Alarm[], now: Date, palette: Palette): 
       header: "REL",
       values: alarms.map((a) => (hasValidTarget(a) ? formatRelative(now, toLocalDate(a)) : "—")),
     },
-    { header: "STATUS", values: alarms.map((a) => a.status) },
+    { header: "STATUS", values: alarms.map((a) => formatStatus(a.status)) },
     {
       header: "REPEAT",
       values: alarms.map((a) => formatRepeatDays(a.repeat_days) ?? "one-time"),

@@ -26,6 +26,7 @@ import {
   formatInterpretation,
   formatLocal,
   formatRelative,
+  formatStatus,
   RemoteAlarmClient,
   RemoteAlarmError,
   toLocalDate,
@@ -158,6 +159,10 @@ export function iconForStatus(status: Alarm["status"]): { source: Icon; tintColo
       return { source: Icon.XMarkCircle, tintColor: Color.SecondaryText };
     case "dismissed":
       return { source: Icon.CheckCircle, tintColor: Color.SecondaryText };
+    case "missed":
+      // Time passed and it never rang, so it will not ring. A failure, not a
+      // live alarm and not a quiet end — flagged rather than dimmed.
+      return { source: Icon.ExclamationMark, tintColor: Color.Orange };
     case "pending":
     default:
       return { source: Icon.Clock, tintColor: Color.Blue };
@@ -168,6 +173,16 @@ export function alarmAccessories(alarm: Alarm, now: Date) {
   const local = toLocalDate(alarm);
   if (alarm.status === "ringing") {
     return [{ icon: Icon.Bell, text: "Ringing", tooltip: "Ringing now" }];
+  }
+  if (alarm.status === "missed") {
+    // Not live: the time passed and it never rang, so it will not ring.
+    return [
+      {
+        icon: Icon.ExclamationMark,
+        text: "Missed",
+        tooltip: "The alarm's time passed and it never rang — it will not ring",
+      },
+    ];
   }
   if (alarm.repeat_days && alarm.repeat_days.length > 0) {
     return [
@@ -235,6 +250,12 @@ export function showWarning(message: string) {
 }
 
 export async function toggleAlarmState(client: RemoteAlarmClient, alarm: Alarm) {
+  if (alarm.status === "missed") {
+    // A missed alarm's time is in the past, so enabling it would arm a stale
+    // alarm. It must be rescheduled instead; never treat it as live.
+    await showWarning("This alarm was missed. Set a new time to reschedule it.");
+    return;
+  }
   const next = alarm.status === "disabled" ? "pending" : "disabled";
   const result = await client.setState(alarm.id, next);
   await showDispatchToast(result, next === "pending" ? "Enabled" : "Disabled");
@@ -311,7 +332,7 @@ export function AlarmDetail({
         <List.Item.Detail.Metadata>
           <List.Item.Detail.Metadata.Label
             title="Status"
-            text={alarm.status}
+            text={formatStatus(alarm.status)}
             icon={iconForStatus(alarm.status)}
           />
           <List.Item.Detail.Metadata.Label
@@ -356,6 +377,7 @@ export function AlarmDetail({
 
 export function groupAlarms(alarms: Alarm[], now: Date) {
   const ringing: Alarm[] = [];
+  const missed: Alarm[] = [];
   const recurring: Alarm[] = [];
   const today: Alarm[] = [];
   const upcoming: Alarm[] = [];
@@ -363,6 +385,12 @@ export function groupAlarms(alarms: Alarm[], now: Date) {
   for (const alarm of alarms) {
     if (alarm.status === "ringing") {
       ringing.push(alarm);
+      continue;
+    }
+    if (alarm.status === "missed") {
+      // Never live: its time passed without ringing, so it must not fall into
+      // Today/Upcoming as if it were still going to fire.
+      missed.push(alarm);
       continue;
     }
     if (alarm.repeat_days && alarm.repeat_days.length > 0) {
@@ -380,6 +408,7 @@ export function groupAlarms(alarms: Alarm[], now: Date) {
   const byTime = (a: Alarm, b: Alarm) => toLocalDate(a).getTime() - toLocalDate(b).getTime();
   return {
     ringing: ringing.sort(byTime),
+    missed: missed.sort(byTime),
     recurring: recurring.sort(byTime),
     today: today.sort(byTime),
     upcoming: upcoming.sort(byTime),
