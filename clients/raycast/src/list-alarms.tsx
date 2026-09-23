@@ -39,6 +39,16 @@ export default function ListAlarmsCommand() {
     revalidate,
   } = useFetch<Alarm[]>(async () => client.listAlarms("active"), { execute: true });
 
+  // `missed` is excluded from `view=active` by design — the phone must never
+  // treat one as something to arm — and included in `view=all`. Read it
+  // separately and keep only the missed rows: `all` also returns dismissed and
+  // disabled alarms, which must not leak into the live groups below.
+  const {
+    data: allAlarms,
+    isLoading: allAlarmsLoading,
+    revalidate: revalidateAll,
+  } = useFetch<Alarm[]>(async () => client.listAlarms("all"), { execute: true });
+
   const {
     data: devices,
     isLoading: devicesLoading,
@@ -49,15 +59,20 @@ export default function ListAlarmsCommand() {
   useEffect(() => {
     const interval = setInterval(() => {
       revalidate();
+      revalidateAll();
       revalidateDevices();
     }, 10000);
     return () => clearInterval(interval);
-  }, [revalidate, revalidateDevices]);
+  }, [revalidate, revalidateAll, revalidateDevices]);
 
   const now = new Date();
   const summary = summarizeDevices(devices);
-  const groups = groupAlarms(alarms ?? [], now);
-  const isLoading = alarmsLoading || devicesLoading;
+  const missedAlarms = (allAlarms ?? []).filter((alarm) => alarm.status === "missed");
+  // The active fetch already excludes missed, so this is a merge, not a dedupe.
+  const groups = groupAlarms([...(alarms ?? []), ...missedAlarms], now);
+  const isLoading = alarmsLoading || allAlarmsLoading || devicesLoading;
+  // A failed `all` read is best-effort: the active list is the primary view and
+  // must not be replaced by an error screen just because the missed read failed.
   const error = alarmsError ?? devicesError;
 
   const hasAlarms =
