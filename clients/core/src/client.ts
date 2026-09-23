@@ -146,6 +146,12 @@ export function normalizeAlarm(payload: Record<string, unknown>): Alarm {
   const createdAt = asString(payload.created_at);
   if (createdAt !== undefined) alarm.created_at = createdAt;
 
+  const missedAt = asString(payload.missed_at);
+  if (missedAt !== undefined) alarm.missed_at = missedAt;
+
+  const missedReason = asString(payload.missed_reason);
+  if (missedReason !== undefined) alarm.missed_reason = missedReason;
+
   return alarm;
 }
 

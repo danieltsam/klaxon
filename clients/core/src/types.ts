@@ -18,6 +18,18 @@ export type AlarmStatus =
   /** System-set: the time passed and it never rang, so it will not ring. */
   | "missed";
 
+/**
+ * The closed vocabulary of `missed_reason` (spec §7). Both producers — the
+ * backend sweep and the device report — use one of these six values.
+ */
+export type MissedReason =
+  | "no_device_registered"
+  | "delivery_failed"
+  | "dispatched_not_reported"
+  | "device_reported_stale"
+  | "device_reported_failed"
+  | "unknown";
+
 export type SoundTone = "alarm" | "chime" | "digital";
 
 /** 1 = Monday … 7 = Sunday (ISO-8601 weekday numbering). */
@@ -35,6 +47,15 @@ export interface Alarm {
   sound_tone?: SoundTone;
   ramp_seconds?: number;
   created_at?: string;
+  /** ISO-8601 UTC — when the alarm was declared missed. */
+  missed_at?: string;
+  /**
+   * Why the alarm was missed. The six `MissedReason` values are the closed
+   * vocabulary from spec §7. The open tail admits a value a newer backend adds
+   * without dropping it (auditability) or crashing a client; `formatMissedReason`
+   * renders any unrecognised value from its raw token.
+   */
+  missed_reason?: MissedReason | (string & {});
 }
 
 /**

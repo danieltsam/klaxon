@@ -5,7 +5,7 @@
  * into a local wall-clock `Date`. Callers must never hand-roll a conversion.
  */
 
-import type { Alarm, AlarmStatus } from "./types.js";
+import type { Alarm, AlarmStatus, MissedReason } from "./types.js";
 
 const WEEKDAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS_SHORT = [
@@ -59,6 +59,30 @@ const STATUS_LABELS: Record<AlarmStatus, string> = {
 
 export function formatStatus(status: AlarmStatus): string {
   return STATUS_LABELS[status];
+}
+
+/**
+ * Readable, delivery-neutral rendering of `missed_reason` (spec §7).
+ *
+ * `dispatched_not_reported` means the system sent the alarm and the phone never
+ * reported what happened — never that the phone received it. Mock mode reports
+ * `sent > 0` while delivering nothing, so the wording must not overclaim.
+ *
+ * The lookup falls back on purpose: a value from a newer backend renders as
+ * `unrecognised reason (<token>)` rather than crashing or showing `undefined`.
+ */
+const MISSED_REASON_LABELS: Record<MissedReason, string> = {
+  no_device_registered: "no device was registered to receive it",
+  delivery_failed: "the system could not deliver it",
+  dispatched_not_reported:
+    "the system sent it, but the phone never reported what happened",
+  device_reported_stale: "the phone found it already past and did not arm it",
+  device_reported_failed: "the phone tried but could not fire it",
+  unknown: "no reason was recorded",
+};
+
+export function formatMissedReason(reason: string): string {
+  return MISSED_REASON_LABELS[reason as MissedReason] ?? `unrecognised reason (${reason})`;
 }
 
 /** 12-hour clock, lower-case meridiem: `7:00am`, `12:00am`, `7:05pm`. */

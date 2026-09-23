@@ -282,6 +282,74 @@ describe("RemoteAlarmClient — responses and dispatch", () => {
     assert.equal(alarms[0].created_at, undefined);
   });
 
+  it("coerces explicit null missed_at and missed_reason to undefined", async () => {
+    const { fn } = recordingFetch(
+      jsonResponse(200, [
+        {
+          id: "a1",
+          target_time: "2026-09-22T07:00:00.000Z",
+          label: "L",
+          status: "missed",
+          missed_at: null,
+          missed_reason: null,
+        },
+      ])
+    );
+    const client = new RemoteAlarmClient({ baseUrl: "http://h:3000/", fetch: fn });
+
+    const alarms = await client.listAlarms("all");
+
+    assert.equal(alarms[0].missed_at, undefined);
+    assert.equal(alarms[0].missed_reason, undefined);
+    // `null` must not leak into the domain type as an own property.
+    assert.equal("missed_at" in alarms[0], false);
+    assert.equal("missed_reason" in alarms[0], false);
+  });
+
+  it("round-trips missed_at and missed_reason on a complete alarm", async () => {
+    const { fn } = recordingFetch(
+      jsonResponse(200, [
+        {
+          id: "a1",
+          target_time: "2026-09-21T20:15:00.000Z",
+          label: "Church",
+          status: "missed",
+          missed_at: "2026-09-21T20:20:00.000Z",
+          missed_reason: "dispatched_not_reported",
+        },
+      ])
+    );
+    const client = new RemoteAlarmClient({ baseUrl: "http://h:3000/", fetch: fn });
+
+    const alarms = await client.listAlarms("all");
+
+    assert.equal(alarms[0].missed_at, "2026-09-21T20:20:00.000Z");
+    assert.equal(alarms[0].missed_reason, "dispatched_not_reported");
+  });
+
+  it("leaves an alarm with no missed fields unchanged", async () => {
+    const { fn } = recordingFetch(
+      jsonResponse(200, [
+        {
+          id: "a1",
+          target_time: "2026-09-22T07:00:00.000Z",
+          label: "L",
+          status: "pending",
+        },
+      ])
+    );
+    const client = new RemoteAlarmClient({ baseUrl: "http://h:3000/", fetch: fn });
+
+    const alarms = await client.listAlarms();
+
+    assert.deepEqual(alarms[0], {
+      id: "a1",
+      target_time: "2026-09-22T07:00:00.000Z",
+      label: "L",
+      status: "pending",
+    });
+  });
+
   it("discards out-of-range repeat_days entries", async () => {
     const { fn } = recordingFetch(
       jsonResponse(200, [

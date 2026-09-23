@@ -7,6 +7,7 @@
 
 import {
   formatAlarm,
+  formatMissedReason,
   formatRelative,
   formatStatus,
   toLocalDate,
@@ -113,6 +114,20 @@ export function renderAlarmBlock(alarm: Alarm, now: Date, palette: Palette): str
   if (alarm.ramp_seconds !== undefined) meta.push(`ramp ${alarm.ramp_seconds}s`);
   meta.push(formatRepeatDays(alarm.repeat_days) ? `repeat ${formatRepeatDays(alarm.repeat_days)}` : "one-time");
   lines.push(`  ${meta.join(palette.dim(" · "))}`);
+
+  // Audit detail (spec §7): when it was missed and why. Shown only when the
+  // backend recorded it — `--json` carries the raw fields verbatim.
+  if (alarm.missed_at || alarm.missed_reason) {
+    const audit: string[] = ["missed"];
+    if (alarm.missed_at) {
+      const missedAt = new Date(alarm.missed_at);
+      if (!Number.isNaN(missedAt.getTime())) {
+        audit[0] = `missed ${formatRelative(now, missedAt)}`;
+      }
+    }
+    if (alarm.missed_reason) audit.push(formatMissedReason(alarm.missed_reason));
+    lines.push(`  ${palette.yellow(audit.join(" — "))}`);
+  }
 
   if (alarm.description) lines.push(`  ${palette.dim(alarm.description)}`);
   lines.push(`  ${palette.dim(`id ${alarm.id}`)}`);

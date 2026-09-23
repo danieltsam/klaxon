@@ -9,9 +9,10 @@ import {
   formatRelative,
   formatAlarm,
   formatInterpretation,
+  formatMissedReason,
   formatStatus,
 } from "../src/index.js";
-import type { Alarm, AlarmStatus } from "../src/index.js";
+import type { Alarm, AlarmStatus, MissedReason } from "../src/index.js";
 
 function at(y: number, mo: number, d: number, h: number, mi: number): Date {
   return new Date(y, mo - 1, d, h, mi, 0, 0);
@@ -93,6 +94,37 @@ describe("formatAlarm / formatInterpretation", () => {
     const now = at(2026, 9, 21, 17, 20);
     const target = at(2026, 9, 22, 7, 0);
     assert.equal(formatInterpretation(target, now), "Tue 22 Sep, 7:00am (in 13h 40m)");
+  });
+});
+
+describe("formatMissedReason", () => {
+  it("labels every known reason readably", () => {
+    const everyReason: MissedReason[] = [
+      "no_device_registered",
+      "delivery_failed",
+      "dispatched_not_reported",
+      "device_reported_stale",
+      "device_reported_failed",
+      "unknown",
+    ];
+    for (const reason of everyReason) {
+      assert.equal(typeof formatMissedReason(reason), "string");
+      assert.ok(formatMissedReason(reason).length > 0, `${reason} has no label`);
+    }
+  });
+
+  it("does not claim delivery for dispatched_not_reported", () => {
+    const text = formatMissedReason("dispatched_not_reported");
+    assert.match(text, /sent/);
+    assert.match(text, /never reported/);
+    assert.doesNotMatch(text, /received|delivered/i);
+  });
+
+  it("falls back to the raw token for an unrecognised value", () => {
+    assert.equal(
+      formatMissedReason("something_a_newer_backend_added"),
+      "unrecognised reason (something_a_newer_backend_added)"
+    );
   });
 });
 

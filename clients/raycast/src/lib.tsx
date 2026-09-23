@@ -25,6 +25,7 @@ import {
   formatClock,
   formatInterpretation,
   formatLocal,
+  formatMissedReason,
   formatRelative,
   formatStatus,
   RemoteAlarmClient,
@@ -326,6 +327,11 @@ export function AlarmDetail({
   summary: DeviceSummary;
 }) {
   const local = toLocalDate(alarm);
+  const missedAt = alarm.missed_at ? new Date(alarm.missed_at) : null;
+  const missedAtText =
+    missedAt && !Number.isNaN(missedAt.getTime())
+      ? formatLocal(missedAt)
+      : (alarm.missed_at ?? "—");
   return (
     <List.Item.Detail
       metadata={
@@ -355,6 +361,21 @@ export function AlarmDetail({
             title="Created"
             text={alarm.created_at ?? "—"}
           />
+          {alarm.status === "missed" && (
+            <>
+              <List.Item.Detail.Metadata.Label
+                title="Missed"
+                text={missedAtText}
+                icon={{ source: Icon.ExclamationMark, tintColor: Color.Orange }}
+              />
+              <List.Item.Detail.Metadata.Label
+                title="Reason"
+                text={
+                  alarm.missed_reason ? formatMissedReason(alarm.missed_reason) : "—"
+                }
+              />
+            </>
+          )}
           {summary.noDevices && (
             <List.Item.Detail.Metadata.Label
               title="Reachability"
