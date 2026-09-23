@@ -91,6 +91,13 @@ export function zonedDateTime(
 
 function describe(alarm: AlarmRecord): string {
   const lines = [`Alarm ID: ${alarm.id}`];
+  if (alarm.status === 'missed') {
+    // The event is kept and annotated, not deleted: the calendar is where the
+    // owner looks, so a failure that happened must be visible there (spec §9).
+    lines.push('⚠️ MISSED — this alarm did not fire.');
+    if (alarm.missed_at) lines.push(`Missed at: ${alarm.missed_at}`);
+    if (alarm.missed_reason) lines.push(`Reason: ${alarm.missed_reason}`);
+  }
   if (alarm.sound_tone) lines.push(`Tone: ${alarm.sound_tone}`);
   if (alarm.ramp_seconds !== undefined) lines.push(`Ramp: ${alarm.ramp_seconds}s`);
   if (alarm.repeat_days) lines.push(`Repeat: ${alarm.repeat_days}`);
@@ -118,6 +125,8 @@ export function actionForStatus(status: AlarmRecord['status']): GcalAction {
     case 'pending':
     case 'ringing':
     case 'snoozed':
+    case 'missed':
+      // A missed alarm's event is kept and annotated, never deleted (spec §9).
       return 'upsert';
     case 'canceled':
     case 'disabled':

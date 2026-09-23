@@ -4,7 +4,7 @@ import fastifyStatic from '@fastify/static';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
-import { AlarmRepo, DeviceRepo, SettingsRepo, AlarmRecord, AppSettings } from './db.js';
+import { AlarmRepo, DeviceRepo, SettingsRepo, AlarmRecord, AppSettings, db } from './db.js';
 import { initFirebase, sendFcmDataMessage, FcmPayload } from './fcm.js';
 import { GcalMirror, unconfiguredTransport, classifyGcalError, type GcalTransport } from './gcal.js';
 import { createGcalTransport } from './gcal-google.js';
@@ -69,6 +69,107 @@ if (!gcal.isConfigured() && gcalReason) {
 
 const GCAL_PUSH_TIMEOUT_MS = 3_000;
 const GCAL_RECONCILE_INTERVAL_MS = 15 * 60 * 1_000;
+
+/**
+ * Missed-alarm policy (spec §4). A one-time alarm not armed within five
+ * minutes of its time is treated as failed: recorded, never revived, and
+ * visible to the owner. Recurring alarms are unaffected (§2).
+ */
+export const MISSED_GRACE_MS = 5 * 60 * 1_000;
+export const MISSED_SWEEP_INTERVAL_MS = 60 * 1_000;
+
+/**
+ * The reason set is closed (spec §7). Both producers must use one of these six
+ * values so the vocabulary cannot drift apart. `device_reported_*` are set only
+ * by the device report path; the rest are derived by the sweep.
+ */
+export type MissedReason =
+  | 'no_device_registered'
+  | 'delivery_failed'
+  | 'dispatched_not_reported'
+  | 'unknown'
+  | 'device_reported_stale'
+  | 'device_reported_failed';
+
+/** Reasons a device may report. Deliberately a subset of MissedReason. */
+export const DEVICE_MISSED_REASONS: readonly MissedReason[] = [
+  'device_reported_stale',
+  'device_reported_failed',
+];
+
+/** True once the sweep timer is armed. Stays false under NODE_ENV=test. */
+export let missedSweepStarted = false;
+
+/**
+ * Derive the miss reason from the last persisted dispatch outcome (spec §7).
+ *
+ * `sent > 0` is NOT proof of delivery — mock-mode FCM reports `sent =
+ * deviceCount` while delivering nothing (§3) — so the wording is deliberately
+ * `dispatched_not_reported`, never "delivered".
+ */
+export function deriveMissedReason(
+  alarm: Pick<AlarmRecord, 'last_dispatch_sent' | 'last_dispatch_failed'>
+): MissedReason {
+  const sent = alarm.last_dispatch_sent;
+  const failed = alarm.last_dispatch_failed;
+  if (sent == null && failed == null) return 'unknown';
+  const sentCount = sent ?? 0;
+  const failedCount = failed ?? 0;
+  if (sentCount === 0 && failedCount === 0) return 'no_device_registered';
+  if (failedCount > 0) return 'delivery_failed';
+  if (sentCount > 0) return 'dispatched_not_reported';
+  return 'unknown';
+}
+
+/**
+ * Mark overdue one-time `pending` alarms as `missed` (spec §6.1).
+ *
+ * Purely time-based and cause-agnostic (§4.1). Recurring alarms carry
+ * `repeat_days` — including fortnightly alarms — and are never swept. Every
+ * alarm is handled independently: one bad row must not stall the sweep.
+ */
+export function sweepMissedAlarms(now: Date = new Date()): number {
+  let candidates: AlarmRecord[];
+  try {
+    candidates = db.prepare(`
+      SELECT * FROM alarms
+      WHERE status = 'pending'
+        AND (repeat_days IS NULL OR TRIM(repeat_days) = '')
+    `).all() as AlarmRecord[];
+  } catch (err) {
+    console.error('[sweep] failed to read pending alarms:', err);
+    return 0;
+  }
+
+  const nowMs = now.getTime();
+  const nowIso = now.toISOString();
+  let marked = 0;
+
+  for (const alarm of candidates) {
+    try {
+      const targetMs = new Date(alarm.target_time).getTime();
+      if (isNaN(targetMs)) continue;
+      if (targetMs + MISSED_GRACE_MS >= nowMs) continue;
+
+      const reason = deriveMissedReason(alarm);
+      if (!AlarmRepo.markMissed(alarm.id, reason, nowIso)) continue;
+      marked++;
+
+      // Keep the calendar entry, annotated rather than deleted (spec §9).
+      // mirrorSafely never throws and is a no-op under test.
+      void mirrorSafely({
+        ...alarm,
+        status: 'missed',
+        missed_at: nowIso,
+        missed_reason: reason,
+      });
+    } catch (err) {
+      console.error(`[sweep] failed to mark alarm ${alarm.id} missed:`, err);
+    }
+  }
+
+  return marked;
+}
 
 /**
  * A rejected or expired credential stalls the calendar silently, so it gets a
@@ -323,6 +424,7 @@ app.post<{
   }
 
   const dispatchResult = await sendFcmDataMessage('CREATE', fcmPayload);
+  AlarmRepo.recordDispatch(newAlarm.id, dispatchResult.sent, dispatchResult.failed);
 
   await mirrorSafely(newAlarm);
 
@@ -347,6 +449,7 @@ app.delete<{
 
   // Broadcast cancel event
   const dispatchResult = await sendFcmDataMessage('CANCEL', { id });
+  AlarmRepo.recordDispatch(id, dispatchResult.sent, dispatchResult.failed);
 
   await mirrorSafely({ ...existing, status: 'canceled' });
 
@@ -373,6 +476,7 @@ app.post<{
 
   // Broadcast remote silence/dismiss event to phone
   const dispatchResult = await sendFcmDataMessage('DISMISS', { id });
+  AlarmRepo.recordDispatch(id, dispatchResult.sent, dispatchResult.failed);
 
   await mirrorSafely({ ...existing, status: 'dismissed' });
 
@@ -504,6 +608,7 @@ app.patch<{
   if (updated.repeat_days) fcmPayload.repeat_days = updated.repeat_days;
 
   const dispatchResult = await sendFcmDataMessage('CREATE', fcmPayload);
+  AlarmRepo.recordDispatch(updated.id, dispatchResult.sent, dispatchResult.failed);
 
   await mirrorSafely(updated);
 
@@ -621,6 +726,10 @@ app.post<{
     fcmResult = await sendFcmDataMessage('CREATE', fcmPayload);
   }
 
+  if (fcmResult) {
+    AlarmRepo.recordDispatch(id, fcmResult.sent, fcmResult.failed);
+  }
+
   await mirrorSafely({ ...existing, status });
 
   return reply.send({
@@ -630,6 +739,50 @@ app.post<{
     target_time: effectiveTargetTime,
     fcm_dispatch: fcmResult
   });
+});
+
+// 4b. POST /api/alarms/report-missed: batched device report on reconnect (§6.2).
+// Named with a `report-` prefix so the path can never be read as an `:id`.
+app.post<{
+  Body: { ids?: unknown; reason?: string };
+}>('/api/alarms/report-missed', async (request, reply) => {
+  const { ids, reason } = request.body || {};
+
+  if (!Array.isArray(ids)) {
+    return reply.status(400).send({ error: 'ids must be an array of alarm ids.' });
+  }
+
+  if (!reason || !DEVICE_MISSED_REASONS.includes(reason as MissedReason)) {
+    return reply.status(400).send({
+      error: `Invalid reason. Must be one of: ${DEVICE_MISSED_REASONS.join(', ')}.`
+    });
+  }
+
+  const deviceReason = reason as MissedReason;
+  const now = new Date().toISOString();
+  let updated = 0;
+
+  // A device report must never 500: unknown ids are skipped, malformed
+  // entries are ignored, and each row is updated independently.
+  for (const id of ids) {
+    if (typeof id !== 'string' || id.length === 0) continue;
+    try {
+      const alarm = AlarmRepo.getById(id);
+      if (!alarm) continue;
+      if (!AlarmRepo.markMissed(id, deviceReason, now)) continue;
+      updated++;
+      void mirrorSafely({
+        ...alarm,
+        status: 'missed',
+        missed_at: now,
+        missed_reason: deviceReason,
+      });
+    } catch (err) {
+      console.error(`[report-missed] failed to update alarm ${id}:`, err);
+    }
+  }
+
+  return reply.send({ updated });
 });
 
 // 5. POST /api/devices/register: Upsert device token with battery and status metadata
@@ -783,4 +936,19 @@ if (process.env.NODE_ENV !== 'test') {
     runReconcile();
     setInterval(runReconcile, GCAL_RECONCILE_INTERVAL_MS);
   }
+
+  // Missed-alarm sweep (spec §6.1). Guarded by the same NODE_ENV !== 'test'
+  // block as the reconcile timer: it touches the database and, once configured,
+  // mirrors the missed alarm to Google. Keeping it hermetic is mandatory — an
+  // unguarded timer here is how the suite would reach outside itself.
+  setInterval(() => {
+    try {
+      sweepMissedAlarms();
+    } catch (err) {
+      // sweepMissedAlarms catches per-alarm errors; this is the last line of
+      // defence so a failure can never kill the timer.
+      console.error('[sweep] failed:', err);
+    }
+  }, MISSED_SWEEP_INTERVAL_MS);
+  missedSweepStarted = true;
 }

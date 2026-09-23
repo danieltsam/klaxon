@@ -7,13 +7,18 @@ export interface AlarmRecord {
   target_time: string;
   label: string;
   description?: string;
-  status: 'pending' | 'ringing' | 'dismissed' | 'snoozed' | 'canceled' | 'disabled';
+  status: 'pending' | 'ringing' | 'dismissed' | 'snoozed' | 'canceled' | 'disabled' | 'missed';
   repeat_days?: string; // e.g. '1,2,3,4,5'
   recurrence_interval_weeks?: number; // 1 (default, weekly) or 2 (fortnightly)
   recurrence_anchor_date?: string;    // ISO date "YYYY-MM-DD", required if interval > 1
   sound_tone?: string; // e.g. 'alarm', 'chime', 'digital'
   ramp_seconds?: number; // e.g. 0, 15, 30, 60
   created_at?: string;
+  missed_at?: string | null;            // ISO instant the alarm was declared missed
+  missed_reason?: string | null;        // one of the closed reason set (spec §7)
+  last_dispatch_sent?: number | null;   // outcome of the most recent FCM dispatch
+  last_dispatch_failed?: number | null; // outcome of the most recent FCM dispatch
+  last_dispatch_at?: string | null;     // when that dispatch happened
 }
 
 export interface DeviceRecord {
@@ -86,7 +91,12 @@ const migrations = [
   'ALTER TABLE devices ADD COLUMN is_charging INTEGER DEFAULT NULL;',
   'ALTER TABLE devices ADD COLUMN device_name TEXT DEFAULT NULL;',
   { name: 'add_recurrence_interval_weeks', sql: 'ALTER TABLE alarms ADD COLUMN recurrence_interval_weeks INTEGER DEFAULT 1' },
-  { name: 'add_recurrence_anchor_date',     sql: 'ALTER TABLE alarms ADD COLUMN recurrence_anchor_date TEXT DEFAULT NULL' }
+  { name: 'add_recurrence_anchor_date',     sql: 'ALTER TABLE alarms ADD COLUMN recurrence_anchor_date TEXT DEFAULT NULL' },
+  { name: 'add_missed_at',                  sql: 'ALTER TABLE alarms ADD COLUMN missed_at TEXT DEFAULT NULL' },
+  { name: 'add_missed_reason',              sql: 'ALTER TABLE alarms ADD COLUMN missed_reason TEXT DEFAULT NULL' },
+  { name: 'add_last_dispatch_sent',         sql: 'ALTER TABLE alarms ADD COLUMN last_dispatch_sent INTEGER DEFAULT NULL' },
+  { name: 'add_last_dispatch_failed',       sql: 'ALTER TABLE alarms ADD COLUMN last_dispatch_failed INTEGER DEFAULT NULL' },
+  { name: 'add_last_dispatch_at',           sql: 'ALTER TABLE alarms ADD COLUMN last_dispatch_at TEXT DEFAULT NULL' }
 ];
 
 for (const migration of migrations) {
@@ -157,6 +167,38 @@ export const AlarmRepo = {
       SET target_time = ?
       WHERE id = ?
     `).run(targetTime, id);
+    return result.changes > 0;
+  },
+
+  /**
+   * Persist the outcome of the most recent FCM dispatch. This is the only
+   * evidence the system has about why a phone never rang, so the missed-alarm
+   * reason is derived from it (spec §5.1, §7).
+   */
+  recordDispatch(id: string, sent: number, failed: number, at: string = new Date().toISOString()): boolean {
+    const result = db.prepare(`
+      UPDATE alarms
+      SET last_dispatch_sent = ?,
+          last_dispatch_failed = ?,
+          last_dispatch_at = ?
+      WHERE id = ?
+    `).run(sent, failed, at, id);
+    return result.changes > 0;
+  },
+
+  /**
+   * System-set transition to `missed`. Never reachable through the client
+   * state endpoint (spec §5); the sweep and the device report are its only
+   * callers.
+   */
+  markMissed(id: string, reason: string, at: string = new Date().toISOString()): boolean {
+    const result = db.prepare(`
+      UPDATE alarms
+      SET status = 'missed',
+          missed_at = ?,
+          missed_reason = ?
+      WHERE id = ?
+    `).run(at, reason, id);
     return result.changes > 0;
   },
 
