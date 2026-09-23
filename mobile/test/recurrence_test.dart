@@ -213,4 +213,81 @@ void main() {
       expect(result.minute, equals(0));
     });
   });
+
+  group('computeArmTarget stale one-time alarm guard', () {
+    test('Refuses a past one-time alarm beyond the grace window (the 00:01 reconnect case)', () {
+      // A one-time alarm set for 00:01 that was never delivered. The phone
+      // reconnects at midnight two days later and must not arm it.
+      final mockNow = DateTime(2026, 9, 23, 0, 0, 0);
+      final staleAlarm = DateTime(2026, 9, 22, 0, 1, 0);
+
+      final result = AlarmService.computeArmTarget(staleAlarm, mockNow: mockNow);
+      expect(result, isNull);
+    });
+
+    test('Refuses a one-time alarm just beyond the 5-minute grace window', () {
+      final mockNow = DateTime(2026, 9, 23, 12, 0, 0);
+      final justTooLate = DateTime(2026, 9, 23, 11, 54, 59); // 5m01s past
+
+      expect(AlarmService.computeArmTarget(justTooLate, mockNow: mockNow), isNull);
+    });
+
+    test('Arms a one-time alarm inside the grace window, a few minutes late', () {
+      final mockNow = DateTime(2026, 9, 23, 12, 0, 0);
+      final slightlyLate = DateTime(2026, 9, 23, 11, 57, 0); // 3 minutes past
+
+      final result = AlarmService.computeArmTarget(slightlyLate, mockNow: mockNow);
+      expect(result, equals(slightlyLate));
+    });
+
+    test('Arms exactly at the grace-window boundary', () {
+      final mockNow = DateTime(2026, 9, 23, 12, 0, 0);
+      final onBoundary = DateTime(2026, 9, 23, 11, 55, 0); // exactly 5 minutes
+
+      final result = AlarmService.computeArmTarget(onBoundary, mockNow: mockNow);
+      expect(result, equals(onBoundary));
+    });
+
+    test('Leaves a future one-time alarm unchanged', () {
+      final mockNow = DateTime(2026, 9, 23, 12, 0, 0);
+      final future = DateTime(2026, 9, 23, 18, 30, 0);
+
+      expect(AlarmService.computeArmTarget(future, mockNow: mockNow), equals(future));
+    });
+
+    test('Still rolls a stale recurring (weekday) alarm', () {
+      final mockNow = DateTime(2026, 9, 19, 10, 0, 0); // Saturday
+      final stale = DateTime(2026, 9, 18, 7, 0, 0);
+
+      final result = AlarmService.computeArmTarget(
+        stale,
+        repeatDays: [1, 2, 3, 4, 5],
+        mockNow: mockNow,
+      );
+      expect(result, isNotNull);
+      expect(result!.weekday, equals(DateTime.monday));
+      expect(result.day, equals(21));
+      expect(result.hour, equals(7));
+    });
+
+    test('Still rolls a stale fortnightly alarm with intervalWeeks/anchorDate', () {
+      // Regression guard for the fortnightly work that landed in 6b5eee0.
+      final mockNow = DateTime(2026, 10, 10, 10, 0, 0);
+      final stale = DateTime(2026, 10, 7, 7, 30, 0);
+
+      final result = AlarmService.computeArmTarget(
+        stale,
+        repeatDays: [3],
+        intervalWeeks: 2,
+        anchorDate: DateTime(2026, 10, 7),
+        mockNow: mockNow,
+      );
+      expect(result, isNotNull);
+      expect(result!.year, equals(2026));
+      expect(result.month, equals(10));
+      expect(result.day, equals(21));
+      expect(result.hour, equals(7));
+      expect(result.minute, equals(30));
+    });
+  });
 }

@@ -101,6 +101,40 @@ class BackendClient {
     }
   }
 
+  /// Report alarms the device declined to arm, in a single batched call (§6.2).
+  ///
+  /// [reason] is a closed set from the device: `device_reported_stale` when the
+  /// device never got to the alarm, `device_reported_failed` when it tried and
+  /// could not fire it. Failures are logged and swallowed, returning `false`;
+  /// a missed report must never throw into the sync path.
+  ///
+  /// [client] is an injection seam for tests; production uses a fresh client.
+  static Future<bool> reportMissedAlarms(
+    List<String> ids, {
+    String reason = 'device_reported_stale',
+    http.Client? client,
+  }) async {
+    if (ids.isEmpty) return false;
+    final httpClient = client ?? http.Client();
+    try {
+      final baseUrl = await getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/alarms/report-missed');
+      final response = await httpClient.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'ids': ids, 'reason': reason}),
+      ).timeout(const Duration(seconds: 10));
+
+      return response.statusCode == 200;
+    } catch (e) {
+      // ignore: avoid_print
+      print('[BackendClient] reportMissedAlarms error: $e');
+      return false;
+    } finally {
+      if (client == null) httpClient.close();
+    }
+  }
+
   /// Create alarm on backend so it appears on the dashboard and syncs
   static Future<String?> createRemoteAlarm({
     required DateTime targetTime,

@@ -8,6 +8,58 @@ class AlarmService {
   /// Stream that emits whenever an alarm is remotely dismissed via FCM
   static final StreamController<int> onRemoteDismissed = StreamController<int>.broadcast();
 
+  /// Grace window after which a one-time alarm is too stale to arm (§8.1).
+  /// Fixed at 5 minutes; recurring alarm schedules are never subject to it.
+  static const Duration staleAlarmGraceWindow = Duration(minutes: 5);
+
+  /// Uuids declined since the last successful report, flushed as one batch.
+  static final Set<String> _pendingMissedReports = <String>{};
+
+  /// Uuids the backend has already accepted, so they are never reported twice.
+  static final Set<String> _reportedMissedIds = <String>{};
+
+  /// Injection seam for tests; production reports through [BackendClient].
+  static Future<bool> Function(List<String> ids)? missedReportSenderForTest;
+
+  /// Uuids waiting for the next [flushMissedReports]. Test-only.
+  static Set<String> get pendingMissedReportIds =>
+      Set<String>.unmodifiable(_pendingMissedReports);
+
+  /// Clears the in-memory report bookkeeping. Test-only.
+  static void resetMissedReportStateForTest() {
+    _pendingMissedReports.clear();
+    _reportedMissedIds.clear();
+    missedReportSenderForTest = null;
+  }
+
+  /// Records that the device declined to arm [uuid] because the alarm was stale.
+  /// De-duplicated: an alarm already reported is never queued again.
+  static void recordDeclinedStaleAlarm(String uuid) {
+    if (_reportedMissedIds.contains(uuid)) return;
+    _pendingMissedReports.add(uuid);
+  }
+
+  /// Reports every alarm newly declined since the last successful flush in one
+  /// batched call (§6.2). A failure is logged and swallowed: a missed report
+  /// must never break synchronising the alarms that did work. Ids are kept for
+  /// a retry only when the backend did not accept them.
+  static Future<void> flushMissedReports() async {
+    if (_pendingMissedReports.isEmpty) return;
+    final ids = List<String>.from(_pendingMissedReports);
+    try {
+      final sender = missedReportSenderForTest ?? BackendClient.reportMissedAlarms;
+      final accepted = await sender(ids);
+      if (accepted) {
+        _reportedMissedIds.addAll(ids);
+        _pendingMissedReports.removeAll(ids);
+      }
+      // On failure the ids stay pending and are retried on the next sync.
+    } catch (e) {
+      // ignore: avoid_print
+      print('[AlarmService] flushMissedReports error: $e');
+    }
+  }
+
   /// Resolve audio asset path for given tone name
   static String getAudioPathForTone(String? tone) {
     switch (tone?.trim().toLowerCase()) {
@@ -123,12 +175,26 @@ class AlarmService {
           await IdMapper.setAnchorDate(intId, null);
         }
 
-        final futureTarget = computeFutureOccurrence(
+        final futureTarget = computeArmTarget(
           parsedDateTime,
           repeatDays: repeatDaysList,
           intervalWeeks: intervalWeeks,
           anchorDate: anchorDate,
         );
+
+        if (futureTarget == null) {
+          // Stale one-time alarm beyond the grace window: refuse to arm it
+          // (§8.1) and report the fact on the next batched flush (§6.2). It was
+          // never delivered, so it must not be described as delivered anywhere.
+          recordDeclinedStaleAlarm(uuid.toString());
+          await Alarm.stop(intId);
+          await IdMapper.setEnabled(intId, false);
+          // ignore: avoid_print
+          print('[AlarmService] Declined stale one-time alarm $intId ($uuid): '
+              'target $parsedDateTime is past the '
+              '${staleAlarmGraceWindow.inMinutes}-minute grace window; not delivered');
+          return;
+        }
 
         final desc = data['description']?.toString();
         // Ensure mapping is preserved
@@ -249,7 +315,10 @@ class AlarmService {
           repeatDays: repeatDays,
         );
 
-        if (status == 'disabled' || status == 'canceled' || status == 'dismissed') {
+        if (status == 'disabled' ||
+            status == 'canceled' ||
+            status == 'dismissed' ||
+            status == 'missed') {
           await Alarm.stop(intId);
           await IdMapper.setEnabled(intId, false);
         } else {
@@ -316,6 +385,11 @@ class AlarmService {
         }
       }
 
+      // Report any stale alarms declined during this sync in a single call, so
+      // the backend converges immediately on reconnect (§6.2). One failed
+      // report must not disturb the alarms that synced correctly.
+      await flushMissedReports();
+
       return remoteAlarms.length;
     } catch (e) {
       // ignore: avoid_print
@@ -366,12 +440,20 @@ class AlarmService {
 
     final audioPath = getAudioPathForTone(soundTone);
     final rampSec = rampSeconds ?? 30;
-    final futureTarget = computeFutureOccurrence(
+    final futureTarget = computeArmTarget(
       alignedDateTime,
       repeatDays: repeatDays,
       intervalWeeks: intervalWeeks,
       anchorDate: anchorDate,
     );
+    if (futureTarget == null) {
+      throw ArgumentError.value(
+        alignedDateTime,
+        'dateTime',
+        'A one-time alarm more than ${staleAlarmGraceWindow.inMinutes} minutes '
+            'in the past cannot be armed; reschedule it.',
+      );
+    }
 
     final volumeSettings = buildPerceptualVolumeSettings(rampSec);
 
@@ -452,6 +534,51 @@ class AlarmService {
     }
 
     return newSettings;
+  }
+
+  /// Decides the moment to actually arm an alarm, returning `null` when a
+  /// one-time alarm is too stale to arm at all (§8.1).
+  ///
+  /// - a one-time alarm more than [staleAlarmGraceWindow] past is refused
+  ///   (`null`), which closes the reconnect race: a 12am reconnect no longer
+  ///   arms a 00:01 alarm for a minute later;
+  /// - a one-time alarm inside the window is armed for its intended moment, so
+  ///   a brief hiccup still rings a few minutes late;
+  /// - a future alarm is returned unchanged;
+  /// - recurring alarms (daily, weekdays, fortnightly) are never refused: a
+  ///   stale stored time is normal for a repeating schedule, so they advance
+  ///   via [getNextOccurrence] exactly as before.
+  static DateTime? computeArmTarget(
+    DateTime targetTime, {
+    List<int>? repeatDays,
+    int intervalWeeks = 1,
+    DateTime? anchorDate,
+    DateTime? mockNow,
+  }) {
+    final now = mockNow ?? DateTime.now();
+    final isRecurring = (repeatDays != null && repeatDays.isNotEmpty) ||
+        (intervalWeeks > 1 && anchorDate != null);
+
+    if (!isRecurring) {
+      if (targetTime.isAfter(now)) {
+        return targetTime;
+      }
+      if (now.difference(targetTime) <= staleAlarmGraceWindow) {
+        // Inside the grace window: arm for the intended moment and accept a
+        // few minutes' lateness.
+        return targetTime;
+      }
+      // Beyond the grace window: this one-time alarm was missed. Do not arm it.
+      return null;
+    }
+
+    return getNextOccurrence(
+      targetTime,
+      repeatDays ?? const [],
+      intervalWeeks: intervalWeeks,
+      anchorDate: anchorDate,
+      mockNow: now,
+    );
   }
 
   /// Computes the next future occurrence of an alarm.
