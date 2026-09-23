@@ -137,6 +137,7 @@ npm run dev
 | `POST` | `/api/settings` | Change the user preferences |
 | `GET` | `/api/calendar.ics` | Get the RFC 5545 iCal feed for Google Calendar or Apple Calendar |
 | `GET` | `/api/calendar/status` | Get the configuration and the sync status of the Google Calendar mirror |
+| `POST` | `/api/alarms/report-missed` | A device reports the alarms that it did not arm because their time passed |
 | `POST` | `/api/devices/register` | Register the FCM token of the phone, with the battery and charging data |
 | `GET` | `/api/devices` | Get the connected devices, the battery level, and the charging state |
 
@@ -197,6 +198,48 @@ To use the mirror in the container, do these steps on the homelab server:
 The container sets `GOOGLE_OAUTH_TOKEN_PATH` to `/app/data/google-oauth-token.json`. That variable is a path, not a secret. The client secret stays in the `.env` file and does not go into git.
 
 A database with no calendar id makes a new "Remote Alarms" calendar at the first alarm. To use a calendar that already exists, put its id in the `settings` table under the key `gcal_calendar_id` before you start the container.
+
+---
+
+## Missed alarms
+
+An alarm can fail to ring. The usual cause is a phone that cannot receive the FCM message. But any cause has the same result. The alarm does not ring.
+
+Remote Alarm records the failure. It does not move the alarm to a later time.
+
+### The grace window
+
+A one-time alarm rings if it is late by less than 5 minutes. The phone arms an alarm in this condition.
+
+If the alarm is late by more than 5 minutes, it is **missed**. A missed alarm never rings. The system does not move a missed alarm to a later time.
+
+A recurring alarm is different. A daily alarm, a weekday alarm, or a fortnightly alarm always moves to its next occurrence. The system never marks a recurring alarm as missed.
+
+### The record
+
+A missed alarm has the status `missed`. The record also has these fields:
+
+- `missed_at`: the time when the system found the failure.
+- `missed_reason`: the reason that the system could determine.
+
+The reason is one of these values:
+
+- `no_device_registered`: no device was registered, so the system sent nothing.
+- `delivery_failed`: the system could not send the message.
+- `dispatched_not_reported`: the system sent the message, and the phone did not report the alarm. This value does not mean that the phone received the message.
+- `device_reported_stale`: the phone found the alarm after its time, and did not arm it.
+- `device_reported_failed`: the phone tried to fire the alarm, and could not.
+- `unknown`: the system has no record of a dispatch.
+
+### Where you can see it
+
+- The mobile app shows missed alarms in a Missed group. The action on a missed alarm is **Reschedule**. You select a new date and a new time. The alarm does not move without your action.
+- The web dashboard shows the same record.
+- The Google Calendar mirror keeps the event. It adds the failure, the time, and the reason to the description.
+
+The endpoint `GET /api/alarms?view=all` returns missed alarms. The `active` view does not.
+
+The backend finds a missed alarm in two ways. It examines the alarms every 60 seconds. It also accepts a report from the phone, when the phone refuses to arm a stale alarm.
 
 ---
 
