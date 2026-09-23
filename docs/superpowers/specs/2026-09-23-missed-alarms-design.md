@@ -407,9 +407,12 @@ must be sequenced behind them, and the spec records that rather than assuming a 
 
 ## 15. Open Items
 
-1. **`backend/public/index.html` must be free of concurrent edits** before §10 starts (§13.4).
-2. **Deployment.** The homelab runs a commit that predates both this change and the fortnightly
-   work; it will need a redeploy once this lands.
+All three items recorded here are now closed. They are kept as the record of what was deferred, and
+when it was taken up.
+
+1. **`backend/public/index.html` was free of concurrent edits before §10 started** (§13.4). The
+   dashboard work landed.
+2. **Deployed.** The homelab runs the commit that carries this change and the fortnightly work.
 3. **The `snoozed` gap recorded here is closed.** A `snoozed` alarm whose time passes is now swept
    on the same terms as `pending` (§6.1), because a snooze writes its next-ring time into
    `target_time` (§6.3). Kept here as the record of what was deferred, and when it was taken up.
