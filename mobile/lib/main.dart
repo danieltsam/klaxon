@@ -113,6 +113,8 @@ class _AlarmItem {
   bool isEnabled;
   bool isSnoozed;
   List<int> repeatDays;
+  int intervalWeeks;
+  String? anchorDate;
   String soundTone;
   int rampSeconds;
   String? uuid;
@@ -125,6 +127,8 @@ class _AlarmItem {
     required this.isEnabled,
     required this.isSnoozed,
     required this.repeatDays,
+    this.intervalWeeks = 1,
+    this.anchorDate,
     required this.soundTone,
     required this.rampSeconds,
     this.uuid,
@@ -228,6 +232,14 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
   String _formatDate(DateTime dt) {
     return SettingsFormatter.formatDate(dt, _dateFormat);
+  }
+
+  /// Render a date as a plain ISO date string (e.g. '2026-10-07') for the
+  /// fortnightly recurrence anchor.
+  String _isoDate(DateTime dt) {
+    final month = dt.month.toString().padLeft(2, '0');
+    final day = dt.day.toString().padLeft(2, '0');
+    return '${dt.year}-$month-$day';
   }
 
   @override
@@ -762,6 +774,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       final desc = await IdMapper.getDescription(id);
       final isSnoozed = await IdMapper.isSnoozed(id);
       final repeatDays = await IdMapper.getRepeatDays(id);
+      final intervalWeeks = await IdMapper.getIntervalWeeks(id) ?? 1;
+      final anchorDate = await IdMapper.getAnchorDate(id);
       final tone = await IdMapper.getSoundTone(id);
       final ramp = await IdMapper.getRampSeconds(id);
       final uuid = await IdMapper.getUuid(id);
@@ -774,6 +788,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         isEnabled: isEnabled,
         isSnoozed: isSnoozed,
         repeatDays: repeatDays,
+        intervalWeeks: intervalWeeks,
+        anchorDate: anchorDate,
         soundTone: tone,
         rampSeconds: ramp,
         uuid: uuid,
@@ -806,6 +822,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         final target = AlarmService.computeFutureOccurrence(
           item.dateTime,
           repeatDays: item.repeatDays,
+          intervalWeeks: item.intervalWeeks,
+          anchorDate: item.anchorDate != null ? DateTime.tryParse(item.anchorDate!) : null,
         );
 
         final audioPath = AlarmService.getAudioPathForTone(item.soundTone);
@@ -891,8 +909,9 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     return 'in $hours hours $mins mins';
   }
 
-  String _formatRepeatDays(List<int> days) {
+  String _formatRepeatDays(List<int> days, {int intervalWeeks = 1}) {
     if (days.isEmpty) return 'Once';
+    if (intervalWeeks > 1) return 'Fortnightly';
     if (days.length == 7) return 'Every day';
     if (days.length == 5 &&
         days.contains(1) &&
@@ -909,9 +928,9 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     return days.map((d) => names[d - 1]).join(', ');
   }
 
-  String _formatRepeatDaysOrDate(List<int> days, DateTime targetTime) {
+  String _formatRepeatDaysOrDate(List<int> days, DateTime targetTime, {int intervalWeeks = 1}) {
     if (days.isNotEmpty) {
-      return _formatRepeatDays(days);
+      return _formatRepeatDays(days, intervalWeeks: intervalWeeks);
     }
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -922,8 +941,9 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     return _formatDate(targetTime);
   }
 
-  String _formatRepeatSummary(List<int> days) {
+  String _formatRepeatSummary(List<int> days, {int intervalWeeks = 1}) {
     if (days.isEmpty) return 'Does not repeat (one-time alarm)';
+    if (intervalWeeks > 1) return 'Repeats every 2 weeks';
     if (days.length == 7) return 'Repeats every day';
     if (days.length == 5 &&
         days.contains(1) &&
@@ -940,7 +960,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     return 'Repeats on ${days.map((d) => names[d - 1]).join(', ')}';
   }
 
-  String _formatMicroPillRecurrence(List<int> days, DateTime targetTime) {
+  String _formatMicroPillRecurrence(List<int> days, DateTime targetTime, {int intervalWeeks = 1}) {
+    if (intervalWeeks > 1 && days.isNotEmpty) {
+      const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      return 'Fortnightly · ${names[(days.first - 1) % 7]}';
+    }
     if (days.length == 7) return 'Daily';
     if (days.length == 5 && [1, 2, 3, 4, 5].every(days.contains)) return 'Weekdays';
     if (days.length == 2 && days.contains(6) && days.contains(7)) return 'Weekends';
@@ -985,12 +1009,15 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
             ),
           ),
           alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-              color: isSelected ? Colors.white : const Color(0xFF8A8F98),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: isSelected ? Colors.white : const Color(0xFF8A8F98),
+              ),
             ),
           ),
         ),
@@ -1002,7 +1029,9 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     required BuildContext context,
     required DateTime initialTime,
     required List<int> initialDays,
-    required void Function(DateTime newTime, List<int> newDays) onApplied,
+    required int initialIntervalWeeks,
+    required String? initialAnchorDate,
+    required void Function(DateTime newTime, List<int> newDays, int intervalWeeks, String? anchorDate) onApplied,
   }) {
     final bool is12h = _timeFormat == '12h';
     final now = DateTime.now();
@@ -1013,13 +1042,15 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     int curHour = initialTime.hour;
     int curMinute = initialTime.minute;
     List<int> curRepeatDays = List<int>.from(initialDays);
+    int intervalWeeks = initialIntervalWeeks;
+    String? anchorDate = initialAnchorDate;
     String recurrenceMode = curRepeatDays.isEmpty
         ? 'once'
         : (curRepeatDays.length == 7
             ? 'daily'
             : ((curRepeatDays.length == 5 && [1, 2, 3, 4, 5].every(curRepeatDays.contains))
                 ? 'weekdays'
-                : 'custom'));
+                : (initialIntervalWeeks > 1 ? 'fortnightly' : 'custom')));
 
     final isInitialPast = (curHour < now.hour) || (curHour == now.hour && curMinute <= now.minute);
     bool isTomorrow = false;
@@ -1082,6 +1113,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
             final isOnce = recurrenceMode == 'once';
             final isDaily = recurrenceMode == 'daily';
             final isWeekdays = recurrenceMode == 'weekdays';
+            final isFortnightly = recurrenceMode == 'fortnightly';
             final isCustom = recurrenceMode == 'custom';
 
             DateTime computeFinalTime(
@@ -1196,7 +1228,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       TextButton(
                         onPressed: () {
                           HapticService.selectionClick();
-                          onApplied(curTime, curRepeatDays);
+                          onApplied(curTime, curRepeatDays, intervalWeeks, anchorDate);
                           Navigator.pop(sheetCtx);
                         },
                         child: const Text(
@@ -1241,6 +1273,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         setSheetState(() {
                           recurrenceMode = 'once';
                           curRepeatDays.clear();
+                          intervalWeeks = 1;
+                          anchorDate = null;
                         });
                         updateTime();
                       }),
@@ -1250,6 +1284,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         setSheetState(() {
                           recurrenceMode = 'daily';
                           curRepeatDays = [1, 2, 3, 4, 5, 6, 7];
+                          intervalWeeks = 1;
+                          anchorDate = null;
                         });
                         updateTime(clearCustom: true);
                       }),
@@ -1263,11 +1299,24 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         updateTime(clearCustom: true);
                       }),
                       const SizedBox(width: 8),
+                      _buildPresetChip('Fortnightly', isFortnightly, () {
+                        HapticService.selectionClick();
+                        setSheetState(() {
+                          recurrenceMode = 'fortnightly';
+                          intervalWeeks = 2;
+                          curRepeatDays = [curTime.weekday];
+                          anchorDate = _isoDate(curTime);
+                        });
+                        updateTime(clearCustom: true);
+                      }),
+                      const SizedBox(width: 8),
                       _buildPresetChip('Custom', isCustom, () {
                         HapticService.selectionClick();
                         setSheetState(() {
                           recurrenceMode = 'custom';
                           curRepeatDays.clear();
+                          intervalWeeks = 1;
+                          anchorDate = null;
                         });
                         updateTime(clearCustom: true);
                       }),
@@ -1450,9 +1499,12 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       padding: const EdgeInsets.only(top: 10),
                       child: _buildWeekdaySelector(
                         selectedDays: curRepeatDays,
+                        intervalWeeks: intervalWeeks,
                         onChanged: (newDays) {
                           setSheetState(() {
                             curRepeatDays = newDays;
+                            intervalWeeks = 1;
+                            anchorDate = null;
                             if (newDays.length == 7) {
                               recurrenceMode = 'daily';
                             } else if (newDays.length == 5 && [1, 2, 3, 4, 5].every(newDays.contains)) {
@@ -1481,14 +1533,18 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     required BuildContext context,
     required DateTime initialTime,
     required List<int> repeatDays,
-    required ValueChanged<DateTime> onTimeSelected,
+    required int initialIntervalWeeks,
+    required String? initialAnchorDate,
+    required void Function(DateTime newTime, List<int> newDays, int intervalWeeks, String? anchorDate) onApplied,
   }) {
     _openTimeAndScheduleSheet(
       context: context,
       initialTime: initialTime,
       initialDays: repeatDays,
-      onApplied: (newTime, newDays) {
-        onTimeSelected(newTime);
+      initialIntervalWeeks: initialIntervalWeeks,
+      initialAnchorDate: initialAnchorDate,
+      onApplied: (newTime, newDays, intervalWeeks, anchorDate) {
+        onApplied(newTime, newDays, intervalWeeks, anchorDate);
       },
     );
   }
@@ -1497,14 +1553,18 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     required BuildContext context,
     required List<int> initialDays,
     required DateTime initialTime,
-    required void Function(List<int> newDays, DateTime newTime) onApplied,
+    required int initialIntervalWeeks,
+    required String? initialAnchorDate,
+    required void Function(List<int> newDays, DateTime newTime, int intervalWeeks, String? anchorDate) onApplied,
   }) {
     _openTimeAndScheduleSheet(
       context: context,
       initialTime: initialTime,
       initialDays: initialDays,
-      onApplied: (newTime, newDays) {
-        onApplied(newDays, newTime);
+      initialIntervalWeeks: initialIntervalWeeks,
+      initialAnchorDate: initialAnchorDate,
+      onApplied: (newTime, newDays, intervalWeeks, anchorDate) {
+        onApplied(newDays, newTime, intervalWeeks, anchorDate);
       },
     );
   }
@@ -1748,6 +1808,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   Widget _buildWeekdaySelector({
     required List<int> selectedDays,
     required ValueChanged<List<int>> onChanged,
+    int intervalWeeks = 1,
   }) {
     const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S']; // 1=Mon ... 7=Sun
     return Column(
@@ -1795,7 +1856,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         ),
         const SizedBox(height: 6),
         Text(
-          _formatRepeatSummary(selectedDays),
+          _formatRepeatSummary(selectedDays, intervalWeeks: intervalWeeks),
           style: const TextStyle(
             fontSize: 11,
             color: Color(0xFF8A8F98),
@@ -1957,6 +2018,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     final descController = TextEditingController(text: item.description);
     DateTime selectedTime = item.dateTime;
     List<int> repeatDays = List.from(item.repeatDays);
+    int intervalWeeks = item.intervalWeeks;
+    String? anchorDate = item.anchorDate;
     String tone = item.soundTone;
     int ramp = item.rampSeconds;
 
@@ -2034,9 +2097,14 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                 context: builderContext,
                                 initialTime: selectedTime,
                                 repeatDays: repeatDays,
-                                onTimeSelected: (newTime) {
+                                initialIntervalWeeks: intervalWeeks,
+                                initialAnchorDate: anchorDate,
+                                onApplied: (newTime, newDays, newIntervalWeeks, newAnchorDate) {
                                   setModalState(() {
                                     selectedTime = newTime;
+                                    repeatDays = newDays;
+                                    intervalWeeks = newIntervalWeeks;
+                                    anchorDate = newAnchorDate;
                                   });
                                 },
                               );
@@ -2055,7 +2123,12 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    _getRelativeCountdown(AlarmService.computeFutureOccurrence(selectedTime, repeatDays: repeatDays)),
+                                    _getRelativeCountdown(AlarmService.computeFutureOccurrence(
+                                      selectedTime,
+                                      repeatDays: repeatDays,
+                                      intervalWeeks: intervalWeeks,
+                                      anchorDate: anchorDate != null ? DateTime.tryParse(anchorDate ?? '') : null,
+                                    )),
                                     style: const TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w500,
@@ -2079,10 +2152,14 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                       context: builderContext,
                                       initialDays: repeatDays,
                                       initialTime: selectedTime,
-                                      onApplied: (newDays, newTime) {
+                                      initialIntervalWeeks: intervalWeeks,
+                                      initialAnchorDate: anchorDate,
+                                      onApplied: (newDays, newTime, newIntervalWeeks, newAnchorDate) {
                                         setModalState(() {
                                           repeatDays = newDays;
                                           selectedTime = newTime;
+                                          intervalWeeks = newIntervalWeeks;
+                                          anchorDate = newAnchorDate;
                                         });
                                       },
                                     );
@@ -2095,7 +2172,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                       border: Border.all(color: const Color(0xFF2E323D)),
                                     ),
                                     child: Text(
-                                      _formatMicroPillRecurrence(repeatDays, selectedTime),
+                                      _formatMicroPillRecurrence(repeatDays, selectedTime, intervalWeeks: intervalWeeks),
                                       style: const TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
@@ -2213,6 +2290,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                   finalTarget = AlarmService.computeFutureOccurrence(
                                     selectedTime,
                                     repeatDays: repeatDays,
+                                    intervalWeeks: intervalWeeks,
+                                    anchorDate: anchorDate != null ? DateTime.tryParse(anchorDate ?? '') : null,
                                   );
                                 } else {
                                   finalTarget = selectedTime;
@@ -2224,6 +2303,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                 item.soundTone = tone;
                                 item.rampSeconds = ramp;
                                 item.repeatDays = repeatDays;
+                                item.intervalWeeks = intervalWeeks;
+                                item.anchorDate = intervalWeeks > 1 ? _isoDate(finalTarget) : null;
 
                                 await IdMapper.saveMapping(
                                   item.id,
@@ -2235,6 +2316,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                   rampSeconds: ramp,
                                   repeatDays: repeatDays,
                                 );
+                                await IdMapper.setIntervalWeeks(item.id, intervalWeeks);
+                                await IdMapper.setAnchorDate(item.id, intervalWeeks > 1 ? _isoDate(finalTarget) : null);
 
                                 // Pop immediately, sync in background
                                 if (bottomSheetContext.mounted) {
@@ -2250,6 +2333,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                     label: updatedTitle,
                                     description: updatedDesc,
                                     repeatDays: repeatDays,
+                                    intervalWeeks: intervalWeeks,
+                                    anchorDate: item.anchorDate,
                                     soundTone: tone,
                                     rampSeconds: ramp,
                                   );
@@ -2834,6 +2919,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       0,
     ).add(const Duration(minutes: 5));
     List<int> selectedDays = [];
+    int selectedIntervalWeeks = 1;
+    String? selectedAnchorDate;
     String selectedTone = _defaultSoundTone;
     int selectedRampSeconds = _defaultRampSeconds;
     final labelController = TextEditingController(text: 'Morning workout');
@@ -2913,9 +3000,14 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                 context: builderContext,
                                 initialTime: selectedTime,
                                 repeatDays: selectedDays,
-                                onTimeSelected: (newTime) {
+                                initialIntervalWeeks: selectedIntervalWeeks,
+                                initialAnchorDate: selectedAnchorDate,
+                                onApplied: (newTime, newDays, newIntervalWeeks, newAnchorDate) {
                                   setModalState(() {
                                     selectedTime = newTime;
+                                    selectedDays = newDays;
+                                    selectedIntervalWeeks = newIntervalWeeks;
+                                    selectedAnchorDate = newAnchorDate;
                                   });
                                 },
                               );
@@ -2934,7 +3026,12 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    _getRelativeCountdown(AlarmService.computeFutureOccurrence(selectedTime, repeatDays: selectedDays)),
+                                    _getRelativeCountdown(AlarmService.computeFutureOccurrence(
+                                      selectedTime,
+                                      repeatDays: selectedDays,
+                                      intervalWeeks: selectedIntervalWeeks,
+                                      anchorDate: selectedAnchorDate != null ? DateTime.tryParse(selectedAnchorDate ?? '') : null,
+                                    )),
                                     style: const TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w500,
@@ -2958,10 +3055,14 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                       context: builderContext,
                                       initialDays: selectedDays,
                                       initialTime: selectedTime,
-                                      onApplied: (newDays, newTime) {
+                                      initialIntervalWeeks: selectedIntervalWeeks,
+                                      initialAnchorDate: selectedAnchorDate,
+                                      onApplied: (newDays, newTime, newIntervalWeeks, newAnchorDate) {
                                         setModalState(() {
                                           selectedDays = newDays;
                                           selectedTime = newTime;
+                                          selectedIntervalWeeks = newIntervalWeeks;
+                                          selectedAnchorDate = newAnchorDate;
                                         });
                                       },
                                     );
@@ -2974,7 +3075,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                       border: Border.all(color: const Color(0xFF2E323D)),
                                     ),
                                     child: Text(
-                                      _formatMicroPillRecurrence(selectedDays, selectedTime),
+                                      _formatMicroPillRecurrence(selectedDays, selectedTime, intervalWeeks: selectedIntervalWeeks),
                                       style: const TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
@@ -3093,10 +3194,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             finalTarget = AlarmService.computeFutureOccurrence(
                               cleanTime,
                               repeatDays: selectedDays,
+                              intervalWeeks: selectedIntervalWeeks,
+                              anchorDate: selectedAnchorDate != null ? DateTime.tryParse(selectedAnchorDate ?? '') : null,
                             );
                           } else {
                             finalTarget = cleanTime;
                           }
+                          final recurrenceAnchor = selectedIntervalWeeks > 1 ? _isoDate(finalTarget) : null;
 
                           String assetAudio = AlarmService.getAudioPathForTone(selectedTone);
                           final title = labelController.text.trim().isNotEmpty
@@ -3140,6 +3244,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           );
                           await IdMapper.setSoundTone(intId, selectedTone);
                           await IdMapper.setRampSeconds(intId, selectedRampSeconds);
+                          await IdMapper.setIntervalWeeks(intId, selectedIntervalWeeks);
+                          await IdMapper.setAnchorDate(intId, recurrenceAnchor);
                           await IdMapper.setEnabled(intId, true);
 
                           // Pop + toast immediately
@@ -3155,6 +3261,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             label: title,
                             description: desc,
                             repeatDays: selectedDays.isNotEmpty ? selectedDays : null,
+                            intervalWeeks: selectedIntervalWeeks > 1 ? selectedIntervalWeeks : null,
+                            anchorDate: recurrenceAnchor,
                             soundTone: selectedTone,
                             rampSeconds: selectedRampSeconds,
                           ).then((remoteId) {
@@ -3746,7 +3854,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                     border: Border.all(color: const Color(0xFF2E323B)),
                   ),
                   child: Text(
-                    _formatRepeatDaysOrDate(alarm.repeatDays, alarm.dateTime),
+                    _formatRepeatDaysOrDate(alarm.repeatDays, alarm.dateTime, intervalWeeks: alarm.intervalWeeks),
                     style: const TextStyle(fontSize: 11, color: Color(0xFF8A8F98)),
                   ),
                 ),
@@ -3867,7 +3975,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
-                          _formatRepeatDaysOrDate(alarm.repeatDays, alarm.dateTime),
+                          _formatRepeatDaysOrDate(alarm.repeatDays, alarm.dateTime, intervalWeeks: alarm.intervalWeeks),
                           style: TextStyle(
                             fontSize: 10,
                             color: subtextColor,
