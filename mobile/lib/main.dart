@@ -118,6 +118,9 @@ class _AlarmItem {
   String soundTone;
   int rampSeconds;
   String? uuid;
+  String status = 'pending';
+  DateTime? missedAt;
+  String? missedReason;
 
   _AlarmItem({
     required this.id,
@@ -162,6 +165,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   final AudioPlayer _previewAudioPlayer = AudioPlayer();
+  List<Map<String, dynamic>>? _lastRemoteAlarms;
 
   Future<void> _previewTone(String tone) async {
     try {
@@ -367,6 +371,14 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       _isBackendConnected = true;
       _backendError = null;
     });
+
+    // Fetch the full alarm list so _loadAllAlarms can surface missed status,
+    // audit fields, and reason. This is the second fetch the design expects
+    // (AlarmService.syncWithBackend fetches the same view internally).
+    final remoteAlarms = await BackendClient.fetchAllAlarms();
+    if (mounted) {
+      setState(() => _lastRemoteAlarms = remoteAlarms);
+    }
 
     final count = await AlarmService.syncWithBackend();
     await _loadAllAlarms();
@@ -803,6 +815,29 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       ));
     }
 
+    // Merge backend status and missed audit fields from the last full fetch.
+    // Missed alarms are excluded from view=active, so the active list alone
+    // would silently drop them; this is what makes failures visible.
+    if (_lastRemoteAlarms != null) {
+      final remoteByUuid = <String, Map<String, dynamic>>{};
+      for (final remote in _lastRemoteAlarms!) {
+        final uuid = remote['id']?.toString();
+        if (uuid != null && uuid.isNotEmpty) {
+          remoteByUuid[uuid] = remote;
+        }
+      }
+      for (final item in items) {
+        final remote = remoteByUuid[item.uuid];
+        if (remote == null) continue;
+        item.status = remote['status']?.toString() ?? 'pending';
+        final missedAtStr = remote['missed_at']?.toString();
+        if (missedAtStr != null && missedAtStr.isNotEmpty) {
+          item.missedAt = DateTime.tryParse(missedAtStr)?.toLocal();
+        }
+        item.missedReason = remote['missed_reason']?.toString();
+      }
+    }
+
     // Sort: enabled upcoming first, then disabled
     items.sort((a, b) {
       if (a.isEnabled && !b.isEnabled) return -1;
@@ -901,6 +936,86 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     _loadAllAlarms();
   }
 
+  void _rescheduleMissedAlarm(_AlarmItem item) {
+    _openTimePickerSheet(
+      context: context,
+      initialTime: item.dateTime,
+      repeatDays: item.repeatDays,
+      initialIntervalWeeks: item.intervalWeeks,
+      initialAnchorDate: item.anchorDate,
+      onApplied: (newTime, newDays, newIntervalWeeks, newAnchorDate) async {
+        // Guard against silently re-arming a stale one-time alarm.
+        final anchorDate = newAnchorDate != null ? DateTime.tryParse(newAnchorDate) : null;
+        final armTarget = AlarmService.computeArmTarget(
+          newTime,
+          repeatDays: newDays,
+          intervalWeeks: newIntervalWeeks,
+          anchorDate: anchorDate,
+        );
+        if (armTarget == null) {
+          _showToast('Cannot reschedule a one-time alarm to the past');
+          return;
+        }
+
+        final finalTarget = newDays.isEmpty
+            ? newTime
+            : AlarmService.computeFutureOccurrence(
+                newTime,
+                repeatDays: newDays,
+                intervalWeeks: newIntervalWeeks,
+                anchorDate: anchorDate,
+              );
+
+        final audioPath = AlarmService.getAudioPathForTone(item.soundTone);
+        final settings = AlarmSettings(
+          id: item.id,
+          dateTime: finalTarget,
+          assetAudioPath: audioPath,
+          loopAudio: true,
+          vibrate: true,
+          volumeSettings: item.rampSeconds > 0
+              ? VolumeSettings.fade(
+                  volume: 1.0,
+                  fadeDuration: Duration(seconds: item.rampSeconds),
+                )
+              : VolumeSettings.fixed(volume: 1.0),
+          notificationSettings: NotificationSettings(
+            title: item.title,
+            body: 'Tap to dismiss or snooze',
+            stopButton: 'Stop',
+          ),
+        );
+
+        await Alarm.set(alarmSettings: settings);
+        await IdMapper.saveMapping(
+          item.id,
+          item.uuid ?? 'local_${item.id}',
+          label: item.title,
+          description: item.description,
+          targetTime: finalTarget,
+          soundTone: item.soundTone,
+          rampSeconds: item.rampSeconds,
+          repeatDays: newDays,
+        );
+        await IdMapper.setIntervalWeeks(item.id, newIntervalWeeks);
+        await IdMapper.setAnchorDate(item.id, newIntervalWeeks > 1 ? _isoDate(finalTarget) : null);
+        await IdMapper.setEnabled(item.id, true);
+
+        // Tell the backend this alarm is alive again with a new target time.
+        if (item.uuid != null && !item.uuid!.startsWith('local_')) {
+          await BackendClient.updateAlarmState(
+            item.uuid!,
+            'pending',
+            targetTime: finalTarget.toUtc().toIso8601String(),
+          );
+        }
+
+        _showToast('Alarm rescheduled for ${_formatTime(finalTarget)}');
+        await _syncWithBackend(silent: true);
+      },
+    );
+  }
+
   String _getRelativeCountdown(DateTime target) {
     final now = DateTime.now();
     final diff = target.difference(now);
@@ -965,6 +1080,24 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     }
     const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return 'Repeats on ${days.map((d) => names[d - 1]).join(', ')}';
+  }
+
+  String _formatMissedReason(String? reason) {
+    switch (reason) {
+      case 'no_device_registered':
+        return 'No device was registered to receive this alarm.';
+      case 'delivery_failed':
+        return 'Delivery failed.';
+      case 'dispatched_not_reported':
+        return 'Sent from the server, but this phone never reported back.';
+      case 'device_reported_stale':
+        return 'This phone saw the alarm too late and did not ring.';
+      case 'device_reported_failed':
+        return 'This phone tried to ring but could not.';
+      case 'unknown':
+      default:
+        return 'Reason unknown.';
+    }
   }
 
   String _formatMicroPillRecurrence(List<int> days, DateTime targetTime, {int intervalWeeks = 1}) {
@@ -3378,8 +3511,18 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           item.description.toLowerCase().contains(query);
     }).toList();
 
-    // Hero alarm: earliest upcoming enabled alarm
-    final enabledAlarms = _allAlarms.where((a) => a.isEnabled).toList();
+    // Missed alarms are failures, not live alarms. Split them out so they are
+    // never mixed into the active list or the hero card.
+    final missedAlarms = filteredAlarms.where((a) => a.status == 'missed').toList()
+      ..sort((a, b) {
+        final aAt = a.missedAt ?? a.dateTime;
+        final bAt = b.missedAt ?? b.dateTime;
+        return bAt.compareTo(aAt);
+      });
+    final activeAlarms = filteredAlarms.where((a) => a.status != 'missed').toList();
+
+    // Hero alarm: earliest upcoming enabled alarm (missed alarms never qualify)
+    final enabledAlarms = activeAlarms.where((a) => a.isEnabled).toList();
     final upcomingHeroAlarm = enabledAlarms.isNotEmpty ? enabledAlarms.first : null;
 
     return Scaffold(
@@ -3713,7 +3856,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Text(
-                                '${filteredAlarms.length}',
+                                '${activeAlarms.length}',
                                 style: const TextStyle(
                                   fontSize: 10,
                                   color: Color(0xFF8A8F98),
@@ -3728,8 +3871,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
                     const SizedBox(height: 12),
 
-                    // List of All Alarms
-                    if (filteredAlarms.isEmpty)
+                    // List of active / non-missed alarms
+                    if (activeAlarms.isEmpty && missedAlarms.isEmpty)
                       Container(
                         padding: const EdgeInsets.symmetric(vertical: 40),
                         decoration: BoxDecoration(
@@ -3754,17 +3897,64 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           ),
                         ),
                       )
-                    else
+                    else if (activeAlarms.isNotEmpty)
                       ListView.separated(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        itemCount: filteredAlarms.length,
+                        itemCount: activeAlarms.length,
                         separatorBuilder: (context, index) => const SizedBox(height: 10),
                         itemBuilder: (context, index) {
-                          final alarm = filteredAlarms[index];
+                          final alarm = activeAlarms[index];
                           return _buildAlarmRowCard(alarm);
                         },
                       ),
+
+                    // Missed alarms section: failures must be seen, not buried.
+                    if (missedAlarms.isNotEmpty) ...[
+                      const SizedBox(height: 28),
+                      Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded, size: 14, color: Color(0xFFEB5757)),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'MISSED ALARMS',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFFEB5757),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF381F22),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '${missedAlarms.length}',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Color(0xFFEB5757),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: missedAlarms.length,
+                        separatorBuilder: (context, index) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final alarm = missedAlarms[index];
+                          return _buildMissedAlarmCard(alarm);
+                        },
+                      ),
+                    ],
 
                     const SizedBox(height: 80), // Space for FAB
                   ],
@@ -3954,6 +4144,135 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // Missed Alarm Row Card: visually distinct from disabled; no toggle, only
+  // audit detail and a Reschedule action (§8.3).
+  Widget _buildMissedAlarmCard(_AlarmItem alarm) {
+    final timeStr = _formatTime(alarm.dateTime);
+    final missedAtStr = alarm.missedAt != null
+        ? '${_formatDate(alarm.missedAt!)} at ${_formatTime(alarm.missedAt!)}'
+        : 'time unknown';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1414),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF4A2424), width: 1),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Left warning indicator
+          Container(
+            width: 3,
+            height: 44,
+            margin: const EdgeInsets.only(right: 14, top: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEB5757),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Icon(
+            Icons.warning_amber_rounded,
+            size: 18,
+            color: const Color(0xFFEB5757),
+          ),
+          const SizedBox(width: 14),
+
+          // Middle Column: audit detail
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      timeStr,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w400,
+                        color: Color(0xFF8A8F98),
+                        letterSpacing: -0.4,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                        decoration: TextDecoration.lineThrough,
+                        decorationColor: Color(0xFF6B7280),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF381F22),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'MISSED',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFEB5757),
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        alarm.title,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFFF7F8F8),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Did not ring • missed $missedAtStr',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFFEB5757),
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _formatMissedReason(alarm.missedReason),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF8A8F98),
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Reschedule button
+          const SizedBox(width: 10),
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFEB5757),
+              side: const BorderSide(color: Color(0xFF4A2424)),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => _rescheduleMissedAlarm(alarm),
+            child: const Text(
+              'Reschedule',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
       ),
     );
   }
