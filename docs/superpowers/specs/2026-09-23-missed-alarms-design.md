@@ -88,6 +88,24 @@ absorbs a brief hiccup at the alarm moment without permitting an alarm to surfac
 
 The window applies to **one-time alarms only**. Recurring alarms are unaffected (§2).
 
+### 4.1 Any failure, not only an FCM disconnect
+
+**The policy is cause-agnostic.** The FCM-disconnect case is how the defect was *found*, not what
+the defect is *about*. The sweep is purely time-based: it never asks why an alarm did not ring,
+only that it did not. An alarm that failed because the token was dead, because the device never
+reported, because Android suppressed it, or for a cause the system cannot observe, is treated
+identically.
+
+"Fail gracefully" therefore means three things, for every cause:
+
+- the alarm is **recorded as a failure**, rather than left silently overdue;
+- it is **never revived automatically**, so a failure cannot surprise the owner later;
+- **nothing else is affected** — one failed alarm does not disturb another, and the daemon keeps
+  running.
+
+The last point is the one that must not be lost: a failure path that itself throws, or that stalls
+the sweep, would turn one missed alarm into a broken system.
+
 ---
 
 ## 5. State Model
@@ -183,10 +201,15 @@ state converges quickly **and** survives a phone that never comes back.
 | `last_dispatch_failed > 0` | `delivery_failed` |
 | `last_dispatch_sent > 0` | `dispatched_not_reported` |
 | no dispatch recorded | `unknown` |
-| reported by the device itself (§6.2) | `device_reported_stale` |
+| the device says it never got to the alarm (§6.2) | `device_reported_stale` |
+| the device says it tried and could not fire it | `device_reported_failed` |
 
-The first four come from the sweep, the fifth from the device report. **`missed_reason` is a closed
-set.** Both producers must use one of these five values, so the vocabulary cannot drift apart.
+The first four come from the sweep, the last two from the device report. **`missed_reason` is a
+closed set.** Both producers must use one of these six values, so the vocabulary cannot drift apart.
+
+The two device-reported values are what make the reason set cause-agnostic: they exist so a
+device-side failure — Android suppressing an alarm, a force-stop, a permission lost — can be
+recorded honestly rather than being flattened into the FCM-framed `dispatched_not_reported`.
 
 **Copy must not overclaim.** Mock mode reports `sent = deviceCount` while delivering nothing
 (§3), so `dispatched_not_reported` means exactly what it says: the system sent it and the phone
