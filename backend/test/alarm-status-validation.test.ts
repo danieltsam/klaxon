@@ -40,6 +40,19 @@ describe('PATCH /api/alarms/:id status validation', () => {
     assert.strictEqual(AlarmRepo.getById(id)?.status, 'pending');
   });
 
+  it('refuses a bare snooze and points at the state endpoint (spec §6.3)', async () => {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/alarms/${id}`,
+      payload: { status: 'snoozed' },
+    });
+    assert.strictEqual(response.statusCode, 400);
+    assert.match(response.body, /state/);
+    // A snooze must never be applied without its next-ring time: the row keeps
+    // its old target_time and the sweep would report a healthy snooze as missed.
+    assert.strictEqual(AlarmRepo.getById(id)?.status, 'pending');
+  });
+
   it('refuses an arbitrary status string', async () => {
     const response = await app.inject({
       method: 'PATCH',

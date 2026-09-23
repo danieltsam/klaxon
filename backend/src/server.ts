@@ -579,15 +579,24 @@ app.patch<{
     // corrupt the row. Validate against the set the declared type promises.
     // `missed` is deliberately absent: only the sweep and the device report
     // may set it.
-    const patchableStatuses: readonly string[] = [
-      'pending',
-      'ringing',
-      'dismissed',
-      'snoozed',
-      'canceled',
-      'disabled'
-    ];
-    if (!patchableStatuses.includes(status)) {
+      const patchableStatuses: readonly string[] = [
+        'pending',
+        'ringing',
+        'dismissed',
+        'canceled',
+        'disabled'
+      ];
+      // A snooze is a timed transition, not a field edit: it carries a next-ring
+      // time about nine minutes out. Letting PATCH set the status alone would
+      // leave the old target_time in place, and the sweep would then read a
+      // healthy snooze as a failure (spec §6.3). Send the caller to the endpoint
+      // that sets both, rather than accepting a row the sweep will misread.
+      if (status === 'snoozed') {
+        return reply.status(400).send({
+          error: 'Cannot set "snoozed" here: a snooze carries a next-ring time. Use POST /api/alarms/:id/state.'
+        });
+      }
+      if (!patchableStatuses.includes(status)) {
       return reply.status(400).send({
         error: `Invalid status. Must be one of: ${patchableStatuses.join(', ')}.`
       });

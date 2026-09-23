@@ -209,8 +209,9 @@ plus 9 minutes — so an older app cannot leave a stale time that the sweep woul
 failure. A snooze sends no FCM and records no dispatch: the phone armed the alarm itself, and the
 retained `last_dispatch_*` values are what §7 needs if that snooze later goes stale.
 
-`PATCH /api/alarms/:id` is not the state-transition path and does not carry this behaviour, so a
-snooze must go through `/state`.
+`PATCH /api/alarms/:id` is not the state-transition path and does not carry this behaviour, so it
+rejects `snoozed` outright and points the caller at `/state`. Accepting the status alone would leave
+the old `target_time` in place, which is the failure this section exists to prevent.
 
 ---
 
