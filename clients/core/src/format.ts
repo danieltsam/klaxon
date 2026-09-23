@@ -105,25 +105,101 @@ export function formatLocal(date: Date): string {
 }
 
 /**
- * Coarse relative offset between two instants: `in 13h 40m`, `in 25m`,
- * `in 2d 3h`, `3h 5m ago`.
+ * Coarse relative offset between two instants, compact style: `in 13h 40m`,
+ * `in 25m`, `in 2d 3h`, `in 1mo`, `3h 5m ago`.
+ *
+ * The tier rule (and its expected strings) is pinned in
+ * `fixtures/relative-time-cases.json`, which this function must match exactly:
+ * under a minute renders `less than a minute`; otherwise the largest three
+ * components are shown, zero-valued ones omitted. Months are a fixed 30 days
+ * and years a fixed 365 days, so 359 days is `11mo 29d`.
  */
+const MINUTE_SECONDS = 60;
+const HOUR_SECONDS = 60 * MINUTE_SECONDS;
+const DAY_SECONDS = 24 * HOUR_SECONDS;
+const MONTH_SECONDS = 30 * DAY_SECONDS;
+const YEAR_SECONDS = 365 * DAY_SECONDS;
+
+type RelativeUnit = "min" | "hour" | "day" | "month" | "year";
+
+const COMPACT_SUFFIX: Record<RelativeUnit, string> = {
+  min: "m",
+  hour: "h",
+  day: "d",
+  month: "mo",
+  year: "y",
+};
+
+/**
+ * Break a positive span into its tier's components, dropping zero-valued ones.
+ * `totalSeconds` below one minute yields no components; the caller renders the
+ * shared `less than a minute` phrase for that.
+ */
+function relativeComponents(totalSeconds: number): Array<{ value: number; unit: RelativeUnit }> {
+  const parts: Array<{ value: number; unit: RelativeUnit }> = [];
+
+  if (totalSeconds < MINUTE_SECONDS) {
+    return parts;
+  } else if (totalSeconds < HOUR_SECONDS) {
+    parts.push({ value: Math.floor(totalSeconds / MINUTE_SECONDS), unit: "min" });
+  } else if (totalSeconds < DAY_SECONDS) {
+    parts.push({ value: Math.floor(totalSeconds / HOUR_SECONDS), unit: "hour" });
+    parts.push({
+      value: Math.floor((totalSeconds % HOUR_SECONDS) / MINUTE_SECONDS),
+      unit: "min",
+    });
+  } else if (totalSeconds < MONTH_SECONDS) {
+    parts.push({ value: Math.floor(totalSeconds / DAY_SECONDS), unit: "day" });
+    parts.push({
+      value: Math.floor((totalSeconds % DAY_SECONDS) / HOUR_SECONDS),
+      unit: "hour",
+    });
+    parts.push({
+      value: Math.floor((totalSeconds % HOUR_SECONDS) / MINUTE_SECONDS),
+      unit: "min",
+    });
+  } else if (totalSeconds < YEAR_SECONDS) {
+    parts.push({ value: Math.floor(totalSeconds / MONTH_SECONDS), unit: "month" });
+    parts.push({
+      value: Math.floor((totalSeconds % MONTH_SECONDS) / DAY_SECONDS),
+      unit: "day",
+    });
+    parts.push({
+      value: Math.floor((totalSeconds % DAY_SECONDS) / HOUR_SECONDS),
+      unit: "hour",
+    });
+  } else {
+    parts.push({ value: Math.floor(totalSeconds / YEAR_SECONDS), unit: "year" });
+    parts.push({
+      value: Math.floor((totalSeconds % YEAR_SECONDS) / MONTH_SECONDS),
+      unit: "month",
+    });
+    parts.push({
+      value: Math.floor(((totalSeconds % YEAR_SECONDS) % MONTH_SECONDS) / DAY_SECONDS),
+      unit: "day",
+    });
+  }
+
+  return parts.filter((part) => part.value > 0);
+}
+
+/** Compact body without the caller's direction: `13h 40m`, `1mo`, `less than a minute`. */
+function formatRelativeBody(totalSeconds: number): string {
+  if (totalSeconds < MINUTE_SECONDS) {
+    return "less than a minute";
+  }
+  return relativeComponents(totalSeconds)
+    .map((part) => `${part.value}${COMPACT_SUFFIX[part.unit]}`)
+    .join(" ");
+}
+
 export function formatRelative(from: Date, to: Date): string {
   const diffMs = to.getTime() - from.getTime();
   const future = diffMs >= 0;
-  let totalMinutes = Math.round(Math.abs(diffMs) / 60000);
+  const totalSeconds = Math.floor(Math.abs(diffMs) / 1000);
+  const body = formatRelativeBody(totalSeconds);
 
-  const days = Math.floor(totalMinutes / (60 * 24));
-  totalMinutes -= days * 60 * 24;
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes - hours * 60;
-
-  const parts: string[] = [];
-  if (days > 0) parts.push(`${days}d`);
-  if (hours > 0) parts.push(`${hours}h`);
-  if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
-
-  return future ? `in ${parts.join(" ")}` : `${parts.join(" ")} ago`;
+  return future ? `in ${body}` : `${body} ago`;
 }
 
 /** `Tue 22 Sep, 7:00am (in 13h 40m)` — the absolute-local echo required by spec §6.5. */

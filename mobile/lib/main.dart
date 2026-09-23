@@ -13,6 +13,7 @@ import 'screens/ring_screen.dart';
 import 'services/alarm_service.dart';
 import 'services/backend_client.dart';
 import 'utils/id_mapper.dart';
+import 'utils/relative_time.dart';
 import 'utils/settings_formatter.dart';
 import 'widgets/time_pickers.dart';
 import 'services/haptic_service.dart';
@@ -1024,13 +1025,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
     if (diff.isNegative) return 'due now';
 
-    final hours = diff.inHours;
-    final mins = diff.inMinutes % 60;
-
-    if (hours == 0 && mins == 0) return 'in less than a minute';
-    if (hours == 0) return 'in $mins mins';
-    if (mins == 0) return 'in $hours hours';
-    return 'in $hours hours $mins mins';
+    return 'in ${formatRelativeDuration(diff)}';
   }
 
   String _formatRepeatDays(List<int> days, {int intervalWeeks = 1}) {

@@ -1,0 +1,38 @@
+{
+  "comment": "Shared cases for the relative-time rule. Four implementations must agree: mobile hero, dashboard, and the clients core that serves the CLI and Raycast. Values EXCLUDE the caller's 'in ' prefix. Seconds is the span to render; 'prose' is for the phone and dashboard; 'compact' is for the CLI and Raycast.",
+  "rule": {
+    "tiers": [
+      "under 1 minute -> less than a minute",
+      "under 1 hour   -> M mins",
+      "under 24 hours -> H hours M mins",
+      "under 30 days  -> D days H hours M mins",
+      "under 1 year  -> MO months D days H hours",
+      "1 year or more -> Y years MO months D days"
+    ],
+    "notes": [
+      "Largest three components only.",
+      "Zero-valued components are omitted. Exactly 2 days renders as '2 days', not '2 days 0 hours 0 mins'.",
+      "Months are a fixed 30 days and years a fixed 365 days, so the rule stays pure arithmetic. 359 days is '11 months 29 days'; 365 days is '1 year'.",
+      "Singular forms are used for exactly 1 unit: '1 min', '1 hour', '1 day', '1 month', '1 year'.",
+      "Compact suffixes are h, m, d, mo and y. 'mo' is used for months so it cannot be confused with 'm' for minutes."
+    ]
+  },
+  "cases": [
+    { "seconds": 30, "prose": "less than a minute", "compact": "less than a minute" },
+    { "seconds": 60, "prose": "1 min", "compact": "1m" },
+    { "seconds": 1500, "prose": "25 mins", "compact": "25m" },
+    { "seconds": 3600, "prose": "1 hour", "compact": "1h" },
+    { "seconds": 3660, "prose": "1 hour 1 min", "compact": "1h 1m" },
+    { "seconds": 49200, "prose": "13 hours 40 mins", "compact": "13h 40m" },
+    { "seconds": 86400, "prose": "1 day", "compact": "1d" },
+    { "seconds": 90000, "prose": "1 day 1 hour", "compact": "1d 1h" },
+    { "seconds": 172800, "prose": "2 days", "compact": "2d" },
+    { "seconds": 1192980, "prose": "13 days 19 hours 23 mins", "compact": "13d 19h 23m" },
+    { "seconds": 2592000, "prose": "1 month", "compact": "1mo" },
+    { "seconds": 8830800, "prose": "3 months 12 days 5 hours", "compact": "3mo 12d 5h" },
+    { "seconds": 31017600, "prose": "11 months 29 days", "compact": "11mo 29d" },
+    { "seconds": 31536000, "prose": "1 year", "compact": "1y" },
+    { "seconds": 36979200, "prose": "1 year 2 months 3 days", "compact": "1y 2mo 3d" },
+    { "seconds": 63072000, "prose": "2 years", "compact": "2y" }
+  ]
+}

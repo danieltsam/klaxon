@@ -72,8 +72,11 @@ describe("formatRelative", () => {
     assert.equal(formatRelative(at(2026, 9, 21, 10, 0), at(2026, 9, 21, 10, 25)), "in 25m");
   });
 
-  it("formats zero", () => {
-    assert.equal(formatRelative(at(2026, 9, 21, 10, 0), at(2026, 9, 21, 10, 0)), "in 0m");
+  it("formats zero as under a minute", () => {
+    assert.equal(
+      formatRelative(at(2026, 9, 21, 10, 0), at(2026, 9, 21, 10, 0)),
+      "in less than a minute"
+    );
   });
 
   it("formats days and hours", () => {

@@ -674,18 +674,54 @@
       return `${dd}/${mm}/${yyyy}`;
     }
 
+    // Prose relative time, matching fixtures/relative-time-cases.json exactly:
+    // under a minute -> 'less than a minute'; otherwise the largest three
+    // components, zero-valued ones omitted. Months are a fixed 30 days and
+    // years a fixed 365 days. The 'in ' prefix stays here, as before.
     function formatRelative(targetIso) {
+      const MINUTE = 60, HOUR = 60 * 60, DAY = 24 * 60 * 60,
+            MONTH = 30 * DAY, YEAR = 365 * DAY;
+
       const now = new Date();
       const target = new Date(targetIso);
       const diffMs = target - now;
       if (diffMs <= 0) return 'due now';
 
-      const totalMins = Math.floor(diffMs / (1000 * 60));
-      const hours = Math.floor(totalMins / 60);
-      const mins = totalMins % 60;
+      const totalSeconds = Math.floor(diffMs / 1000);
+      if (totalSeconds < MINUTE) return 'in less than a minute';
 
-      if (hours === 0) return `in ${mins} mins`;
-      return `in ${hours} hours ${mins} mins`;
+      const unit = (value, singular, plural) => `${value} ${value === 1 ? singular : plural}`;
+      let parts;
+
+      if (totalSeconds < HOUR) {
+        parts = [unit(Math.floor(totalSeconds / MINUTE), 'min', 'mins')];
+      } else if (totalSeconds < DAY) {
+        parts = [
+          unit(Math.floor(totalSeconds / HOUR), 'hour', 'hours'),
+          unit(Math.floor((totalSeconds % HOUR) / MINUTE), 'min', 'mins'),
+        ];
+      } else if (totalSeconds < MONTH) {
+        parts = [
+          unit(Math.floor(totalSeconds / DAY), 'day', 'days'),
+          unit(Math.floor((totalSeconds % DAY) / HOUR), 'hour', 'hours'),
+          unit(Math.floor((totalSeconds % HOUR) / MINUTE), 'min', 'mins'),
+        ];
+      } else if (totalSeconds < YEAR) {
+        parts = [
+          unit(Math.floor(totalSeconds / MONTH), 'month', 'months'),
+          unit(Math.floor((totalSeconds % MONTH) / DAY), 'day', 'days'),
+          unit(Math.floor((totalSeconds % DAY) / HOUR), 'hour', 'hours'),
+        ];
+      } else {
+        parts = [
+          unit(Math.floor(totalSeconds / YEAR), 'year', 'years'),
+          unit(Math.floor((totalSeconds % YEAR) / MONTH), 'month', 'months'),
+          unit(Math.floor(((totalSeconds % YEAR) % MONTH) / DAY), 'day', 'days'),
+        ];
+      }
+
+      const nonZero = parts.filter(p => !p.startsWith('0 '));
+      return `in ${nonZero.join(' ')}`;
     }
 
     function formatRepeatDays(repeatDaysStr) {
