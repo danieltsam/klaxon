@@ -18,6 +18,8 @@ import 'widgets/time_pickers.dart';
 import 'services/haptic_service.dart';
 import 'widgets/haptics_lab_modal.dart';
 import 'widgets/calendar_picker.dart';
+import 'widgets/recurrence_lab.dart';
+import 'widgets/recurrence_chip_variants.dart';
 
 class _DirectionalStrikePainter extends CustomPainter {
   final double progress;
@@ -1165,6 +1167,57 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     );
   }
 
+  /// Renders the whole recurrence chip row in the persisted visual variant.
+  /// Variant '0' (default) keeps the original `_buildPresetChip` row.
+  Widget _buildRecurrenceRow({
+    required List<String> labels,
+    required int selectedIndex,
+    required void Function(int) onSelect,
+    required String variant,
+  }) {
+    switch (variant) {
+      case '1':
+        return GlassmorphicChipRow(
+          labels: labels,
+          selectedIndex: selectedIndex,
+          onSelect: onSelect,
+        );
+      case '2':
+        return SoftGlowChipRow(
+          labels: labels,
+          selectedIndex: selectedIndex,
+          onSelect: onSelect,
+        );
+      case '4':
+        return OutlineChipRow(
+          labels: labels,
+          selectedIndex: selectedIndex,
+          onSelect: onSelect,
+        );
+      case '5':
+        return TwoRowChipRow(
+          labels: labels,
+          selectedIndex: selectedIndex,
+          onSelect: onSelect,
+        );
+      case '6':
+        return SegmentedChipRow(
+          labels: labels,
+          selectedIndex: selectedIndex,
+          onSelect: onSelect,
+        );
+      case '0':
+      default:
+        return DefaultChipRow(
+          labels: labels,
+          selectedIndex: selectedIndex,
+          onSelect: onSelect,
+          chipBuilder: (label, active, onTap) =>
+              _buildPresetChip(label, active, onTap),
+        );
+    }
+  }
+
   void _openTimeAndScheduleSheet({
     required BuildContext context,
     required DateTime initialTime,
@@ -1178,6 +1231,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = today.add(const Duration(days: 1));
     final initialDay = DateTime(initialTime.year, initialTime.month, initialTime.day);
+
+    // Persisted recurrence chip row variant ('0' = default). Loaded async
+    // after the sheet opens so the row reflects the last lab selection.
+    String chipVariant = '0';
+    bool chipVariantLoaded = false;
 
     int curHour = initialTime.hour;
     int curMinute = initialTime.minute;
@@ -1255,6 +1313,16 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
             final isWeekdays = recurrenceMode == 'weekdays';
             final isFortnightly = recurrenceMode == 'fortnightly';
             final isCustom = recurrenceMode == 'custom';
+
+            // Load the persisted chip variant once the sheet is open.
+            if (!chipVariantLoaded) {
+              chipVariantLoaded = true;
+              IdMapper.getRecurrenceChipVariant().then((v) {
+                if (v != null && v.isNotEmpty && builderCtx.mounted) {
+                  setSheetState(() => chipVariant = v);
+                }
+              });
+            }
 
             DateTime computeFinalTime(
               int h,
@@ -1405,62 +1473,105 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
                   const SizedBox(height: 14),
 
-                  // Recurrence Mode Chips (Cleaned: Once, Daily, Weekdays, Custom)
-                  Row(
-                    children: [
-                      _buildPresetChip('Once', isOnce, () {
-                        HapticService.selectionClick();
-                        setSheetState(() {
-                          recurrenceMode = 'once';
-                          curRepeatDays.clear();
-                          intervalWeeks = 1;
-                          anchorDate = null;
-                        });
-                        updateTime();
-                      }),
-                      const SizedBox(width: 8),
-                      _buildPresetChip('Daily', isDaily, () {
-                        HapticService.selectionClick();
-                        setSheetState(() {
-                          recurrenceMode = 'daily';
-                          curRepeatDays = [1, 2, 3, 4, 5, 6, 7];
-                          intervalWeeks = 1;
-                          anchorDate = null;
-                        });
-                        updateTime(clearCustom: true);
-                      }),
-                      const SizedBox(width: 8),
-                      _buildPresetChip('Weekdays', isWeekdays, () {
-                        HapticService.selectionClick();
-                        setSheetState(() {
-                          recurrenceMode = 'weekdays';
-                          curRepeatDays = [1, 2, 3, 4, 5];
-                        });
-                        updateTime(clearCustom: true);
-                      }),
-                      const SizedBox(width: 8),
-                      _buildPresetChip('Fortnightly', isFortnightly, () {
-                        HapticService.selectionClick();
-                        setSheetState(() {
-                          recurrenceMode = 'fortnightly';
-                          intervalWeeks = 2;
-                          curRepeatDays = [curTime.weekday];
-                          anchorDate = _isoDate(curTime);
-                        });
-                        updateTime(clearCustom: true);
-                      }),
-                      const SizedBox(width: 8),
-                      _buildPresetChip('Custom', isCustom, () {
-                        HapticService.selectionClick();
-                        setSheetState(() {
-                          recurrenceMode = 'custom';
-                          curRepeatDays.clear();
-                          intervalWeeks = 1;
-                          anchorDate = null;
-                        });
-                        updateTime(clearCustom: true);
-                      }),
+                  // Repeats section label — long-press opens the recurrence debug lab.
+                  GestureDetector(
+                    onLongPress: () async {
+                      HapticService.selectionClick();
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const RecurrenceLab()),
+                      );
+                      // Lab popped — re-read the persisted variant so the row
+                      // updates immediately without reopening the sheet.
+                      if (builderCtx.mounted) {
+                        final v = await IdMapper.getRecurrenceChipVariant();
+                        setSheetState(() => chipVariant = v ?? '0');
+                      }
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 2),
+                      child: Text(
+                        'REPEATS',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.8,
+                          color: Color(0xFF8A8F98),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Recurrence Mode Chips — rendered in the persisted variant.
+                  _buildRecurrenceRow(
+                    labels: const [
+                      'Once',
+                      'Daily',
+                      'Weekdays',
+                      'Fortnightly',
+                      'Custom',
                     ],
+                    selectedIndex: isOnce
+                        ? 0
+                        : isDaily
+                            ? 1
+                            : isWeekdays
+                                ? 2
+                                : isFortnightly
+                                    ? 3
+                                    : isCustom
+                                        ? 4
+                                        : 0,
+                    onSelect: (i) {
+                      HapticService.selectionClick();
+                      switch (i) {
+                        case 0:
+                          setSheetState(() {
+                            recurrenceMode = 'once';
+                            curRepeatDays.clear();
+                            intervalWeeks = 1;
+                            anchorDate = null;
+                          });
+                          updateTime();
+                          break;
+                        case 1:
+                          setSheetState(() {
+                            recurrenceMode = 'daily';
+                            curRepeatDays = [1, 2, 3, 4, 5, 6, 7];
+                            intervalWeeks = 1;
+                            anchorDate = null;
+                          });
+                          updateTime(clearCustom: true);
+                          break;
+                        case 2:
+                          setSheetState(() {
+                            recurrenceMode = 'weekdays';
+                            curRepeatDays = [1, 2, 3, 4, 5];
+                          });
+                          updateTime(clearCustom: true);
+                          break;
+                        case 3:
+                          setSheetState(() {
+                            recurrenceMode = 'fortnightly';
+                            intervalWeeks = 2;
+                            curRepeatDays = [curTime.weekday];
+                            anchorDate = _isoDate(curTime);
+                          });
+                          updateTime(clearCustom: true);
+                          break;
+                        case 4:
+                        default:
+                          setSheetState(() {
+                            recurrenceMode = 'custom';
+                            curRepeatDays.clear();
+                            intervalWeeks = 1;
+                            anchorDate = null;
+                          });
+                          updateTime(clearCustom: true);
+                      }
+                    },
+                    variant: chipVariant,
                   ),
 
                   // Animated Slide-out: Dynamic Date Row if Once, Day Circles if Repeating
