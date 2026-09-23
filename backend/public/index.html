@@ -143,6 +143,21 @@
           <!-- Hero Upcoming Alarm Card -->
           <div id="hero-card-container"></div>
 
+          <!-- Missed Alarms Section -->
+          <section id="missed-alarms-section" class="hidden space-y-6" data-purpose="missed-alarms-section">
+            <div class="flex items-center justify-between border-b border-amber-900/40 pb-6">
+              <div class="space-y-2">
+                <div class="flex items-center gap-2">
+                  <span class="h-2 w-2 rounded-full bg-amber-500 animate-pulse"></span>
+                  <h2 class="text-xl font-light tracking-tight text-amber-200">missed alarms</h2>
+                </div>
+                <p class="text-xs text-zinc-500 font-light">alarms that did not fire. failures are kept for audit.</p>
+              </div>
+              <span id="missed-alarms-count-badge" class="px-2 py-0.5 border border-amber-900/50 text-[11px] font-mono text-amber-300">0</span>
+            </div>
+            <div id="missed-alarms-list" class="space-y-4"></div>
+          </section>
+
           <!-- Active Alarms Section -->
           <section class="space-y-8" data-purpose="active-alarms-section">
             <div class="flex items-center justify-between border-b border-[#232820] pb-6">
@@ -685,6 +700,24 @@
       return days.map(d => dayNames[d] || d).join(', ');
     }
 
+    function formatMissedReason(reason) {
+      switch (reason) {
+        case 'no_device_registered':
+          return 'No device was registered when the alarm was due.';
+        case 'delivery_failed':
+          return 'The push dispatch failed.';
+        case 'dispatched_not_reported':
+          return 'The system sent the trigger, but the phone never reported back. This does not mean it was received.';
+        case 'device_reported_stale':
+          return 'The phone refused to arm a stale alarm.';
+        case 'device_reported_failed':
+          return 'The phone reported it could not fire the alarm.';
+        case 'unknown':
+        default:
+          return 'The reason could not be determined.';
+      }
+    }
+
     // Load Alarms from backend
     async function loadAlarms() {
       try {
@@ -713,13 +746,58 @@
 
     // Render Dashboard
     function renderDashboard() {
-      const filtered = allAlarms.filter(a => {
+      const matchesSearch = (a) => {
         if (!currentSearchQuery) return true;
         const q = currentSearchQuery.toLowerCase();
         return (a.label || '').toLowerCase().includes(q) || (a.description || '').toLowerCase().includes(q);
-      });
+      };
 
-      document.getElementById('alarms-count-badge').textContent = filtered.length;
+      const activeList = allAlarms.filter(a => a.status !== 'missed' && matchesSearch(a));
+      const missedAlarms = allAlarms
+        .filter(a => a.status === 'missed' && matchesSearch(a))
+        .sort((a, b) => new Date(b.missed_at || 0) - new Date(a.missed_at || 0));
+
+      document.getElementById('alarms-count-badge').textContent = activeList.length;
+
+      // Render Missed Alarms Section
+      const missedSection = document.getElementById('missed-alarms-section');
+      const missedList = document.getElementById('missed-alarms-list');
+      const missedCountBadge = document.getElementById('missed-alarms-count-badge');
+      if (missedAlarms.length > 0) {
+        missedSection.classList.remove('hidden');
+        missedCountBadge.textContent = missedAlarms.length;
+        missedList.innerHTML = missedAlarms.map(alarm => {
+          const targetStr = `${formatDate(alarm.target_time)} ${formatTime(alarm.target_time)}`;
+          const missedStr = `${formatDate(alarm.missed_at)} ${formatTime(alarm.missed_at)}`;
+          const dispatchAudit = alarm.last_dispatch_at
+            ? `<div class="mt-2 text-[11px] text-zinc-500">last dispatch attempted: <span class="font-mono text-zinc-400">${formatDate(alarm.last_dispatch_at)} ${formatTime(alarm.last_dispatch_at)}</span> · sent: <span class="font-mono text-zinc-400">${alarm.last_dispatch_sent ?? 0}</span> · failed: <span class="font-mono text-zinc-400">${alarm.last_dispatch_failed ?? 0}</span></div>`
+            : '';
+
+          return `
+            <div class="p-4 border border-amber-900/60 bg-amber-950/20">
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+                    <span class="text-[11px] font-medium text-amber-200 uppercase tracking-wider">missed</span>
+                  </div>
+                  <div class="mt-2 text-base font-medium font-mono text-zinc-100 truncate">${escapeHtml(alarm.label)}</div>
+                  <div class="mt-1 space-y-0.5 text-xs text-zinc-400">
+                    <div>original time: <span class="font-mono text-zinc-300">${targetStr}</span></div>
+                    <div>missed at: <span class="font-mono text-zinc-300">${missedStr}</span></div>
+                  </div>
+                  <div class="mt-2 text-xs text-amber-200/90 leading-relaxed">${formatMissedReason(alarm.missed_reason)}</div>
+                  ${dispatchAudit}
+                </div>
+                <button onclick="openAlarmDetail('${alarm.id}')" class="shrink-0 text-[11px] text-zinc-500 hover:text-zinc-200 transition-colors" type="button">reschedule</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } else {
+        missedSection.classList.add('hidden');
+        missedList.innerHTML = '';
+      }
 
       // Determine upcoming active hero alarm
       const activeAlarms = allAlarms.filter(a => a.status === 'pending' || a.status === 'snoozed');
@@ -762,7 +840,7 @@
 
       // Render All Alarms Feed (divide-y matching user snippet)
       const listContainer = document.getElementById('all-alarms-list');
-      if (filtered.length === 0) {
+      if (activeList.length === 0) {
         listContainer.innerHTML = `
           <div class="py-16 text-center border border-[#232820] bg-[#11140f]">
             <div class="text-xs font-medium text-zinc-400 lowercase">no alarms scheduled</div>
@@ -772,7 +850,7 @@
         return;
       }
 
-      listContainer.innerHTML = filtered.map(alarm => {
+      listContainer.innerHTML = activeList.map(alarm => {
         const isEnabled = alarm.status === 'pending' || alarm.status === 'snoozed' || alarm.status === 'ringing';
         const isSnoozed = alarm.status === 'snoozed';
         const timeStr = formatTime(alarm.target_time);
