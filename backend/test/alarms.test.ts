@@ -174,12 +174,14 @@ describe('Fastify Alarm API & Persistence Test Suite', () => {
       assert.strictEqual(response.statusCode, 400);
     });
 
-    it('POST /api/alarms/:id/state should transition to "snoozed"', async () => {
+    it('POST /api/alarms/:id/state should transition to "snoozed" and set the next-ring time', async () => {
+      const before = Date.now();
       const response = await app.inject({
         method: 'POST',
         url: `/api/alarms/${createdAlarmId}/state`,
         payload: { status: 'snoozed' }
       });
+      const after = Date.now();
       assert.strictEqual(response.statusCode, 200);
       const data = JSON.parse(response.body);
       assert.strictEqual(data.status, 'snoozed');
@@ -187,6 +189,69 @@ describe('Fastify Alarm API & Persistence Test Suite', () => {
       // Verify in DB
       const record = AlarmRepo.getById(createdAlarmId);
       assert.strictEqual(record?.status, 'snoozed');
+
+      // The response must echo the newly persisted next-ring time, not the
+      // stale existing value.
+      assert.ok(record?.target_time, 'snooze must persist a target_time');
+      assert.strictEqual(data.target_time, record?.target_time);
+
+      // No target_time supplied: fallback = floor(now to the minute) + 9 min.
+      const floorToMinute = (ms: number) => Math.floor(ms / 60000) * 60000;
+      const actual = new Date(data.target_time).getTime();
+      const allowed = [floorToMinute(before) + 9 * 60000, floorToMinute(after) + 9 * 60000];
+      assert.ok(
+        allowed.includes(actual),
+        `snooze fallback ${data.target_time} was not floor(now to minute) + 9 min`
+      );
+      assert.ok(actual > after, 'the snooze time must be in the future');
+    });
+
+    it('POST /api/alarms/:id/state with an explicit future target_time stores it exactly', async () => {
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/api/alarms',
+        payload: { target_time: '2026-12-01T08:00:00.000Z', label: 'Snooze Explicit' }
+      });
+      const created = JSON.parse(createRes.body);
+      const explicit = '2026-12-01T09:30:00.000Z';
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/alarms/${created.id}/state`,
+        payload: { status: 'snoozed', target_time: explicit }
+      });
+      assert.strictEqual(res.statusCode, 200);
+      const data = JSON.parse(res.body);
+      assert.strictEqual(data.target_time, explicit);
+      assert.strictEqual(AlarmRepo.getById(created.id)?.target_time, explicit);
+
+      db.prepare('DELETE FROM alarms WHERE id = ?').run(created.id);
+    });
+
+    it('POST /api/alarms/:id/state snooze sends no FCM and leaves last_dispatch_* unchanged', async () => {
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/api/alarms',
+        payload: { target_time: '2026-12-02T08:00:00.000Z', label: 'Snooze No FCM' }
+      });
+      const created = JSON.parse(createRes.body);
+      const beforeDispatch = AlarmRepo.getById(created.id)!;
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/alarms/${created.id}/state`,
+        payload: { status: 'snoozed' }
+      });
+      assert.strictEqual(res.statusCode, 200);
+      const data = JSON.parse(res.body);
+      assert.strictEqual(data.fcm_dispatch, undefined, 'a snooze must not dispatch FCM');
+
+      const afterDispatch = AlarmRepo.getById(created.id)!;
+      assert.strictEqual(afterDispatch.last_dispatch_sent, beforeDispatch.last_dispatch_sent);
+      assert.strictEqual(afterDispatch.last_dispatch_failed, beforeDispatch.last_dispatch_failed);
+      assert.strictEqual(afterDispatch.last_dispatch_at, beforeDispatch.last_dispatch_at);
+
+      db.prepare('DELETE FROM alarms WHERE id = ?').run(created.id);
     });
 
     it('POST /api/alarms/:id/state should transition to "dismissed" and move to history', async () => {

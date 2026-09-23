@@ -120,13 +120,27 @@ describe('Bidirectional Sync & Reconnection Contract Test Suite', () => {
       assert.strictEqual(AlarmRepo.getById(createdAlarmId)?.status, 'ringing');
 
       // 2. snoozed
+      const targetBeforeSnooze = AlarmRepo.getById(createdAlarmId)!.target_time;
+      const snoozeTarget = new Date(
+        Math.floor(Date.now() / 60000) * 60000 + 2 * 60 * 60000
+      ).toISOString();
       res = await app.inject({
         method: 'POST',
         url: `/api/alarms/${createdAlarmId}/state`,
-        payload: { status: 'snoozed' }
+        payload: { status: 'snoozed', target_time: snoozeTarget }
       });
       assert.strictEqual(res.statusCode, 200);
       assert.strictEqual(AlarmRepo.getById(createdAlarmId)?.status, 'snoozed');
+
+      // The snooze's next-ring time is persisted in target_time and moves
+      // forward past the pre-snooze value.
+      const snoozedRecord = AlarmRepo.getById(createdAlarmId)!;
+      assert.strictEqual(snoozedRecord.target_time, snoozeTarget);
+      assert.ok(
+        new Date(snoozedRecord.target_time).getTime() >
+          new Date(targetBeforeSnooze).getTime(),
+        'snooze must move target_time forward'
+      );
 
       // 3. dismissed
       res = await app.inject({

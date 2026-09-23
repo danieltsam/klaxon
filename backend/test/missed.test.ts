@@ -152,12 +152,54 @@ describe('Missed alarms: sweep, reason, report, calendar', () => {
       assert.strictEqual(AlarmRepo.getById(alarm.id)!.status, 'pending');
     });
 
-    it('does not sweep ringing or snoozed alarms (spec §15 item 3)', () => {
+    it('does not sweep a ringing alarm (spec §15 item 3)', () => {
       const ringing = insertAlarm({ status: 'ringing' });
-      const snoozed = insertAlarm({ status: 'snoozed' });
       sweepMissedAlarms(NOW);
       assert.strictEqual(AlarmRepo.getById(ringing.id)!.status, 'ringing');
+    });
+
+    it('sweeps a snoozed one-time alarm whose time is beyond grace (spec §15 item 3)', () => {
+      const snoozed = insertAlarm({ status: 'snoozed' });
+      sweepMissedAlarms(NOW);
+      assert.strictEqual(AlarmRepo.getById(snoozed.id)!.status, 'missed');
+    });
+
+    it('does not sweep a snoozed alarm whose next ring time is in the future', () => {
+      const snoozed = insertAlarm({
+        status: 'snoozed',
+        target_time: new Date(NOW.getTime() + 60 * 60_000).toISOString(),
+      });
+      sweepMissedAlarms(NOW);
       assert.strictEqual(AlarmRepo.getById(snoozed.id)!.status, 'snoozed');
+    });
+
+    it('does not sweep a snoozed alarm still inside the grace window', () => {
+      const snoozed = insertAlarm({
+        status: 'snoozed',
+        target_time: new Date(NOW.getTime() - 2 * 60_000).toISOString(),
+      });
+      sweepMissedAlarms(NOW);
+      assert.strictEqual(AlarmRepo.getById(snoozed.id)!.status, 'snoozed');
+    });
+
+    it('does not sweep a snoozed recurring alarm', () => {
+      const snoozed = insertAlarm({ status: 'snoozed', repeat_days: '1,2,3,4,5' });
+      sweepMissedAlarms(NOW);
+      assert.strictEqual(AlarmRepo.getById(snoozed.id)!.status, 'snoozed');
+    });
+
+    it('old-app snooze without target_time stays snoozed after an immediate sweep', async () => {
+      // An older app sends { status: 'snoozed' } with no target_time. The
+      // endpoint's fallback (~9 minutes out) must not be misread as stale.
+      const alarm = insertAlarm();
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/alarms/${alarm.id}/state`,
+        payload: { status: 'snoozed' },
+      });
+      assert.strictEqual(response.statusCode, 200);
+      sweepMissedAlarms();
+      assert.strictEqual(AlarmRepo.getById(alarm.id)!.status, 'snoozed');
     });
 
     it('one bad row does not stop the sweep (spec §4.1)', () => {

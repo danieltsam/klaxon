@@ -135,18 +135,22 @@ export function deriveMissedReason(
 }
 
 /**
- * Mark overdue one-time `pending` alarms as `missed` (spec §6.1).
+ * Mark overdue one-time `pending` and `snoozed` alarms as `missed` (spec §6.1,
+ * §15 item 3).
  *
- * Purely time-based and cause-agnostic (§4.1). Recurring alarms carry
- * `repeat_days` — including fortnightly alarms — and are never swept. Every
- * alarm is handled independently: one bad row must not stall the sweep.
+ * Purely time-based and cause-agnostic (§4.1). A `snoozed` alarm is swept too:
+ * its next-ring time lives in `target_time`, so a snooze that passed without
+ * ringing is the same failure as a stale one-time alarm (spec §15 item 3, now
+ * closed). Recurring alarms carry `repeat_days` — including fortnightly alarms —
+ * and are never swept. Every alarm is handled independently: one bad row must
+ * not stall the sweep.
  */
 export function sweepMissedAlarms(now: Date = new Date()): number {
   let candidates: AlarmRecord[];
   try {
     candidates = db.prepare(`
       SELECT * FROM alarms
-      WHERE status = 'pending'
+      WHERE status IN ('pending', 'snoozed')
         AND (repeat_days IS NULL OR TRIM(repeat_days) = '')
     `).all() as AlarmRecord[];
   } catch (err) {
@@ -755,21 +759,40 @@ app.post<{
       fcmPayload.repeat_days = existing.repeat_days;
     }
     fcmResult = await sendFcmDataMessage('CREATE', fcmPayload);
+  } else if (status === 'snoozed') {
+    // A snooze's next-ring time is stored in the existing `target_time` column,
+    // with no new column (spec §15 item 3, now closed). No FCM is sent: there is
+    // no SNOOZE action, and the phone has already armed the snooze locally. No
+    // dispatch happened, so last_dispatch_* is deliberately left untouched.
+    if (target_time && !isNaN(Date.parse(target_time))) {
+      effectiveTargetTime = new Date(target_time).toISOString();
+    } else {
+      // The fallback mirrors the phone's own snooze computation (now floored to
+      // the minute, plus 9 minutes, UTC) so an older app that sends no
+      // target_time cannot produce a stale time the sweep would misread.
+      effectiveTargetTime = new Date(
+        Math.floor(Date.now() / 60000) * 60000 + 9 * 60000
+      ).toISOString();
+    }
+    AlarmRepo.updateTargetTime(id, effectiveTargetTime);
   }
 
   if (fcmResult) {
     AlarmRepo.recordDispatch(id, fcmResult.sent, fcmResult.failed);
   }
 
-  await mirrorSafely({ ...existing, status });
+    // Mirror the row as it now stands, not as it was read: a `pending` alarm may
+    // have been rolled forward and a `snoozed` one has a new next-ring time, and
+    // the calendar event must sit at the time the alarm will actually ring.
+    await mirrorSafely({ ...existing, status, target_time: effectiveTargetTime });
 
-  return reply.send({
-    success: true,
-    id,
-    status,
-    target_time: effectiveTargetTime,
-    fcm_dispatch: fcmResult
-  });
+    return reply.send({
+      success: true,
+      id,
+      status,
+      target_time: effectiveTargetTime,
+      fcm_dispatch: fcmResult
+    });
 });
 
 // 4b. POST /api/alarms/report-missed: batched device report on reconnect (§6.2).

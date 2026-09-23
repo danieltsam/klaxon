@@ -205,6 +205,10 @@ export const AlarmRepo = {
    * System-set transition to `missed`. Never reachable through the client
    * state endpoint (spec §5); the sweep and the device report are its only
    * callers.
+   *
+   * Defense in depth: only an alarm that could still be live (`pending` or
+   * `snoozed`) may be declared missed. A row already ringing, dismissed,
+   * canceled, disabled, or missed is left untouched.
    */
   markMissed(id: string, reason: string, at: string = new Date().toISOString()): boolean {
     const result = db.prepare(`
@@ -212,7 +216,7 @@ export const AlarmRepo = {
       SET status = 'missed',
           missed_at = ?,
           missed_reason = ?
-      WHERE id = ?
+      WHERE id = ? AND status IN ('pending', 'snoozed')
     `).run(at, reason, id);
     return result.changes > 0;
   },

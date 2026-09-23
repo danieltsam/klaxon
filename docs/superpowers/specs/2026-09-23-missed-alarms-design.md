@@ -126,6 +126,10 @@ the ordinary state endpoint; the dedicated report path in §6.2 is the only way.
 **View membership:** excluded from `view=active` (so the phone never treats it as something to
 arm), and included in `view=all`.
 
+**`target_time` is authoritative for `snoozed`.** A snooze writes its next-ring time into that
+column, so the sweep and every reader can treat a snoozed alarm as a `pending` one whose time has
+moved (§6.3).
+
 ### 5.1 New columns on `alarms`
 
 Added through the existing `migrations` array in `db.ts`, which already tolerates re-runs.
@@ -151,11 +155,13 @@ do — which is the only evidence available about why a phone never rang.
 A timer in `server.ts`, alongside the existing calendar reconcile and **guarded the same way**
 (`NODE_ENV !== 'test'`), runs every **60 seconds**:
 
-> Any `pending` alarm with **no `repeat_days`** whose `target_time + 5 minutes < now` becomes
-> `missed`, with `missed_at = now` and `missed_reason` computed per §7.
+> Any `pending` or `snoozed` alarm with **no `repeat_days`** whose `target_time + 5 minutes < now`
+> becomes `missed`, with `missed_at = now` and `missed_reason` computed per §7.
 
 Fortnightly alarms carry `repeat_days` as well as an interval, so "no `repeat_days`" excludes them
-along with daily and weekday alarms. `ringing` and `snoozed` are not swept — see §15.
+along with daily and weekday alarms. `ringing` is not swept: the phone has already reached that
+alarm, so it is not evidence of a failure. `snoozed` is swept on the same terms as `pending`,
+because §6.3 makes a snoozed alarm's `target_time` authoritative.
 
 Only the backend can do this. The phone is, by definition, the thing that is unreachable, and an
 alarm missed because the token died would never be marked if detection lived there.
@@ -188,6 +194,23 @@ report.
 
 The sweep and the report are independent. Either alone produces a correct result; together, the
 state converges quickly **and** survives a phone that never comes back.
+
+### 6.3 A snooze writes its next-ring time
+
+A snooze stores its next-ring time in the existing `target_time` column. No new column is added,
+because every reader already treats `target_time` as the moment the alarm will next ring: the
+calendar mirror, `/api/calendar.ics`, the dashboard hero card, and the phone's own reconcile. A
+snoozed alarm therefore behaves exactly like a `pending` alarm whose time has moved, and none of
+those readers needs a special case.
+
+`POST /api/alarms/:id/state` accepts `target_time` for `snoozed` and persists it. When a client
+omits the time, the backend computes the same fallback the phone uses — now floored to the minute,
+plus 9 minutes — so an older app cannot leave a stale time that the sweep would misread as a
+failure. A snooze sends no FCM and records no dispatch: the phone armed the alarm itself, and the
+retained `last_dispatch_*` values are what §7 needs if that snooze later goes stale.
+
+`PATCH /api/alarms/:id` is not the state-transition path and does not carry this behaviour, so a
+snooze must go through `/state`.
 
 ---
 
@@ -376,6 +399,8 @@ must be sequenced behind them, and the spec records that rather than assuming a 
 | Audit depth | Status + timestamp + derivable reason | Enough to audit a failure without a full delivery log |
 | Recurring alarms | Unaffected | A stale stored time is normal for a repeating schedule |
 | Dashboard | In scope | Same auditability requirement as the calendar |
+| Snooze time | Written to `target_time` | Every reader already treats that field as the next ring time, so the sweep, the calendar, the ICS feed, and the dashboard all become correct with no new column |
+| Old-app snooze | Backend computes the fallback time | An omitted time must not leave a stale one the sweep would misread as a failure; this keeps the backend and app deploys independent |
 
 ---
 
@@ -384,7 +409,6 @@ must be sequenced behind them, and the spec records that rather than assuming a 
 1. **`backend/public/index.html` must be free of concurrent edits** before §10 starts (§13.4).
 2. **Deployment.** The homelab runs a commit that predates both this change and the fortnightly
    work; it will need a redeploy once this lands.
-3. **The same gap exists for `snoozed` alarms, and this design does not fix it.** A `snoozed` alarm
-   whose snooze time passes without the phone ringing would sit `snoozed` indefinitely, exactly as
-   `pending` did. The sweep deliberately covers `pending` only, to keep this change bounded.
-   Recorded rather than forgotten: it is a candidate for the same treatment in a follow-up.
+3. **The `snoozed` gap recorded here is closed.** A `snoozed` alarm whose time passes is now swept
+   on the same terms as `pending` (§6.1), because a snooze writes its next-ring time into
+   `target_time` (§6.3). Kept here as the record of what was deferred, and when it was taken up.
