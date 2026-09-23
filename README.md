@@ -247,13 +247,13 @@ The backend finds a missed alarm in two ways. It examines the alarms every 60 se
 
 ### 1. Automatic test suites
 
-Run this command to start the backend suite and the mobile Flutter suite. The backend suite uses a memory database.
+Run this command to start the backend suite, the mobile Flutter suite, and the clients suite. The backend suite uses a memory database.
 
 ```bash
 ./run_tests.sh
 ```
 
-- Backend: The directory `backend/test/` contains 105 tests in 28 suites. The tests examine these items:
+- Backend: The directory `backend/test/` contains 144 tests in 40 suites. The tests examine these items:
 
   - The REST API.
   - The iCalendar feed.
@@ -262,9 +262,10 @@ Run this command to start the backend suite and the mobile Flutter suite. The ba
   - The slider states.
   - The memory database.
   - The Google Calendar event mapping, the credential states, the idempotent writes, and the reconciliation.
-  - The guard that stops the suite from reaching the live Google API.
+  - The missed-alarm sweep, the reason values, and the report endpoint.
+  - The guards that stop the suite from reaching the live Google API or a real database.
 
-- Mobile: The directory `mobile/test/` contains 60 tests. The tests examine these items:
+- Mobile: The directory `mobile/test/` contains 81 tests. The tests examine these items:
 
   - The recurrence calculations.
   - The payload data.
@@ -272,6 +273,13 @@ Run this command to start the backend suite and the mobile Flutter suite. The ba
   - The notes.
   - The reconnection.
   - The offline operation.
+  - The refusal to arm a stale one-time alarm, and the report to the backend.
+
+- Clients: The directory `clients/core/test/` contains 137 tests. The tests examine these items:
+
+  - The API client and the time parser.
+  - The status labels, including `missed`.
+  - The `missed_at` and `missed_reason` fields, and the rule that their copy never claims delivery.
 
 ### 2. Live test on a physical device (ADB)
 
