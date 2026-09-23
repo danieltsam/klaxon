@@ -2735,7 +2735,9 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                       setModalState(() {
                                         isSaving = false;
                                         if (result.success && result.syncedCount != null) {
-                                          saveResult = '✓ Saved · ${result.syncedCount} alarms synced';
+                                          final n = result.syncedCount ?? 0;
+                                          final noun = n == 1 ? 'alarm' : 'alarms';
+                                          saveResult = '✓ Saved · $n $noun synced';
                                           saveSuccess = true;
                                         } else {
                                           saveResult = '✕ Saved, but cannot reach $newUrl';
