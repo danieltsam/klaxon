@@ -100,7 +100,35 @@ class AlarmService {
           await IdMapper.setRepeatDays(intId, repeatDaysList);
         }
 
-        final futureTarget = computeFutureOccurrence(parsedDateTime, repeatDays: repeatDaysList);
+        // Fortnightly / interval-based recurrence (backend always sends these
+        // keys in the CREATE payload: interval defaults to 1, anchor to '').
+        int intervalWeeks = 1;
+        DateTime? anchorDate;
+        final intervalWeeksStr = data['recurrence_interval_weeks'];
+        if (intervalWeeksStr != null && intervalWeeksStr.toString().isNotEmpty) {
+          final parsedInterval = int.tryParse(intervalWeeksStr.toString());
+          if (parsedInterval != null && parsedInterval > 1) {
+            intervalWeeks = parsedInterval;
+          }
+        }
+        await IdMapper.setIntervalWeeks(intId, intervalWeeks);
+        final anchorDateStr = data['recurrence_anchor_date'];
+        if (anchorDateStr != null && anchorDateStr.toString().isNotEmpty) {
+          final parsedAnchor = DateTime.tryParse(anchorDateStr.toString());
+          if (parsedAnchor != null) {
+            anchorDate = DateTime(parsedAnchor.year, parsedAnchor.month, parsedAnchor.day);
+            await IdMapper.setAnchorDate(intId, anchorDateStr.toString());
+          }
+        } else {
+          await IdMapper.setAnchorDate(intId, null);
+        }
+
+        final futureTarget = computeFutureOccurrence(
+          parsedDateTime,
+          repeatDays: repeatDaysList,
+          intervalWeeks: intervalWeeks,
+          anchorDate: anchorDate,
+        );
 
         final desc = data['description']?.toString();
         // Ensure mapping is preserved
@@ -193,6 +221,23 @@ class AlarmService {
             ? repeatDaysStr.split(',').map((s) => int.tryParse(s.trim()) ?? 0).where((d) => d >= 1 && d <= 7).toList()
             : <int>[];
 
+        // Fortnightly / interval-based recurrence fields mirroring the backend
+        final intervalWeeksStr = remote['recurrence_interval_weeks']?.toString();
+        final anchorDateStr = remote['recurrence_anchor_date']?.toString();
+        int intervalWeeks = 1;
+        if (intervalWeeksStr != null && intervalWeeksStr.isNotEmpty) {
+          final parsed = int.tryParse(intervalWeeksStr);
+          if (parsed != null && parsed > 1) {
+            intervalWeeks = parsed;
+          }
+        }
+        await IdMapper.setIntervalWeeks(intId, intervalWeeks);
+        if (anchorDateStr != null && anchorDateStr.isNotEmpty) {
+          await IdMapper.setAnchorDate(intId, anchorDateStr);
+        } else {
+          await IdMapper.setAnchorDate(intId, null);
+        }
+
         await IdMapper.saveMapping(
           intId,
           uuid,
@@ -233,6 +278,8 @@ class AlarmService {
               'repeat_days': repeatDaysStr,
               'sound_tone': tone,
               'ramp_seconds': rampSec.toString(),
+              'recurrence_interval_weeks': intervalWeeksStr,
+              'recurrence_anchor_date': anchorDateStr,
             });
           }
         }
@@ -283,6 +330,8 @@ class AlarmService {
     required String label,
     String? customUuid,
     List<int>? repeatDays,
+    int intervalWeeks = 1,
+    DateTime? anchorDate,
     String? soundTone,
     int? rampSeconds,
   }) async {
@@ -294,6 +343,14 @@ class AlarmService {
 
     if (repeatDays != null && repeatDays.isNotEmpty) {
       await IdMapper.setRepeatDays(intId, repeatDays);
+    }
+    await IdMapper.setIntervalWeeks(intId, intervalWeeks);
+    if (intervalWeeks > 1 && anchorDate != null) {
+      final m = anchorDate.month.toString().padLeft(2, '0');
+      final d = anchorDate.day.toString().padLeft(2, '0');
+      await IdMapper.setAnchorDate(intId, '${anchorDate.year}-$m-$d');
+    } else {
+      await IdMapper.setAnchorDate(intId, null);
     }
 
     // Truncate seconds and milliseconds to ensure exact alarm triggers at :00
@@ -309,7 +366,12 @@ class AlarmService {
 
     final audioPath = getAudioPathForTone(soundTone);
     final rampSec = rampSeconds ?? 30;
-    final futureTarget = computeFutureOccurrence(alignedDateTime, repeatDays: repeatDays);
+    final futureTarget = computeFutureOccurrence(
+      alignedDateTime,
+      repeatDays: repeatDays,
+      intervalWeeks: intervalWeeks,
+      anchorDate: anchorDate,
+    );
 
     final volumeSettings = buildPerceptualVolumeSettings(rampSec);
 
@@ -344,8 +406,16 @@ class AlarmService {
 
     // Check if this was a recurring alarm; if so, schedule next occurrence
     final repeatDays = await IdMapper.getRepeatDays(settings.id);
-    if (repeatDays.isNotEmpty) {
-      final nextTime = getNextOccurrence(settings.dateTime, repeatDays);
+    final intervalWeeks = await IdMapper.getIntervalWeeks(settings.id) ?? 1;
+    final anchorDateStr = await IdMapper.getAnchorDate(settings.id);
+    final anchorDate = anchorDateStr != null ? DateTime.tryParse(anchorDateStr) : null;
+    if (repeatDays.isNotEmpty || (intervalWeeks > 1 && anchorDate != null)) {
+      final nextTime = getNextOccurrence(
+        settings.dateTime,
+        repeatDays,
+        intervalWeeks: intervalWeeks,
+        anchorDate: anchorDate,
+      );
       final nextSettings = settings.copyWith(dateTime: nextTime);
       await Alarm.set(alarmSettings: nextSettings);
     }
@@ -386,14 +456,28 @@ class AlarmService {
 
   /// Computes the next future occurrence of an alarm.
   /// Guarantees that the returned DateTime is strictly in the future.
-  static DateTime computeFutureOccurrence(DateTime targetTime, {List<int>? repeatDays, DateTime? mockNow}) {
+  static DateTime computeFutureOccurrence(
+    DateTime targetTime, {
+    List<int>? repeatDays,
+    int intervalWeeks = 1,
+    DateTime? anchorDate,
+    DateTime? mockNow,
+  }) {
     final now = mockNow ?? DateTime.now();
     if (targetTime.isAfter(now)) {
       return targetTime;
     }
 
-    if (repeatDays != null && repeatDays.isNotEmpty) {
-      return getNextOccurrence(targetTime, repeatDays, mockNow: now);
+    final isRecurring = (repeatDays != null && repeatDays.isNotEmpty) ||
+        (intervalWeeks > 1 && anchorDate != null);
+    if (isRecurring) {
+      return getNextOccurrence(
+        targetTime,
+        repeatDays ?? const [],
+        intervalWeeks: intervalWeeks,
+        anchorDate: anchorDate,
+        mockNow: now,
+      );
     }
 
     // One-time alarm: if hour:minute has not passed today, schedule for today; else tomorrow.
@@ -412,8 +496,39 @@ class AlarmService {
     return todayCandidate.add(const Duration(days: 1));
   }
 
-  static DateTime getNextOccurrence(DateTime targetTime, List<int> repeatDays, {DateTime? mockNow}) {
+  static DateTime getNextOccurrence(
+    DateTime targetTime,
+    List<int> repeatDays, {
+    int intervalWeeks = 1,
+    DateTime? anchorDate,
+    DateTime? mockNow,
+  }) {
     final now = mockNow ?? DateTime.now();
+
+    // Fortnightly / interval-based recurrence: step in (intervalWeeks * 7)-day
+    // increments starting from the anchor date. The anchor's weekday already
+    // matches repeatDays (the anchor was the first occurrence), so no weekday
+    // membership check is needed here.
+    if (intervalWeeks > 1 && anchorDate != null) {
+      final anchor = DateTime(
+        anchorDate.year,
+        anchorDate.month,
+        anchorDate.day,
+        targetTime.hour,
+        targetTime.minute,
+        0,
+        0,
+      );
+      // Up to ~2 years ahead before falling back to the next interval step
+      for (int k = 0; k <= 60; k++) {
+        final candidate = anchor.add(Duration(days: 7 * intervalWeeks * k));
+        if (candidate.isAfter(now)) {
+          return candidate;
+        }
+      }
+      return anchor.add(Duration(days: 7 * intervalWeeks));
+    }
+
     for (int dayOffset = 0; dayOffset <= 7; dayOffset++) {
       final candidate = DateTime(
         now.year,

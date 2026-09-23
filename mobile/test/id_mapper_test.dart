@@ -88,6 +88,44 @@ void main() {
       expect(await IdMapper.isEnabled(intId), isTrue);
     });
 
+    test('setIntervalWeeks and getIntervalWeeks persist and clear on 1', () async {
+      const intId = 55555;
+
+      expect(await IdMapper.getIntervalWeeks(intId), isNull);
+
+      await IdMapper.setIntervalWeeks(intId, 2);
+      expect(await IdMapper.getIntervalWeeks(intId), equals(2));
+
+      // Values <= 1 mean weekly and clear the stored interval
+      await IdMapper.setIntervalWeeks(intId, 1);
+      expect(await IdMapper.getIntervalWeeks(intId), isNull);
+    });
+
+    test('setAnchorDate and getAnchorDate persist and clear on null', () async {
+      const intId = 66666;
+
+      expect(await IdMapper.getAnchorDate(intId), isNull);
+
+      await IdMapper.setAnchorDate(intId, '2026-10-07');
+      expect(await IdMapper.getAnchorDate(intId), equals('2026-10-07'));
+
+      await IdMapper.setAnchorDate(intId, null);
+      expect(await IdMapper.getAnchorDate(intId), isNull);
+    });
+
+    test('removeMapping clears interval and anchor metadata', () async {
+      const uuid = 'fortnightly-cleanup-uuid';
+      final intId = IdMapper.uuidToInt(uuid);
+
+      await IdMapper.setIntervalWeeks(intId, 2);
+      await IdMapper.setAnchorDate(intId, '2026-10-07');
+
+      await IdMapper.removeMapping(intId);
+
+      expect(await IdMapper.getIntervalWeeks(intId), isNull);
+      expect(await IdMapper.getAnchorDate(intId), isNull);
+    });
+
     test('removeMapping clears all associated metadata', () async {
       const uuid = 'temp-uuid-999';
       final intId = IdMapper.uuidToInt(uuid);

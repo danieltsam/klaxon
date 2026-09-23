@@ -8,6 +8,8 @@ class IdMapper {
   static const String _descPrefix = 'desc_map_';
   static const String _snoozedPrefix = 'snoozed_';
   static const String _repeatDaysPrefix = 'repeat_days_';
+  static const String _intervalWeeksPrefix = 'interval_weeks_';
+  static const String _anchorDatePrefix = 'anchor_date_';
   static const String _tonePrefix = 'sound_tone_';
   static const String _rampPrefix = 'ramp_seconds_';
   static const String _enabledPrefix = 'enabled_';
@@ -131,6 +133,41 @@ class IdMapper {
     return str.split(',').map((s) => int.tryParse(s) ?? 0).where((d) => d >= 1 && d <= 7).toList();
   }
 
+  /// Store recurrence interval in weeks (2 = fortnightly, <=1 = weekly).
+  /// Values <= 1 clear the stored interval so weekly alarms never accumulate
+  /// a stale interval key.
+  static Future<void> setIntervalWeeks(int intId, int weeks) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (weeks <= 1) {
+      await prefs.remove('$_intervalWeeksPrefix$intId');
+    } else {
+      await prefs.setInt('$_intervalWeeksPrefix$intId', weeks);
+    }
+  }
+
+  /// Get recurrence interval in weeks (null means 1 = weekly)
+  static Future<int?> getIntervalWeeks(int intId) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('$_intervalWeeksPrefix$intId');
+  }
+
+  /// Store recurrence anchor date (ISO date string of the first occurrence,
+  /// e.g. '2026-10-07'). Passing null/empty clears the stored anchor.
+  static Future<void> setAnchorDate(int intId, String? isoDate) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (isoDate == null || isoDate.isEmpty) {
+      await prefs.remove('$_anchorDatePrefix$intId');
+    } else {
+      await prefs.setString('$_anchorDatePrefix$intId', isoDate);
+    }
+  }
+
+  /// Get recurrence anchor date (ISO date string, null if not set)
+  static Future<String?> getAnchorDate(int intId) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('$_anchorDatePrefix$intId');
+  }
+
   /// Store sound tone ('alarm', 'chime', 'digital')
   static Future<void> setSoundTone(int intId, String tone) async {
     final prefs = await SharedPreferences.getInstance();
@@ -190,6 +227,8 @@ class IdMapper {
     await prefs.remove('$_descPrefix$intId');
     await prefs.remove('$_snoozedPrefix$intId');
     await prefs.remove('$_repeatDaysPrefix$intId');
+    await prefs.remove('$_intervalWeeksPrefix$intId');
+    await prefs.remove('$_anchorDatePrefix$intId');
     await prefs.remove('$_tonePrefix$intId');
     await prefs.remove('$_rampPrefix$intId');
     await prefs.remove('$_enabledPrefix$intId');

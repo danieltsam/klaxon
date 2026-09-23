@@ -1,8 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/services/alarm_service.dart';
 
-DateTime getNextOccurrence(DateTime targetTime, List<int> repeatDays, {DateTime? mockNow}) {
-  return AlarmService.getNextOccurrence(targetTime, repeatDays, mockNow: mockNow);
+DateTime getNextOccurrence(DateTime targetTime, List<int> repeatDays,
+    {int intervalWeeks = 1, DateTime? anchorDate, DateTime? mockNow}) {
+  return AlarmService.getNextOccurrence(
+    targetTime,
+    repeatDays,
+    intervalWeeks: intervalWeeks,
+    anchorDate: anchorDate,
+    mockNow: mockNow,
+  );
 }
 
 void main() {
@@ -51,6 +58,101 @@ void main() {
       expect(next.weekday, equals(DateTime.thursday));
       expect(next.day, equals(17));
       expect(next.second, equals(0));
+    });
+  });
+
+  group('Fortnightly Recurrence Tests', () {
+    // 2026-10-07 is a Wednesday (weekday = 3)
+    final anchor = DateTime(2026, 10, 7);
+
+    test('Returns the next 14-day step after the anchor', () {
+      final now = DateTime(2026, 10, 8, 9, 0, 0); // Thursday after anchor
+      final next = getNextOccurrence(
+        DateTime(2026, 10, 7, 7, 30, 0),
+        [3],
+        intervalWeeks: 2,
+        anchorDate: anchor,
+        mockNow: now,
+      );
+
+      // Anchor + 14d = 2026-10-21 (Wednesday)
+      expect(next.year, equals(2026));
+      expect(next.month, equals(10));
+      expect(next.day, equals(21));
+      expect(next.weekday, equals(DateTime.wednesday));
+      expect(next.hour, equals(7));
+      expect(next.minute, equals(30));
+    });
+
+    test('Skips the in-between week entirely', () {
+      // Even though 2026-10-14 (the in-between Wednesday) is after `now`,
+      // it must NOT be selected because it is only 7 days from the anchor.
+      final now = DateTime(2026, 10, 10, 9, 0, 0);
+      final next = getNextOccurrence(
+        DateTime(2026, 10, 7, 7, 30, 0),
+        [3],
+        intervalWeeks: 2,
+        anchorDate: anchor,
+        mockNow: now,
+      );
+      expect(next.day, equals(21));
+    });
+
+    test('Rolls forward when the anchor time has already passed today', () {
+      final now = DateTime(2026, 10, 7, 8, 0, 0); // anchor day, 08:00
+      final next = getNextOccurrence(
+        DateTime(2026, 10, 7, 7, 30, 0),
+        [3],
+        intervalWeeks: 2,
+        anchorDate: anchor,
+        mockNow: now,
+      );
+      expect(next.day, equals(21));
+    });
+
+    test('Treats a candidate at the exact same moment as passed', () {
+      final now = DateTime(2026, 10, 21, 7, 30, 0); // exactly anchor + 14d
+      final next = getNextOccurrence(
+        DateTime(2026, 10, 7, 7, 30, 0),
+        [3],
+        intervalWeeks: 2,
+        anchorDate: anchor,
+        mockNow: now,
+      );
+      expect(next.day, equals(4)); // 2026-11-04 (anchor + 28d)
+      expect(next.month, equals(11));
+    });
+
+    test('computeFutureOccurrence returns a future fortnightly time as-is', () {
+      final mockNow = DateTime(2026, 10, 10, 10, 0, 0);
+      final futureTarget = DateTime(2026, 10, 21, 7, 30, 0);
+
+      final result = AlarmService.computeFutureOccurrence(
+        futureTarget,
+        repeatDays: [3],
+        intervalWeeks: 2,
+        anchorDate: anchor,
+        mockNow: mockNow,
+      );
+      expect(result, equals(futureTarget));
+    });
+
+    test('computeFutureOccurrence rolls a past fortnightly time to the next anchor step', () {
+      final mockNow = DateTime(2026, 10, 10, 10, 0, 0);
+      final staleTarget = DateTime(2026, 10, 7, 7, 30, 0);
+
+      final result = AlarmService.computeFutureOccurrence(
+        staleTarget,
+        repeatDays: [3],
+        intervalWeeks: 2,
+        anchorDate: anchor,
+        mockNow: mockNow,
+      );
+      expect(result.year, equals(2026));
+      expect(result.month, equals(10));
+      expect(result.day, equals(21));
+      expect(result.hour, equals(7));
+      expect(result.minute, equals(30));
     });
   });
 

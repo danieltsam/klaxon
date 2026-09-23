@@ -107,6 +107,8 @@ class BackendClient {
     required String label,
     String? description,
     List<int>? repeatDays,
+    int? intervalWeeks,
+    String? anchorDate,
     String? soundTone,
     int? rampSeconds,
   }) async {
@@ -131,6 +133,12 @@ class BackendClient {
       }
       if (repeatDays != null && repeatDays.isNotEmpty) {
         bodyMap['repeat_days'] = repeatDays;
+      }
+      if (intervalWeeks != null && intervalWeeks > 1) {
+        bodyMap['recurrence_interval_weeks'] = intervalWeeks;
+        if (anchorDate != null && anchorDate.isNotEmpty) {
+          bodyMap['recurrence_anchor_date'] = anchorDate;
+        }
       }
       if (soundTone != null) {
         bodyMap['sound_tone'] = soundTone;
@@ -164,6 +172,8 @@ class BackendClient {
     String? label,
     String? description,
     List<int>? repeatDays,
+    int? intervalWeeks,
+    String? anchorDate,
     String? soundTone,
     int? rampSeconds,
   }) async {
@@ -191,6 +201,12 @@ class BackendClient {
       }
       if (repeatDays != null) {
         bodyMap['repeat_days'] = repeatDays;
+      }
+      if (intervalWeeks != null) {
+        bodyMap['recurrence_interval_weeks'] = intervalWeeks;
+      }
+      if (anchorDate != null) {
+        bodyMap['recurrence_anchor_date'] = anchorDate;
       }
       if (soundTone != null) {
         bodyMap['sound_tone'] = soundTone;

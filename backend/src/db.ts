@@ -9,6 +9,8 @@ export interface AlarmRecord {
   description?: string;
   status: 'pending' | 'ringing' | 'dismissed' | 'snoozed' | 'canceled' | 'disabled';
   repeat_days?: string; // e.g. '1,2,3,4,5'
+  recurrence_interval_weeks?: number; // 1 (default, weekly) or 2 (fortnightly)
+  recurrence_anchor_date?: string;    // ISO date "YYYY-MM-DD", required if interval > 1
   sound_tone?: string; // e.g. 'alarm', 'chime', 'digital'
   ramp_seconds?: number; // e.g. 0, 15, 30, 60
   created_at?: string;
@@ -52,6 +54,8 @@ db.exec(`
     description TEXT DEFAULT NULL,
     status TEXT DEFAULT 'pending',
     repeat_days TEXT DEFAULT NULL,
+    recurrence_interval_weeks INTEGER DEFAULT 1,
+    recurrence_anchor_date TEXT DEFAULT NULL,
     sound_tone TEXT DEFAULT 'alarm',
     ramp_seconds INTEGER DEFAULT 30,
     created_at TEXT DEFAULT (datetime('now'))
@@ -80,12 +84,18 @@ const migrations = [
   'ALTER TABLE alarms ADD COLUMN ramp_seconds INTEGER DEFAULT 30;',
   'ALTER TABLE devices ADD COLUMN battery_level INTEGER DEFAULT NULL;',
   'ALTER TABLE devices ADD COLUMN is_charging INTEGER DEFAULT NULL;',
-  'ALTER TABLE devices ADD COLUMN device_name TEXT DEFAULT NULL;'
+  'ALTER TABLE devices ADD COLUMN device_name TEXT DEFAULT NULL;',
+  { name: 'add_recurrence_interval_weeks', sql: 'ALTER TABLE alarms ADD COLUMN recurrence_interval_weeks INTEGER DEFAULT 1' },
+  { name: 'add_recurrence_anchor_date',     sql: 'ALTER TABLE alarms ADD COLUMN recurrence_anchor_date TEXT DEFAULT NULL' }
 ];
 
 for (const migration of migrations) {
   try {
-    db.exec(migration);
+    if (typeof migration === 'string') {
+      db.exec(migration);
+    } else {
+      db.exec(migration.sql);
+    }
   } catch {
     // Column already exists
   }
@@ -118,14 +128,16 @@ export const AlarmRepo = {
 
   create(alarm: AlarmRecord): AlarmRecord {
     db.prepare(`
-      INSERT INTO alarms (id, target_time, label, description, status, repeat_days, sound_tone, ramp_seconds)
-      VALUES (@id, @target_time, @label, @description, @status, @repeat_days, @sound_tone, @ramp_seconds)
+      INSERT INTO alarms (id, target_time, label, description, status, repeat_days, sound_tone, ramp_seconds, recurrence_interval_weeks, recurrence_anchor_date)
+      VALUES (@id, @target_time, @label, @description, @status, @repeat_days, @sound_tone, @ramp_seconds, @recurrence_interval_weeks, @recurrence_anchor_date)
     `).run({
       ...alarm,
       description: alarm.description || null,
       repeat_days: alarm.repeat_days || null,
       sound_tone: alarm.sound_tone || 'alarm',
-      ramp_seconds: alarm.ramp_seconds ?? 30
+      ramp_seconds: alarm.ramp_seconds ?? 30,
+      recurrence_interval_weeks: alarm.recurrence_interval_weeks ?? 1,
+      recurrence_anchor_date: alarm.recurrence_anchor_date || null
     });
     return alarm;
   },
@@ -160,7 +172,9 @@ export const AlarmRepo = {
           status = @status,
           repeat_days = @repeat_days,
           sound_tone = @sound_tone,
-          ramp_seconds = @ramp_seconds
+          ramp_seconds = @ramp_seconds,
+          recurrence_interval_weeks = @recurrence_interval_weeks,
+          recurrence_anchor_date = @recurrence_anchor_date
       WHERE id = @id
     `).run({
       id,
@@ -170,7 +184,9 @@ export const AlarmRepo = {
       status: merged.status,
       repeat_days: merged.repeat_days || null,
       sound_tone: merged.sound_tone || 'alarm',
-      ramp_seconds: merged.ramp_seconds ?? 30
+      ramp_seconds: merged.ramp_seconds ?? 30,
+      recurrence_interval_weeks: merged.recurrence_interval_weeks ?? 1,
+      recurrence_anchor_date: merged.recurrence_anchor_date || null
     });
     return result.changes > 0;
   },

@@ -216,9 +216,11 @@ app.post<{
     repeat_days?: string | number[];
     sound_tone?: string;
     ramp_seconds?: number;
+    recurrence_interval_weeks?: number;
+    recurrence_anchor_date?: string;
   }
 }>('/api/alarms', async (request, reply) => {
-  const { target_time, label, description, repeat_days, sound_tone, ramp_seconds } = request.body || {};
+  const { target_time, label, description, repeat_days, sound_tone, ramp_seconds, recurrence_interval_weeks, recurrence_anchor_date } = request.body || {};
 
   if (!target_time || !label) {
     return reply.status(400).send({
@@ -251,6 +253,37 @@ app.post<{
     });
   }
 
+  // Validate recurrence_interval_weeks: 1 (weekly, default) or 2 (fortnightly)
+  let normalizedInterval = 1;
+  if (recurrence_interval_weeks !== undefined) {
+    if (!Number.isInteger(recurrence_interval_weeks) || recurrence_interval_weeks < 1 || recurrence_interval_weeks > 2) {
+      return reply.status(400).send({
+        error: 'Invalid recurrence_interval_weeks: must be an integer 1 (weekly) or 2 (fortnightly).'
+      });
+    }
+    normalizedInterval = recurrence_interval_weeks;
+  }
+
+  // Validate recurrence_anchor_date: must be an ISO date "YYYY-MM-DD"
+  let normalizedAnchorDate: string | undefined;
+  if (recurrence_anchor_date !== undefined) {
+    if (
+      typeof recurrence_anchor_date !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(recurrence_anchor_date) ||
+      isNaN(new Date(`${recurrence_anchor_date}T00:00:00Z`).getTime())
+    ) {
+      return reply.status(400).send({
+        error: 'Invalid recurrence_anchor_date: must be in YYYY-MM-DD format.'
+      });
+    }
+    normalizedAnchorDate = recurrence_anchor_date;
+  }
+
+  // Auto-anchor: a fortnightly alarm without an anchor defaults to its start date
+  if (normalizedInterval === 2 && !normalizedAnchorDate) {
+    normalizedAnchorDate = dateObj.toISOString().slice(0, 10);
+  }
+
   const id = uuidv4();
   const normalizedTone = sound_tone && ['alarm', 'chime', 'digital'].includes(sound_tone.trim().toLowerCase())
     ? sound_tone.trim().toLowerCase()
@@ -265,7 +298,9 @@ app.post<{
     status: 'pending',
     repeat_days: repeatDaysStr,
     sound_tone: normalizedTone,
-    ramp_seconds: normalizedRamp
+    ramp_seconds: normalizedRamp,
+    recurrence_interval_weeks: normalizedInterval,
+    recurrence_anchor_date: normalizedAnchorDate
   };
 
   AlarmRepo.create(newAlarm);
@@ -276,7 +311,9 @@ app.post<{
     target_time: newAlarm.target_time,
     label: newAlarm.label,
     sound_tone: normalizedTone,
-    ramp_seconds: normalizedRamp
+    ramp_seconds: normalizedRamp,
+    recurrence_interval_weeks: normalizedInterval,
+    recurrence_anchor_date: normalizedAnchorDate
   };
   if (newAlarm.description) {
     fcmPayload.description = newAlarm.description;
@@ -358,6 +395,8 @@ app.patch<{
     sound_tone?: string;
     ramp_seconds?: number;
     status?: 'pending' | 'ringing' | 'dismissed' | 'snoozed' | 'canceled' | 'disabled';
+    recurrence_interval_weeks?: number;
+    recurrence_anchor_date?: string;
   };
 }>('/api/alarms/:id', async (request, reply) => {
   const { id } = request.params;
@@ -367,7 +406,7 @@ app.patch<{
     return reply.status(404).send({ error: 'Alarm not found' });
   }
 
-  const { target_time, label, description, repeat_days, sound_tone, ramp_seconds, status } = request.body || {};
+  const { target_time, label, description, repeat_days, sound_tone, ramp_seconds, status, recurrence_interval_weeks, recurrence_anchor_date } = request.body || {};
 
   const updates: Partial<AlarmRecord> = {};
 
@@ -417,6 +456,37 @@ app.patch<{
     updates.status = status;
   }
 
+  if (recurrence_interval_weeks !== undefined) {
+    if (!Number.isInteger(recurrence_interval_weeks) || recurrence_interval_weeks < 1 || recurrence_interval_weeks > 2) {
+      return reply.status(400).send({
+        error: 'Invalid recurrence_interval_weeks: must be an integer 1 (weekly) or 2 (fortnightly).'
+      });
+    }
+    updates.recurrence_interval_weeks = recurrence_interval_weeks;
+  }
+
+  if (recurrence_anchor_date !== undefined) {
+    if (
+      typeof recurrence_anchor_date !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(recurrence_anchor_date) ||
+      isNaN(new Date(`${recurrence_anchor_date}T00:00:00Z`).getTime())
+    ) {
+      return reply.status(400).send({
+        error: 'Invalid recurrence_anchor_date: must be in YYYY-MM-DD format.'
+      });
+    }
+    updates.recurrence_anchor_date = recurrence_anchor_date;
+  }
+
+  // Auto-anchor: a fortnightly alarm without an anchor defaults to its start date
+  const effectiveInterval = updates.recurrence_interval_weeks ?? existing.recurrence_interval_weeks ?? 1;
+  if (effectiveInterval === 2 && updates.recurrence_anchor_date === undefined && !existing.recurrence_anchor_date) {
+    const effectiveTarget = updates.target_time ?? existing.target_time;
+    if (effectiveTarget) {
+      updates.recurrence_anchor_date = effectiveTarget.slice(0, 10);
+    }
+  }
+
   AlarmRepo.update(id, updates);
   const updated = AlarmRepo.getById(id)!;
 
@@ -426,7 +496,9 @@ app.patch<{
     target_time: updated.target_time,
     label: updated.label,
     sound_tone: updated.sound_tone || 'alarm',
-    ramp_seconds: updated.ramp_seconds ?? 30
+    ramp_seconds: updated.ramp_seconds ?? 30,
+    recurrence_interval_weeks: updated.recurrence_interval_weeks ?? 1,
+    recurrence_anchor_date: updated.recurrence_anchor_date
   };
   if (updated.description) fcmPayload.description = updated.description;
   if (updated.repeat_days) fcmPayload.repeat_days = updated.repeat_days;

@@ -62,6 +62,8 @@ export interface FcmPayload {
   sound_tone?: string;
   ramp_seconds?: number | string;
   description?: string;
+  recurrence_interval_weeks?: number | string;
+  recurrence_anchor_date?: string;
   [key: string]: any;
 }
 
@@ -99,6 +101,8 @@ export async function sendFcmDataMessage(
   if (payload.description) {
     dataPayload.description = payload.description;
   }
+  dataPayload.recurrence_interval_weeks = String(payload.recurrence_interval_weeks ?? 1);
+  dataPayload.recurrence_anchor_date = payload.recurrence_anchor_date ?? '';
 
   console.log(`[FCM] Dispatching ${action} data payload to ${tokens.length} device(s):`, dataPayload);
 

@@ -41,7 +41,10 @@ export function deriveEventId(alarmId: string): string {
   return id;
 }
 
-export function recurrenceRule(repeatDays?: string | null): string[] | undefined {
+export function recurrenceRule(
+  repeatDays?: string | null,
+  recurrenceIntervalWeeks?: number | null
+): string[] | undefined {
   if (!repeatDays) return undefined;
   const days = repeatDays
     .split(',')
@@ -49,8 +52,11 @@ export function recurrenceRule(repeatDays?: string | null): string[] | undefined
     .filter((day) => Number.isInteger(day) && day >= 1 && day <= 7);
   if (days.length === 0) return undefined;
   const unique = [...new Set(days)].sort((a, b) => a - b);
+  // Fortnightly (and wider) recurrences carry a FREQ=WEEKLY;INTERVAL=N clause.
+  const interval = recurrenceIntervalWeeks ?? 1;
+  const intervalClause = interval > 1 ? `;INTERVAL=${interval}` : '';
   // DTSTART must not appear here; Google infers it from `start`.
-  return [`RRULE:FREQ=WEEKLY;BYDAY=${unique.map((day) => WEEKDAY_CODES[day - 1]).join(',')}`];
+  return [`RRULE:FREQ=WEEKLY${intervalClause};BYDAY=${unique.map((day) => WEEKDAY_CODES[day - 1]).join(',')}`];
 }
 
 /**
@@ -102,7 +108,7 @@ export function toGoogleEvent(alarm: AlarmRecord, timeZone: string): GoogleEvent
     transparency: 'transparent',
     status: 'confirmed',
   };
-  const recurrence = recurrenceRule(alarm.repeat_days);
+  const recurrence = recurrenceRule(alarm.repeat_days, alarm.recurrence_interval_weeks);
   if (recurrence) event.recurrence = recurrence;
   return event;
 }
