@@ -158,7 +158,14 @@ If Google rejects the stored credential, or if the credential expires, the mirro
 - It writes a `[gcal] AUTH FAILED` message to the log. The message comes from the push path and from the 15-minute repair path. Thus the message also appears when you do not make new alarms. That is the time when a dead credential is difficult to find.
 - The `GET /api/calendar/status` endpoint reports `needs_reauth: true` and `last_error_kind: "auth"`.
 
-To correct this condition, run `npm run gcal:auth` again. Then copy the new token file. The alarms work during this condition. Only the calendar mirror stops.
+To correct this condition, run `npm run gcal:auth` again. Run it on the machine that has a browser. Then copy the new token file to the homelab:
+
+```
+scp google-oauth-token.json <homelab>:/tmp/
+ssh <homelab> 'docker cp /tmp/google-oauth-token.json remotealarm:/app/data/google-oauth-token.json'
+```
+
+The `docker cp` command is necessary because the `data` directory belongs to root on the homelab. A plain copy fails there. Finally, restart the container. Run `docker compose restart remotealarm` in the directory that holds `docker-compose.yml`. The restart is necessary because the backend reads the token file one time, when it starts. The alarms work during this condition. Only the calendar mirror stops.
 
 ### Setup (one time, manual)
 
@@ -171,7 +178,7 @@ To correct this condition, run `npm run gcal:auth` again. Then copy the new toke
    - Two cautions. First, the In production status does not revoke a credential that already exists. Second, Google applies the 7-day limit when it issues a token. Thus an old credential can live longer than the limit that applies to a new credential.
 3. Examine the scope in the Data Access page. The scope must be `.../auth/calendar.app.created`. The app can see only the calendars that it made.
 4. Make an OAuth client of the type Desktop app. Record the client ID and the client secret.
-5. Put the credentials in `backend/.env`. See `backend/.env.example`. Then run `npm run gcal:auth`, and copy the token file `google-oauth-token.json` to the data directory on the homelab. The file has the mode 600.
+5. Put the credentials in `backend/.env`. See `backend/.env.example`. Then run `npm run gcal:auth`. Use the copy commands in the credential-expiry section above to move the token file `google-oauth-token.json` to the homelab. The file has the mode 600.
 
 The mirror is off until you set `GCAL_ENABLED=true`. A server without this setting is correct and does nothing.
 
