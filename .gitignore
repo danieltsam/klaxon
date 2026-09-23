@@ -62,3 +62,8 @@ Thumbs.db
 .idea/
 .vscode/
 *.iml
+
+# Docker Compose environment file. Holds the Google OAuth client secret for the
+# calendar mirror, so it must never be committed. docker-compose.yml interpolates
+# from it. See the README "Google Calendar sync" section.
+.env

@@ -176,6 +176,28 @@ The mirror is off until you set `GCAL_ENABLED=true`. A server without this setti
 
 The variable `GCAL_TIMEZONE` must contain the IANA zone of the phone, for example `Australia/Brisbane`. Do not use the zone of the server. This variable controls the expansion of a recurrence. The container does not need a `TZ` setting for correct operation, but a `TZ` setting gives better timestamps in the log.
 
+### Docker deployment
+
+To use the mirror in the container, do these steps on the homelab server:
+
+1. Make a file with the name `.env` in the repository root. Git ignores this file. Put these four lines in it:
+
+   - `GCAL_ENABLED=true`
+   - `GOOGLE_OAUTH_CLIENT_ID=<your client ID>`
+   - `GOOGLE_OAUTH_CLIENT_SECRET=<your client secret>`
+   - `GCAL_TIMEZONE=<your IANA zone>`
+
+2. Copy the token file to `data/google-oauth-token.json`. The container reads the data directory. The file must have the mode 600.
+3. Start the container again.
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+The container sets `GOOGLE_OAUTH_TOKEN_PATH` to `/app/data/google-oauth-token.json`. That variable is a path, not a secret. The client secret stays in the `.env` file and does not go into git.
+
+A database with no calendar id makes a new "Remote Alarms" calendar at the first alarm. To use a calendar that already exists, put its id in the `settings` table under the key `gcal_calendar_id` before you start the container.
+
 ---
 
 ## Tests
@@ -188,7 +210,7 @@ Run this command to start the backend suite and the mobile Flutter suite. The ba
 ./run_tests.sh
 ```
 
-- Backend: The directory `backend/test/` contains 37 tests in 13 suites. The tests examine these items:
+- Backend: The directory `backend/test/` contains 105 tests in 28 suites. The tests examine these items:
 
   - The REST API.
   - The iCalendar feed.
@@ -196,8 +218,10 @@ Run this command to start the backend suite and the mobile Flutter suite. The ba
   - The FCM payloads.
   - The slider states.
   - The memory database.
+  - The Google Calendar event mapping, the credential states, the idempotent writes, and the reconciliation.
+  - The guard that stops the suite from reaching the live Google API.
 
-- Mobile: The directory `mobile/test/` contains 46 tests. The tests examine these items:
+- Mobile: The directory `mobile/test/` contains 60 tests. The tests examine these items:
 
   - The recurrence calculations.
   - The payload data.

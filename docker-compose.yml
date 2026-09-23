@@ -12,5 +12,14 @@ services:
       - HOST=0.0.0.0
       - DB_PATH=/app/data/alarms.db
       - GOOGLE_APPLICATION_CREDENTIALS=/app/data/service-account.json
+      # Google Calendar mirror. The values come from the gitignored root .env, so
+      # the client secret is never committed. The mirror stays off unless
+      # GCAL_ENABLED=true, and an unconfigured server is a supported no-op.
+      # GOOGLE_OAUTH_TOKEN_PATH is a path inside the container, not a secret.
+      - GCAL_ENABLED=${GCAL_ENABLED:-false}
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-}
+      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      - GOOGLE_OAUTH_TOKEN_PATH=/app/data/google-oauth-token.json
+      - GCAL_TIMEZONE=${GCAL_TIMEZONE:-}
     volumes:
       - ./data:/app/data
