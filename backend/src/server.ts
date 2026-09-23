@@ -97,7 +97,20 @@ export const DEVICE_MISSED_REASONS: readonly MissedReason[] = [
   'device_reported_failed',
 ];
 
-/** True once the sweep timer is armed. Stays false under NODE_ENV=test. */
+/**
+ * True when this process is a test run.
+ *
+ * `NODE_ENV` alone is not enough. Only the npm test script sets it, so a bare
+ * `tsx --test <file>` reports `undefined` and would start the real timers
+ * against the real database. That happened, and hung the process for seven
+ * minutes on a live 60-second timer. Node's test runner sets
+ * `NODE_TEST_CONTEXT` in every worker regardless of `NODE_ENV`, so checking
+ * both closes that hole however the tests are invoked.
+ */
+const isTestRun =
+  process.env.NODE_ENV === 'test' || process.env.NODE_TEST_CONTEXT !== undefined;
+
+/** True once the sweep timer is armed. Stays false under a test run. */
 export let missedSweepStarted = false;
 
 /**
@@ -197,7 +210,7 @@ export async function mirrorSafely(alarm: AlarmRecord): Promise<void> {
   // GCAL_ENABLED=false in the test script stops this at the config layer; this
   // guard stops it at the call site, so a test that opts into live config still
   // cannot push.
-  if (process.env.NODE_ENV === 'test') return;
+  if (isTestRun) return;
 
   try {
     await Promise.race([
@@ -557,6 +570,24 @@ app.patch<{
   }
 
   if (status !== undefined) {
+    // This was written unchecked, so a raw HTTP client could set "missed" --
+    // which is system-set only (spec §5) -- or any arbitrary string, and
+    // corrupt the row. Validate against the set the declared type promises.
+    // `missed` is deliberately absent: only the sweep and the device report
+    // may set it.
+    const patchableStatuses: readonly string[] = [
+      'pending',
+      'ringing',
+      'dismissed',
+      'snoozed',
+      'canceled',
+      'disabled'
+    ];
+    if (!patchableStatuses.includes(status)) {
+      return reply.status(400).send({
+        error: `Invalid status. Must be one of: ${patchableStatuses.join(', ')}.`
+      });
+    }
     updates.status = status;
   }
 
@@ -899,7 +930,7 @@ app.get('/api/calendar/status', async (_request, reply) => {
 
 export { app };
 
-if (process.env.NODE_ENV !== 'test') {
+if (!isTestRun) {
   const PORT = parseInt(process.env.PORT || '3000', 10);
   const HOST = process.env.HOST || '0.0.0.0';
 

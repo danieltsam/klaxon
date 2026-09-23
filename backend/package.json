@@ -9,6 +9,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "NODE_ENV=test DB_PATH=:memory: GCAL_ENABLED=false tsx --test test/**/*.test.ts",
+    "test:one": "NODE_ENV=test DB_PATH=:memory: GCAL_ENABLED=false tsx --test",
     "gcal:auth": "tsx scripts/gcal-auth.ts"
   },
   "dependencies": {

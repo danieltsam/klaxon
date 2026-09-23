@@ -36,7 +36,22 @@ export interface AppSettings {
   time_format: '24h' | '12h';
 }
 
-const dbPath = process.env.DB_PATH || path.resolve(process.cwd(), 'alarms.db');
+// A test run must never open a real database.
+//
+// Only the npm test script sets DB_PATH=:memory:, so a bare
+// `tsx --test <file>` would otherwise create and delete rows in the real
+// alarms.db -- which happened once and hung for seven minutes. Defaulting to
+// :memory: under a test run makes the isolation structural rather than a
+// property of how the tests were invoked. An explicit DB_PATH is respected.
+const isTestRun =
+  process.env.NODE_ENV === 'test' || process.env.NODE_TEST_CONTEXT !== undefined;
+
+const configuredDbPath = process.env.DB_PATH;
+if (isTestRun && !configuredDbPath) {
+  console.log('[DB] Test run without DB_PATH: using :memory: so it cannot touch a real database.');
+}
+const dbPath =
+  configuredDbPath ?? (isTestRun ? ':memory:' : path.resolve(process.cwd(), 'alarms.db'));
 if (dbPath !== ':memory:') {
   try {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
