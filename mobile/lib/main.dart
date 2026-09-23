@@ -135,6 +135,12 @@ class _AlarmItem {
   });
 }
 
+class _SyncResult {
+  final bool success;
+  final int? syncedCount;
+  _SyncResult({required this.success, this.syncedCount});
+}
+
 class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingObserver {
   List<_AlarmItem> _allAlarms = [];
   String? _fcmToken;
@@ -337,12 +343,12 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     }
   }
 
-  Future<void> _syncWithBackend({bool silent = false}) async {
-    if (_isSyncing) return;
+  Future<_SyncResult> _syncWithBackend({bool silent = false}) async {
+    if (_isSyncing) return _SyncResult(success: false);
     setState(() => _isSyncing = true);
 
     final isHealthy = await BackendClient.checkHealth(_backendUrl);
-    if (!mounted) return;
+    if (!mounted) return _SyncResult(success: false);
 
     if (!isHealthy) {
       setState(() {
@@ -354,7 +360,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         _showToast('Cannot reach backend server');
         _showBackendConnectionModal();
       }
-      return;
+      return _SyncResult(success: false);
     }
 
     setState(() {
@@ -371,6 +377,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         _showToast('Synced with backend ($count active alarms)');
       }
     }
+    return _SyncResult(success: true, syncedCount: count);
   }
 
   Future<bool> _runConnectionTest(String url) async {
@@ -2386,6 +2393,9 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   void _showSettingsModal() {
     final controller = TextEditingController(text: _backendUrl);
     bool isTesting = false;
+    bool isSaving = false;
+    String? saveResult;
+    bool? saveSuccess;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2642,6 +2652,15 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       ),
                     ),
                     const SizedBox(height: 8),
+                    const Text(
+                      'Test checks this address without saving it. Save & Resync adopts it and syncs alarms.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF8A8F98),
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
@@ -2652,7 +2671,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                               side: const BorderSide(color: Color(0xFF26282E)),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             ),
-                            onPressed: isTesting
+                            onPressed: isTesting || isSaving
                                 ? null
                                 : () async {
                                     setModalState(() => isTesting = true);
@@ -2697,22 +2716,72 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             ),
-                            onPressed: () async {
-                              final newUrl = controller.text.trim();
-                              if (newUrl.isNotEmpty) {
-                                await BackendClient.setBaseUrl(newUrl);
-                                setState(() => _backendUrl = newUrl);
-                                await _syncWithBackend();
-                                if (bottomSheetContext.mounted) {
-                                  Navigator.pop(bottomSheetContext);
-                                }
-                              }
-                            },
-                            child: const Text('Save & Resync', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                            onPressed: isTesting || isSaving
+                                ? null
+                                : () async {
+                                    final newUrl = controller.text.trim();
+                                    if (newUrl.isEmpty) return;
+                                    setModalState(() {
+                                      isSaving = true;
+                                      saveResult = null;
+                                      saveSuccess = null;
+                                    });
+                                    await BackendClient.setBaseUrl(newUrl);
+                                    if (mounted) {
+                                      setState(() => _backendUrl = newUrl);
+                                    }
+                                    final result = await _syncWithBackend(silent: true);
+                                    if (bottomSheetContext.mounted) {
+                                      setModalState(() {
+                                        isSaving = false;
+                                        if (result.success && result.syncedCount != null) {
+                                          saveResult = '✓ Saved · ${result.syncedCount} alarms synced';
+                                          saveSuccess = true;
+                                        } else {
+                                          saveResult = '✕ Saved, but cannot reach $newUrl';
+                                          saveSuccess = false;
+                                        }
+                                      });
+                                    }
+                                  },
+                            child: isSaving
+                                ? Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Text(
+                                        'Saving...',
+                                        style: TextStyle(fontSize: 13, color: Colors.white),
+                                      ),
+                                    ],
+                                  )
+                                : const Text(
+                                    'Save & Resync',
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                  ),
                           ),
                         ),
                       ],
                     ),
+                    if (saveResult != null) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        saveResult!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: saveSuccess! ? const Color(0xFF3DD68C) : const Color(0xFFE66432),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     Container(
                       width: double.infinity,
