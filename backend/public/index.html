@@ -82,7 +82,7 @@
         </div>
 
         <!-- Phone Telemetry Badge -->
-        <div class="flex items-center gap-2 px-3 py-1.5 border border-[#232820] bg-[#11140f] text-xs">
+        <div onclick="openDeviceGuideModal()" class="cursor-pointer flex items-center gap-2 px-3 py-1.5 border border-[#232820] bg-[#11140f] hover:border-zinc-700 transition-colors text-xs" title="click to inspect connection">
           <span id="header-device-dot" class="h-1.5 w-1.5 rounded-full bg-[#5E6AD2]"></span>
           <span id="header-device-status" class="text-zinc-400 text-[11px]">phone online</span>
         </div>
@@ -106,6 +106,36 @@
           <button id="btn-silence-active" class="rounded-none border border-rose-700 bg-rose-900/40 px-4 py-1.5 text-xs font-medium text-rose-200 hover:bg-rose-800 transition-colors" type="button">
             silence ringer now
           </button>
+        </div>
+
+        <!-- Backend Server Offline Banner -->
+        <div id="server-offline-banner" class="hidden p-4 border border-rose-900/60 bg-rose-950/30 text-xs flex items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <span class="h-2 w-2 rounded-full bg-rose-500 animate-ping shrink-0"></span>
+            <div>
+              <span class="text-rose-200 font-medium">backend server unreachable:</span>
+              <span class="text-zinc-400 ml-1">cannot connect to backend API. Verify that docker or the node service is running.</span>
+            </div>
+          </div>
+          <button onclick="loadAlarms(); loadDeviceTelemetry();" class="shrink-0 border border-rose-700 bg-rose-900/40 px-3 py-1 text-xs text-rose-200 hover:bg-rose-800 transition-colors" type="button">
+            retry
+          </button>
+        </div>
+
+        <!-- No Phone Connected Alert Banner -->
+        <div id="device-warning-banner" class="hidden p-4 border border-amber-900/60 bg-amber-950/25 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-start sm:items-center gap-3">
+            <span class="h-2 w-2 rounded-full bg-amber-400 shrink-0 mt-1 sm:mt-0"></span>
+            <div>
+              <span class="text-amber-200 font-medium">no android phone connected:</span>
+              <span class="text-zinc-400 ml-1">no device has synced with this backend yet. Alarms created here will not ring on hardware until the mobile app connects.</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button onclick="openDeviceGuideModal()" class="border border-amber-700/80 bg-amber-900/40 px-3 py-1 text-xs text-amber-200 hover:bg-amber-800/60 transition-colors" type="button">
+              connection guide
+            </button>
+          </div>
         </div>
 
         <!-- VIEW 1: DASHBOARD -->
@@ -419,6 +449,60 @@
           </div>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- BEGIN: DEVICE CONNECTION GUIDE MODAL -->
+  <div id="device-guide-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-[#11140f] border border-[#232820] w-full max-w-lg p-6 space-y-6 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-[#232820] pb-4">
+        <div class="flex items-center gap-2">
+          <span class="h-2 w-2 rounded-full bg-amber-400"></span>
+          <h3 class="text-sm font-medium tracking-wide text-zinc-100 lowercase">connect android phone</h3>
+        </div>
+        <button onclick="closeDeviceGuideModal()" class="text-zinc-500 hover:text-zinc-200 text-xs font-mono lowercase">close</button>
+      </div>
+
+      <div class="space-y-4 text-xs text-zinc-300">
+        <p class="text-zinc-400 leading-relaxed">
+          The dashboard schedules alarms and sends push triggers, but an Android device running the <span class="text-zinc-200 font-mono">remotealarm</span> app must be connected to receive and ring alarms.
+        </p>
+
+        <!-- Method 1: USB / ADB Reverse -->
+        <div class="p-3 border border-[#232820] bg-[#161a14] space-y-2">
+          <div class="font-medium text-zinc-200 flex items-center gap-2">
+            <span class="text-[#5E6AD2] font-mono">01.</span> USB Cable (via ADB Reverse)
+          </div>
+          <p class="text-zinc-400 text-[11px]">Run this command in your computer's terminal:</p>
+          <div class="flex items-center justify-between bg-[#0a0c08] border border-[#232820] px-3 py-1.5 font-mono text-[11px] text-zinc-300">
+            <code>adb reverse tcp:3000 tcp:3000</code>
+            <button onclick="copyTextFallback('adb reverse tcp:3000 tcp:3000', () => alert('Copied adb command'))" class="text-zinc-500 hover:text-zinc-200 text-[10px]">copy</button>
+          </div>
+          <p class="text-zinc-500 text-[11px]">In the Flutter mobile app Settings &rarr; Server URL, keep default: <span class="text-zinc-300 font-mono">http://127.0.0.1:3000</span></p>
+        </div>
+
+        <!-- Method 2: Wi-Fi / Local IP -->
+        <div class="p-3 border border-[#232820] bg-[#161a14] space-y-2">
+          <div class="font-medium text-zinc-200 flex items-center gap-2">
+            <span class="text-[#5E6AD2] font-mono">02.</span> Wi-Fi / Local Network
+          </div>
+          <p class="text-zinc-400 text-[11px]">Connect your phone to the same Wi-Fi as your computer, then in mobile app Settings &rarr; Server URL, enter:</p>
+          <div class="flex items-center justify-between bg-[#0a0c08] border border-[#232820] px-3 py-1.5 font-mono text-[11px] text-zinc-300">
+            <code id="guide-detected-url">http://...:3000</code>
+            <button id="btn-copy-detected-url" class="text-zinc-500 hover:text-zinc-200 text-[10px]">copy</button>
+          </div>
+        </div>
+
+        <div class="p-3 border border-amber-900/40 bg-amber-950/20 text-amber-200/90 text-[11px] space-y-1">
+          <div class="font-medium">Why did sync stop?</div>
+          <div>If the Flutter app was reinstalled, rebuilt, or app data cleared, the stored server URL resets. Make sure the server URL in mobile app matches and tap "Save &amp; Resync".</div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between pt-4 border-t border-[#232820]">
+        <button onclick="closeDeviceGuideModal()" class="px-4 py-2 border border-[#232820] bg-transparent text-xs text-zinc-400 hover:text-zinc-200 transition-colors">dismiss</button>
+        <button onclick="checkDeviceConnectionNow()" id="btn-check-device-conn" class="px-5 py-2 bg-[#5E6AD2] hover:bg-[#4E5AC0] text-white text-xs font-medium transition-colors">check connection now</button>
+      </div>
     </div>
   </div>
 
@@ -959,23 +1043,59 @@
       renderDashboard();
     });
 
-    // Device Telemetry
+    // Device Telemetry & Connection Status
+    function openDeviceGuideModal() {
+      const modal = document.getElementById('device-guide-modal');
+      if (modal) modal.classList.remove('hidden');
+      const host = window.location.hostname || '127.0.0.1';
+      const url = `http://${host}:3000`;
+      const codeEl = document.getElementById('guide-detected-url');
+      if (codeEl) codeEl.textContent = url;
+      const copyBtn = document.getElementById('btn-copy-detected-url');
+      if (copyBtn) {
+        copyBtn.onclick = () => copyTextFallback(url, () => alert('Copied: ' + url));
+      }
+    }
+
+    function closeDeviceGuideModal() {
+      const modal = document.getElementById('device-guide-modal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    async function checkDeviceConnectionNow() {
+      const btn = document.getElementById('btn-check-device-conn');
+      if (btn) btn.textContent = 'checking...';
+      await loadDeviceTelemetry();
+      await loadAlarms();
+      setTimeout(() => {
+        if (btn) btn.textContent = 'check connection now';
+      }, 700);
+    }
+
     async function loadDeviceTelemetry() {
+      const dotEl = document.getElementById('header-device-dot');
+      const statusEl = document.getElementById('header-device-status');
+      const infoCard = document.getElementById('device-info-card');
+      const offlineBanner = document.getElementById('server-offline-banner');
+      const noDeviceBanner = document.getElementById('device-warning-banner');
+
       try {
         const res = await fetch('/api/devices');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (offlineBanner) offlineBanner.classList.add('hidden');
+
         const data = await res.json();
         const devList = Array.isArray(data) ? data : (data.devices || []);
-        const dotEl = document.getElementById('header-device-dot');
-        const statusEl = document.getElementById('header-device-status');
-        const infoCard = document.getElementById('device-info-card');
 
         if (devList.length === 0) {
           dotEl.className = 'h-1.5 w-1.5 rounded-full bg-zinc-600';
           statusEl.textContent = 'no phone';
           infoCard.innerHTML = `<div class="text-zinc-600 lowercase">no phone registered yet.</div>`;
+          if (noDeviceBanner) noDeviceBanner.classList.remove('hidden');
           return;
         }
 
+        if (noDeviceBanner) noDeviceBanner.classList.add('hidden');
         const dev = devList[0];
         const battText = dev.battery_level !== null && dev.battery_level !== undefined ? `${dev.battery_level}%` : 'unknown';
 
@@ -988,7 +1108,11 @@
           <div class="flex justify-between"><span class="text-zinc-500">last ping:</span><span class="text-zinc-500">${dev.updated_at || 'recent'}</span></div>
         `;
       } catch (err) {
-        console.error(err);
+        console.error('Device telemetry error:', err);
+        dotEl.className = 'h-1.5 w-1.5 rounded-full bg-rose-500';
+        statusEl.textContent = 'backend offline';
+        if (offlineBanner) offlineBanner.classList.remove('hidden');
+        if (noDeviceBanner) noDeviceBanner.classList.add('hidden');
       }
     }
 
