@@ -9,8 +9,9 @@ import {
   formatRelative,
   formatAlarm,
   formatInterpretation,
+  formatStatus,
 } from "../src/index.js";
-import type { Alarm } from "../src/index.js";
+import type { Alarm, AlarmStatus } from "../src/index.js";
 
 function at(y: number, mo: number, d: number, h: number, mi: number): Date {
   return new Date(y, mo - 1, d, h, mi, 0, 0);
@@ -92,5 +93,35 @@ describe("formatAlarm / formatInterpretation", () => {
     const now = at(2026, 9, 21, 17, 20);
     const target = at(2026, 9, 22, 7, 0);
     assert.equal(formatInterpretation(target, now), "Tue 22 Sep, 7:00am (in 13h 40m)");
+  });
+});
+
+describe("formatStatus", () => {
+  it("labels every status, so a future one cannot render as a raw token", () => {
+    const everyStatus: AlarmStatus[] = [
+      "pending",
+      "ringing",
+      "dismissed",
+      "snoozed",
+      "canceled",
+      "disabled",
+      "missed",
+    ];
+    for (const status of everyStatus) {
+      assert.equal(typeof formatStatus(status), "string");
+      assert.ok(formatStatus(status).length > 0, `${status} has no label`);
+    }
+  });
+
+  it("adds 'missed' without restyling the statuses that already existed", () => {
+    // Lower case on purpose: this is the CLI's established register, and
+    // adding a status must not change how the others read.
+    assert.equal(formatStatus("missed"), "missed");
+    assert.equal(formatStatus("pending"), "pending");
+    assert.equal(formatStatus("ringing"), "ringing");
+    assert.equal(formatStatus("dismissed"), "dismissed");
+    assert.equal(formatStatus("snoozed"), "snoozed");
+    assert.equal(formatStatus("canceled"), "canceled");
+    assert.equal(formatStatus("disabled"), "disabled");
   });
 });

@@ -45,13 +45,16 @@ export function toLocalDate(alarm: Alarm): Date {
  * without a label here is a compile error, not a silent raw token.
  */
 const STATUS_LABELS: Record<AlarmStatus, string> = {
-  pending: "Pending",
-  ringing: "Ringing",
-  dismissed: "Dismissed",
-  snoozed: "Snoozed",
-  canceled: "Canceled",
-  disabled: "Disabled",
-  missed: "Missed",
+  // Lower case deliberately. The CLI printed statuses in lower case before
+  // `missed` existed, and it reads better inline ("status pending · tone
+  // alarm"). Adding a status must not restyle the ones already there.
+  pending: "pending",
+  ringing: "ringing",
+  dismissed: "dismissed",
+  snoozed: "snoozed",
+  canceled: "canceled",
+  disabled: "disabled",
+  missed: "missed",
 };
 
 export function formatStatus(status: AlarmStatus): string {
