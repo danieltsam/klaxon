@@ -351,6 +351,13 @@ class AlarmService {
               'recurrence_anchor_date': anchorDateStr,
             });
           }
+
+          // A remote snooze must survive the reconcile so its badge stays lit.
+          // Set AFTER the synthetic CREATE above, whose branch clears the flag
+          // (handleAlarmPayload line ~208); setting it earlier would be undone.
+          if (status == 'snoozed') {
+            await IdMapper.setSnoozed(intId, true);
+          }
         }
       }
 
@@ -529,8 +536,13 @@ class AlarmService {
     await Alarm.set(alarmSettings: newSettings);
 
     if (uuid != null && !uuid.startsWith('local_')) {
-      // Async notify backend
-      BackendClient.updateAlarmState(uuid, 'snoozed');
+      // Async notify backend with the exact next-ring time so the server's
+      // target_time matches the alarm the phone actually armed (§6.3).
+      BackendClient.updateAlarmState(
+        uuid,
+        'snoozed',
+        targetTime: snoozeTime.toUtc().toIso8601String(),
+      );
     }
 
     return newSettings;
