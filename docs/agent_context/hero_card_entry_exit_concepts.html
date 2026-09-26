@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hero Card Entry/Exit Transitions — 5 Variations</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090A0C;
+      --card-bg: #121418;
+      --surface: #16181D;
+      --surface-2: #1B1E26;
+      --border: #22252C;
+      --border-accent: #333844;
+      --primary: #5E6AD2;
+      --primary-soft: #717DE2;
+      --primary-glow: rgba(94, 106, 210, 0.35);
+      --primary-faint: rgba(94, 106, 210, 0.08);
+      --text-main: #F7F8F8;
+      --text-muted: #8A8F98;
+      --text-dim: #4B505B;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-main);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      padding: 32px 20px 80px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    header {
+      max-width: 1100px;
+      width: 100%;
+      margin-bottom: 40px;
+      text-align: center;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: #818CF8;
+      background: rgba(94, 106, 210, 0.12);
+      border: 1px solid rgba(94, 106, 210, 0.28);
+      padding: 5px 14px;
+      border-radius: 99px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.7px;
+      margin-bottom: 10px;
+    }
+
+    p.subtitle {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .concept-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 28px;
+      max-width: 1200px;
+      width: 100%;
+    }
+
+    .concept-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .concept-header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 14px;
+    }
+
+    .concept-tag {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      color: #A5B4FC;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .concept-title {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+      margin-bottom: 4px;
+    }
+
+    .concept-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+
+    .mockup {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 14px 14px;
+      min-height: 280px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .mockup-meta {
+      position: absolute;
+      bottom: 10px;
+      left: 14px;
+      font-size: 10px;
+      color: var(--text-dim);
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .mockup-phase {
+      position: absolute;
+      top: 10px;
+      right: 14px;
+      font-size: 9px;
+      color: var(--text-dim);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    /* generic hero card body — used across concepts */
+    .hero-body {
+      background: linear-gradient(135deg, #1A1D22 0%, #121417 100%);
+      border: 1px solid #2C2F36;
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+
+    .hero-row-top {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .hero-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--primary);
+      border-radius: 50%;
+      box-shadow: 0 0 8px rgba(94, 106, 210, 0.6);
+    }
+
+    .hero-meta {
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 0.3px;
+    }
+
+    .hero-time {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -1px;
+      line-height: 1;
+      color: var(--text-main);
+      margin-bottom: 6px;
+    }
+
+    .hero-label {
+      font-size: 13px;
+      color: var(--text-main);
+      font-weight: 500;
+      margin-bottom: 10px;
+    }
+
+    .hero-tags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .hero-tag {
+      font-size: 9px;
+      padding: 4px 8px;
+      background: rgba(94, 106, 210, 0.1);
+      border: 1px solid rgba(94, 106, 210, 0.25);
+      border-radius: 5px;
+      color: #A5B4FC;
+      letter-spacing: 0.3px;
+    }
+
+    /* list mockup piece — used in concepts β and γ */
+    .list-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 6px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .list-toggle {
+      width: 28px;
+      height: 16px;
+      background: var(--primary);
+      border-radius: 999px;
+      position: relative;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .list-toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      width: 12px;
+      height: 12px;
+      background: white;
+      border-radius: 50%;
+    }
+
+    .list-time {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .list-label {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* placeholder / empty state */
+    .empty-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 16px;
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: 0.3px;
+    }
+
+    /* ============ REFERENCE — current behavior ============ */
+    @keyframes ref-fade-in {
+      0% { opacity: 0; }
+      100% { opacity: 1; }
+    }
+    @keyframes ref-fade-out {
+      0% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    @keyframes ref-grow-height {
+      0% { max-height: 0; opacity: 0; }
+      100% { max-height: 200px; opacity: 1; }
+    }
+    @keyframes ref-shrink-height {
+      0% { max-height: 200px; opacity: 1; }
+      100% { max-height: 0; opacity: 0; }
+    }
+
+    .ref-hero {
+      animation: ref-fade-in 0.28s ease-out 1s both,
+                 ref-grow-height 0.35s cubic-bezier(0.4, 0.0, 0.2, 1) 1s both,
+                 ref-fade-out 0.28s ease-in 5s both,
+                 ref-shrink-height 0.35s cubic-bezier(0.4, 0.0, 0.2, 1) 5.28s both;
+    }
+
+    /* ============ CONCEPT α — Slide-up spring ============ */
+    @keyframes alpha-in {
+      0%   { opacity: 0; transform: translateY(40px) scale(0.92); }
+      55%  { opacity: 1; transform: translateY(-8px) scale(1.025); }
+      80%  { transform: translateY(2px) scale(0.995); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes alpha-out {
+      0%   { opacity: 1; transform: translateY(0) scale(1); }
+      40%  { opacity: 1; transform: translateY(4px) scale(1.01); }
+      100% { opacity: 0; transform: translateY(-32px) scale(0.95); }
+    }
+
+    .alpha-stage { perspective: 800px; }
+
+    .alpha-hero {
+      transform-origin: top center;
+      animation: alpha-in 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) 1s both,
+                 alpha-out 0.55s cubic-bezier(0.4, 0.0, 0.2, 1) 5s both;
+    }
+
+    /* ============ CONCEPT β — Morph from list item ============ */
+    @keyframes beta-list-fade {
+      0%   { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    @keyframes beta-list-to-hero {
+      0%   { transform: translateY(0) scale(1); opacity: 1; box-shadow: 0 0 0 rgba(94, 106, 210, 0); }
+      30%  { transform: translateY(-12px) scale(1.04); box-shadow: 0 8px 32px rgba(94, 106, 210, 0.4); }
+      60%  { transform: translateY(-58px) scaleY(1.3) scaleX(1.06); opacity: 1; }
+      100% { transform: translateY(-92px) scale(1) scaleX(1); opacity: 1; }
+    }
+    @keyframes beta-hero-content-grow {
+      0%   { opacity: 0; max-height: 0; }
+      50%  { opacity: 0; max-height: 0; }
+      100% { opacity: 1; max-height: 240px; }
+    }
+    @keyframes beta-hero-from-list {
+      0%   { transform: translateY(-92px) scale(1); opacity: 1; }
+      50%  { transform: translateY(-92px) scale(1); opacity: 1; }
+      60%  { transform: translateY(-58px) scaleY(1.3) scaleX(1.06); opacity: 1; }
+      85%  { transform: translateY(-12px) scale(1.04); box-shadow: 0 8px 32px rgba(94, 106, 210, 0.4); }
+      100% { transform: translateY(0) scale(1); opacity: 1; }
+    }
+
+    .beta-list-source {
+      animation: beta-list-to-hero 0.7s cubic-bezier(0.4, 0, 0.2, 1) 1s forwards,
+                 beta-list-fade 0.2s ease-in 1.7s forwards;
+    }
+
+    .beta-hero-content {
+      animation: beta-hero-content-grow 0.4s ease-out 1.7s both;
+    }
+
+    /* ============ CONCEPT γ — Glassmorphic Bloom ============ */
+    @keyframes gamma-bubble-bloom {
+      0%   { transform: scale(0.05); opacity: 0.85; border-color: rgba(94, 106, 210, 0.9); box-shadow: 0 0 0 0 rgba(94, 106, 210, 0.8), inset 0 0 0 0 rgba(94, 106, 210, 0); }
+      40%  { transform: scale(1.12); opacity: 1; border-color: rgba(94, 106, 210, 0.7); box-shadow: 0 0 0 8px rgba(94, 106, 210, 0.3), inset 0 0 24px rgba(94, 106, 210, 0.08); }
+      70%  { transform: scale(0.98); border-color: rgba(94, 106, 210, 0.5); }
+      100% { transform: scale(1); opacity: 1; border-color: rgba(94, 106, 210, 0.35); box-shadow: 0 0 0 0 transparent, inset 0 0 0 transparent; }
+    }
+    @keyframes gamma-content-reveal {
+      0%   { opacity: 0; filter: blur(8px); }
+      100% { opacity: 1; filter: blur(0); }
+    }
+    @keyframes gamma-bubble-collapse {
+      0%   { transform: scale(1); opacity: 1; }
+      50%  { transform: scale(1.05); opacity: 1; }
+      100% { transform: scale(0.05); opacity: 0; }
+    }
+    @keyframes gamma-content-fade {
+      0%   { opacity: 1; filter: blur(0); }
+      100% { opacity: 0; filter: blur(4px); }
+    }
+
+    .gamma-hero {
+      transform-origin: top center;
+      animation: gamma-bubble-bloom 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) 1s both,
+                 gamma-content-reveal 0.45s ease-out 1.5s both,
+                 gamma-content-fade 0.35s ease-in 4.85s both,
+                 gamma-bubble-collapse 0.6s cubic-bezier(0.4, 0, 0.2, 1) 5.2s both;
+    }
+
+    /* glassmorphic styling for gamma */
+    .gamma-hero.hero-body {
+      background: rgba(94, 106, 210, 0.04);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1.5px solid rgba(94, 106, 210, 0.35);
+      border-radius: 16px;
+    }
+
+    /* ============ CONCEPT δ — Scale + Stagger Reveal ============ */
+    @keyframes delta-scale-in {
+      0%   { transform: scale(0.85); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    @keyframes delta-scale-out {
+      0%   { transform: scale(1); opacity: 1; }
+      100% { transform: scale(0.88); opacity: 0; }
+    }
+    @keyframes delta-row-1 {
+      0%   { opacity: 0; transform: translateX(-12px); }
+      100% { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes delta-row-2 {
+      0%   { opacity: 0; transform: translateX(-12px); }
+      100% { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes delta-row-3 {
+      0%   { opacity: 0; transform: translateX(-12px); }
+      100% { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes delta-row-1-out {
+      0%   { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    .delta-hero {
+      transform-origin: top center;
+      animation: delta-scale-in 0.45s cubic-bezier(0.34, 1.4, 0.64, 1) 1s both,
+                 delta-scale-out 0.4s cubic-bezier(0.4, 0, 0.2, 1) 5s both;
+    }
+
+    .delta-row-1 {
+      animation: delta-row-1 0.4s ease-out 1.15s both,
+                 delta-row-1-out 0.25s ease-in 5.05s both;
+    }
+
+    .delta-row-2 {
+      animation: delta-row-2 0.4s ease-out 1.30s both,
+                 delta-row-1-out 0.25s ease-in 4.85s both;
+    }
+
+    .delta-row-3 {
+      animation: delta-row-3 0.4s ease-out 1.45s both,
+                 delta-row-1-out 0.25s ease-in 4.65s both;
+    }
+
+    /* ============ CONCEPT ε — Liquid Blob Morph ============ */
+    @keyframes epsilon-blob-in {
+      0%   { border-radius: 50% 60% 40% 70% / 50% 50% 60% 40%; transform: scale(0.3); opacity: 0; }
+      30%  { border-radius: 60% 40% 70% 30% / 40% 60% 50% 50%; transform: scale(0.7); opacity: 0.6; }
+      70%  { border-radius: 30% 60% 40% 50% / 60% 40% 50% 50%; transform: scale(1.05); opacity: 1; }
+      100% { border-radius: 14px; transform: scale(1); opacity: 1; }
+    }
+    @keyframes epsilon-blob-out {
+      0%   { border-radius: 14px; transform: scale(1); opacity: 1; }
+      30%  { border-radius: 30% 60% 40% 50% / 60% 40% 50% 50%; transform: scale(1.05); opacity: 1; }
+      70%  { border-radius: 60% 40% 70% 30% / 40% 60% 50% 50%; transform: scale(0.7); opacity: 0.6; }
+      100% { border-radius: 50% 60% 40% 70% / 50% 50% 60% 40%; transform: scale(0.3); opacity: 0; }
+    }
+
+    .epsilon-hero {
+      animation: epsilon-blob-in 1s cubic-bezier(0.65, 0, 0.35, 1) 1s both,
+                 epsilon-blob-out 1s cubic-bezier(0.65, 0, 0.35, 1) 5s both;
+    }
+
+    /* footer */
+    .footer-note {
+      max-width: 1100px;
+      width: 100%;
+      margin-top: 48px;
+      padding: 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.7;
+    }
+
+    .footer-note strong { color: var(--text-main); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="badge">Hero Card • Entry/Exit Variations</div>
+    <h1>5 Transitions for Hero Appearance & Removal</h1>
+    <p class="subtitle">When the sole alarm is added or deleted, the hero card appears or disappears. Each concept below shows a different motion for that transition — the in-card content stays the same, only the entry/exit motion changes. Animations loop on a 7s cycle.</p>
+  </header>
+
+  <div class="concept-grid">
+
+    <!-- REFERENCE — current behavior -->
+    <div class="concept-card">
+      <div class="concept-header">
+        <div class="concept-tag">Reference • Current Behavior</div>
+        <div class="concept-title">Linear Fade + Height Collapse</div>
+        <div class="concept-desc">Today's hero animates with AnimatedSize (350ms height collapse) + AnimatedSwitcher (280ms fade + size). Predictable, fast, but a bit utilitarian — no spring, no energy.</div>
+      </div>
+      <div class="mockup">
+        <div class="mockup-phase">Loop 7s</div>
+        <div class="ref-hero">
+          <div class="hero-body">
+            <div class="hero-row-top">
+              <div class="hero-dot"></div>
+              <div class="hero-meta">next upcoming alarm • in 7h 24m</div>
+            </div>
+            <div class="hero-time">07:00</div>
+            <div class="hero-label">Morning workout</div>
+            <div class="hero-tags">
+              <div class="hero-tag">Mon · Wed · Fri</div>
+              <div class="hero-tag">chime · 15s</div>
+            </div>
+          </div>
+        </div>
+        <div class="mockup-meta">reference · 350ms + 280ms</div>
+      </div>
+    </div>
+
+    <!-- CONCEPT α — Slide-up spring -->
+    <div class="concept-card">
+      <div class="concept-header">
+        <div class="concept-tag">Concept α • Spring / Energetic</div>
+        <div class="concept-title">Slide-up Spring</div>
+        <div class="concept-desc">Hero slides up from below with elasticOut overshoot, scales 0.92 → 1.02 → 1.0. Exit slides up and scales down with a slight bounce. Feels alive and confident.</div>
+      </div>
+      <div class="mockup">
+        <div class="mockup-phase">Loop 7s</div>
+        <div class="alpha-stage" style="flex: 1;">
+          <div class="alpha-hero">
+            <div class="hero-body">
+              <div class="hero-row-top">
+                <div class="hero-dot"></div>
+                <div class="hero-meta">next upcoming alarm • in 7h 24m</div>
+              </div>
+              <div class="hero-time">07:00</div>
+              <div class="hero-label">Morning workout</div>
+              <div class="hero-tags">
+                <div class="hero-tag">Mon · Wed · Fri</div>
+                <div class="hero-tag">chime · 15s</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mockup-meta">α · 900ms spring + 550ms exit</div>
+      </div>
+    </div>
+
+    <!-- CONCEPT β — Morph from list item -->
+    <div class="concept-card">
+      <div class="concept-header">
+        <div class="concept-tag">Concept β • Shared Axis</div>
+        <div class="concept-title">Morph from List Item</div>
+        <div class="concept-desc">The alarm's existing card in the list expands upward into the hero position — a single continuous motion. Reverses on removal: hero shrinks down into its list slot. Strongest spatial continuity.</div>
+      </div>
+      <div class="mockup">
+        <div class="mockup-phase">Loop 7s</div>
+        <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
+          <div class="list-row beta-list-source" style="margin-top: auto;">
+            <div class="list-time">07:00</div>
+            <div class="list-label">Morning workout</div>
+            <div class="list-toggle"></div>
+          </div>
+          <div class="beta-hero-content">
+            <div class="hero-body">
+              <div class="hero-row-top">
+                <div class="hero-dot"></div>
+                <div class="hero-meta">next upcoming alarm • in 7h 24m</div>
+              </div>
+              <div class="hero-time">07:00</div>
+              <div class="hero-label">Morning workout</div>
+              <div class="hero-tags">
+                <div class="hero-tag">Mon · Wed · Fri</div>
+                <div class="hero-tag">chime · 15s</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mockup-meta">β · list → hero morph · 700ms</div>
+      </div>
+    </div>
+
+    <!-- CONCEPT γ — Glassmorphic Bloom -->
+    <div class="concept-card">
+      <div class="concept-header">
+        <div class="concept-tag">Concept γ • Glassmorphic Bloom</div>
+        <div class="concept-title">Glassmorphic Bloom</div>
+        <div class="concept-desc">A small purple bubble blooms outward to reveal the hero. The frosted-glass border expands with a subtle ring pulse, then content blurs in from focus. Reverse: content blurs out, bubble collapses. Cinematic.</div>
+      </div>
+      <div class="mockup">
+        <div class="mockup-phase">Loop 7s</div>
+        <div style="display: flex; align-items: center; justify-content: center; flex: 1;">
+          <div class="gamma-hero hero-body" style="width: 100%;">
+            <div class="hero-row-top">
+              <div class="hero-dot"></div>
+              <div class="hero-meta">next upcoming alarm • in 7h 24m</div>
+            </div>
+            <div class="hero-time">07:00</div>
+            <div class="hero-label">Morning workout</div>
+            <div class="hero-tags">
+              <div class="hero-tag">Mon · Wed · Fri</div>
+              <div class="hero-tag">chime · 15s</div>
+            </div>
+          </div>
+        </div>
+        <div class="mockup-meta">γ · 850ms bloom · 600ms collapse</div>
+      </div>
+    </div>
+
+    <!-- CONCEPT δ — Scale + Stagger Reveal -->
+    <div class="concept-card">
+      <div class="concept-header">
+        <div class="concept-tag">Concept δ • Editorial</div>
+        <div class="concept-title">Scale + Stagger Reveal</div>
+        <div class="concept-desc">Outer card scales up from 0.85 with a soft overshoot, while inner rows (time, label, tags) fade in with sliding offsets. Reverse: inner rows fade out first in cascade, then card scales down. Editorial reveal sequence.</div>
+      </div>
+      <div class="mockup">
+        <div class="mockup-phase">Loop 7s</div>
+        <div style="display: flex; align-items: center; justify-content: center; flex: 1;">
+          <div class="delta-hero hero-body" style="width: 100%;">
+            <div class="delta-row-1 hero-row-top">
+              <div class="hero-dot"></div>
+              <div class="hero-meta">next upcoming alarm • in 7h 24m</div>
+            </div>
+            <div class="delta-row-2 hero-time">07:00</div>
+            <div class="delta-row-3">
+              <div class="hero-label">Morning workout</div>
+            </div>
+            <div class="hero-tags">
+              <div class="hero-tag">Mon · Wed · Fri</div>
+              <div class="hero-tag">chime · 15s</div>
+            </div>
+          </div>
+        </div>
+        <div class="mockup-meta">δ · 450ms scale · 150ms staggered</div>
+      </div>
+    </div>
+
+    <!-- CONCEPT ε — Liquid Blob Morph -->
+    <div class="concept-card">
+      <div class="header">
+        <div class="concept-tag">Concept ε • Liquid</div>
+        <div class="concept-title">Liquid Blob Morph</div>
+        <div class="concept-desc">The card materializes as an irregular organic blob, then settles into a clean rectangle via border-radius interpolation. Liquid surface tension aesthetic. Exit: rectangle melts back to blob and dissipates.</div>
+      </div>
+      <div class="mockup">
+        <div class="mockup-phase">Loop 7s</div>
+        <div style="display: flex; align-items: center; justify-content: center; flex: 1;">
+          <div class="epsilon-hero hero-body" style="width: 100%;">
+            <div class="hero-row-top">
+              <div class="hero-dot"></div>
+              <div class="hero-meta">next upcoming alarm • in 7h 24m</div>
+            </div>
+            <div class="hero-time">07:00</div>
+            <div class="hero-label">Morning workout</div>
+            <div class="hero-tags">
+              <div class="hero-tag">Mon · Wed · Fri</div>
+              <div class="hero-tag">chime · 15s</div>
+            </div>
+          </div>
+        </div>
+        <div class="mockup-meta">ε · 1s liquid morph · 1s dissolve</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="footer-note">
+    <strong>How to read these.</strong> All five concepts share the same in-card content. The only thing changing is the motion that happens when the hero first appears and when it disappears. Concepts loop their full entry → dwell → exit cycle every 7 seconds so you can compare them back-to-back without manual interaction.
+
+    <br><br><strong>Current implementation vs concepts:</strong>
+    <ul style="margin-top: 6px; padding-left: 20px;">
+      <li><strong>Reference (today)</strong>: AnimatedSize (350ms cubic) + AnimatedSwitcher (280ms fade + size). Utilitarian.</li>
+      <li><strong>α Slide-up Spring</strong>: CurvedMotion + Tween (offset+scale) ~900ms entry / 550ms exit. Closest to current but with energy.</li>
+      <li><strong>β Morph from List</strong>: Custom Hero widget or shared-axis SharedAxisTransition. Highest implementation effort, strongest visual payoff.</li>
+      <li><strong>γ Glassmorphic Bloom</strong>: BackdropFilter + AnimationController for border-radius/scale. ~850ms entry. Pair with subtle haptic on bloom apex.</li>
+      <li><strong>δ Scale + Stagger</strong>: AnimatedSwitcher per row with stagger intervals (TweenAnimationBuilder). Easy to compose with existing AnimatedSize.</li>
+      <li><strong>ε Liquid Blob</strong>: Tween&lt;BorderRadius&gt; + Transform.scale. ~1s morph. Most distinctive but most "different" from current aesthetic.</li>
+    </ul>
+
+    <br><strong>To explore live,</strong> open this file in any browser. Animations loop on a 7-second cycle — let them play 2–3 times each to see the full entry → dwell → exit motion.
+  </div>
+
+</body>
+</html>

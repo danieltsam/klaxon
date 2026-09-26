@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recurrence UI — Integrated Mockups</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090A0C;
+      --card-bg: #121418;
+      --surface: #16181D;
+      --surface-2: #1B1E26;
+      --border: #22252C;
+      --border-accent: #333844;
+      --primary: #5E6AD2;
+      --primary-soft: #717DE2;
+      --primary-glow: rgba(94, 106, 210, 0.35);
+      --primary-faint: rgba(94, 106, 210, 0.08);
+      --text-main: #F7F8F8;
+      --text-muted: #8A8F98;
+      --text-dim: #4B505B;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-main);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      padding: 32px 20px 80px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    header {
+      max-width: 1100px;
+      width: 100%;
+      margin-bottom: 40px;
+      text-align: center;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: #818CF8;
+      background: rgba(94, 106, 210, 0.12);
+      border: 1px solid rgba(94, 106, 210, 0.28);
+      padding: 5px 14px;
+      border-radius: 99px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.7px;
+      margin-bottom: 10px;
+    }
+
+    p.subtitle {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .concept-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      gap: 28px;
+      max-width: 1280px;
+      width: 100%;
+    }
+
+    .concept-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    .concept-header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+
+    .concept-tag {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      color: #A5B4FC;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .concept-title {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+      margin-bottom: 4px;
+    }
+
+    .concept-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+
+    .mockup {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      min-height: 480px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .mockup-context {
+      font-size: 9px;
+      color: var(--text-dim);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      font-weight: 700;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    .mockup-meta {
+      position: absolute;
+      bottom: 10px;
+      right: 14px;
+      font-size: 9px;
+      color: var(--text-dim);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    /* ============ MODAL SHEET PRIMITIVES ============ */
+    .sheet {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px 16px 0 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+
+    .sheet-handle {
+      width: 36px;
+      height: 4px;
+      background: var(--text-dim);
+      border-radius: 2px;
+      margin: 12px auto 8px;
+      opacity: 0.6;
+    }
+
+    .sheet-header {
+      padding: 8px 18px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sheet-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+    }
+
+    .sheet-section {
+      padding: 14px 18px;
+    }
+
+    .sheet-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 0 18px;
+    }
+
+    .month-label {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+    }
+
+    .expand-btn {
+      padding: 5px 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--border-accent);
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Macro chips */
+    .macro-row {
+      display: flex;
+      gap: 6px;
+      padding: 0 18px;
+    }
+
+    .macro-chip {
+      padding: 6px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .macro-chip.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+
+    /* Old chips row (current state) */
+    .chips-row {
+      display: flex;
+      gap: 4px;
+      padding: 0 18px;
+    }
+
+    .chips-row .chip {
+      flex: 1;
+      padding: 7px 4px;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .chips-row .chip.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+
+    /* Date ribbon mock (current ribbon) */
+    .ribbon-mock {
+      display: flex;
+      gap: 6px;
+      padding: 12px 18px;
+    }
+
+    .ribbon-card {
+      min-width: 56px;
+      height: 76px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .ribbon-card.selected {
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .ribbon-dow {
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.4px;
+    }
+
+    .ribbon-card.selected .ribbon-dow { color: rgba(255,255,255,0.9); }
+
+    .ribbon-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-top: 2px;
+    }
+
+    .ribbon-card.selected .ribbon-num { color: white; }
+
+    .ribbon-badge {
+      font-size: 8px;
+      font-weight: 700;
+      color: #818CF8;
+      margin-top: 3px;
+    }
+
+    .ribbon-card.selected .ribbon-badge { color: white; }
+
+    /* Sheet footer */
+    .sheet-footer {
+      margin: 14px 18px;
+      padding: 12px 14px;
+      background: #101215;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer-date {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .footer-sub {
+      font-size: 11px;
+      font-weight: 600;
+      color: #818CF8;
+      margin-top: 2px;
+    }
+
+    .confirm-btn {
+      padding: 9px 16px;
+      background: var(--primary);
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: white;
+    }
+
+    /* ============ CURRENT — chips (reference) ============ */
+    /* (uses the chips-row class above) */
+
+    /* ============ A — Vertical list (radios) in schedule sheet ============ */
+    .list-A {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .list-A-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+
+    .list-A-row:last-child { border-bottom: none; }
+    .list-A-row.selected { background: rgba(94, 106, 210, 0.12); }
+
+    .list-A-radio {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 2px solid var(--text-dim);
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    .list-A-radio.selected {
+      border-color: var(--primary);
+    }
+
+    .list-A-radio.selected::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 8px;
+      height: 8px;
+      background: var(--primary);
+      border-radius: 50%;
+    }
+
+    .list-A-text { flex: 1; }
+    .list-A-label { font-size: 12px; font-weight: 600; color: var(--text-main); }
+    .list-A-sub { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
+
+    /* ============ B — iOS grouped card in schedule sheet ============ */
+    .grouped-B {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .grouped-B-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+
+    .grouped-B-row:last-child { border-bottom: none; }
+    .grouped-B-row.selected { background: rgba(94, 106, 210, 0.10); }
+
+    .grouped-B-label { font-size: 12px; font-weight: 600; color: var(--text-main); }
+    .grouped-B-row.selected .grouped-B-label { color: var(--text-main); }
+
+    .grouped-B-check {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 1.5px solid var(--text-dim);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+
+    .grouped-B-row.selected .grouped-B-check {
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .grouped-B-row.selected .grouped-B-check::after {
+      content: '✓';
+      font-size: 11px;
+      font-weight: 800;
+      color: white;
+    }
+
+    /* ============ C — Collapsed + expandable in schedule sheet ============ */
+    .collapsed-C {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .expanded-C {
+      background: var(--surface);
+      border: 1px solid var(--primary);
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.1);
+    }
+
+    .expanded-C-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+
+    .expanded-C-row:last-child { border-bottom: none; }
+    .expanded-C-row.selected {
+      background: rgba(94, 106, 210, 0.12);
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    .expanded-C-row .check { opacity: 0; color: var(--primary); font-weight: 700; }
+    .expanded-C-row.selected .check { opacity: 1; }
+
+    /* ============ G — Recurrence as a row in pick date modal ============ */
+    .recurrence-row-G {
+      margin: 0 18px 12px;
+      padding: 10px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .recurrence-row-G-label {
+      font-size: 9px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 700;
+      margin-right: 4px;
+    }
+
+    .recurrence-row-G-options {
+      display: flex;
+      gap: 4px;
+      flex: 1;
+    }
+
+    .recurrence-row-G-opt {
+      padding: 5px 8px;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+    }
+
+    .recurrence-row-G-opt.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+
+    /* ============ H — Recurrence as a tab in pick date modal ============ */
+    .tabs-H {
+      display: flex;
+      gap: 0;
+      padding: 0 18px;
+      margin-bottom: 12px;
+    }
+
+    .tabs-H-tab {
+      flex: 1;
+      padding: 8px 4px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      cursor: pointer;
+    }
+
+    .tabs-H-tab:first-child { border-radius: 6px 0 0 6px; }
+    .tabs-H-tab:last-child { border-radius: 0 6px 6px 0; }
+    .tabs-H-tab:not(:first-child) { border-left: none; }
+    .tabs-H-tab.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+
+    .recurrence-content-H {
+      padding: 12px 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin: 0 18px 12px;
+    }
+
+    .recurrence-content-H-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .recurrence-content-H-row:last-child { border-bottom: none; }
+    .recurrence-content-H-row.selected {
+      color: var(--primary);
+      font-weight: 700;
+    }
+
+    /* footer */
+    .footer-note {
+      max-width: 1100px;
+      width: 100%;
+      margin-top: 48px;
+      padding: 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.7;
+    }
+    .footer-note strong { color: var(--text-main); }
+    .footer-note code { background: var(--bg); padding: 1px 5px; border-radius: 3px; color: var(--text-main); font-size: 11px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="badge">Integrated Mockups</div>
+    <h1>Recurrence UI — Inside the Schedule / Pick Date Modal</h1>
+    <p class="subtitle">Same 3 locations shown side-by-side: <strong>current chips</strong>, <strong>3 chip-replacement variants in the schedule sheet</strong>, <strong>2 pick-date-integrated variants</strong>. Open in browser to compare.</p>
+  </header>
+
+  <div class="concept-grid">
+
+    <!-- REFERENCE — current chips -->
+    <div class="concept-card">
+      <div class="concept-header">
+        <div class="concept-tag">Reference • Current State</div>
+        <div class="concept-title">5 Chips Row (Today)</div>
+        <div class="concept-desc">In the schedule sheet, between the macro chips and date row. FittedBox prevents clipping but feels cramped.</div>
+      </div>
+      <div class="mockup">
+        <div class="mockup-context">Schedule Sheet • Recurrence</div>
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-header">
+            <div class="sheet-title">Set Time &amp; Schedule</div>
+            <div style="font-size: 13px; color: var(--primary); font-weight: 600;">Done</div>
+          </div>
+          <div class="sheet-section">
+            <div style="font-size: 10px; color: var(--text-dim); letter-spacing: 0.5px; text-transform: uppercase; font-weight: 700; margin-bottom: 8px;">Repeats</div>
+            <div class="chips-row">
+              <div class="chip">Once</div>
+              <div class="chip active">Daily</div>
+              <div class="chip">Weekdays</div>
+              <div class="chip">Fortnight…</div>
+              <div class="chip">Custom</div>
+            </div>
+          </div>
+          <div class="sheet-divider"></div>
+          <div class="sheet-section">
+            <div class="ribbon-mock">
+              <div class="ribbon-card"><div class="ribbon-dow">MON</div><div class="ribbon-num">21</div><div class="ribbon-badge">Today</div></div>
+              <div class="ribbon-card selected"><div class="ribbon-dow">TUE</div><div class="ribbon-num">22</div><div class="ribbon-badge">Tomorrow</div></div>
+              <div class="ribbon-card"><div class="ribbon-dow">WED</div><div class="ribbon-num">23</div><div class="ribbon-badge">in 2d</div></div>
+            </div>
+          </div>
+          <div class="sheet-footer">
+            <div>
+              <div class="footer-date">Tuesday, 22nd September 2026</div>
+              <div class="footer-sub">Tomorrow</div>
+            </div>
+            <div class="confirm-btn">Confirm Date</div>
+          </div>
+        </div>
+        <div class="mockup-meta">0 · current</div>
+      </div>
+    </div>
+
+    <!-- A — Vertical list in schedule sheet -->
+    <div class="concept-card">
+      <div class="concept-header">
+        <div class="concept-tag">Concept A</div>
+        <div class="concept-title">Vertical List (Radios) — in Schedule Sheet</div>
+        <div class="concept-desc">Replace the chip row with a compact list. Each option has a radio + label + subtitle. Same screen real estate as chips, much more readable.</div>
+      </div>
+      <div class="mockup">
+        <div class="mockup-context">Schedule Sheet • Recurrence</div>
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-header">
+            <div class="sheet-title">Set Time &amp; Schedule</div>
+            <div style="font-size: 13px; color: var(--primary); font-weight: 600;">Done</div>
+          </div>
+          <div class="sheet-section">
+            <div style="font-size: 10px; color: var(--text-dim); letter-spacing: 0.5px; text-transform: uppercase; font-weight: 700; margin-bottom: 8px;">Repeats</div>
+            <div class="list-A">
+              <div class="list-A-row">
+                <div class="list-A-radio"></div>
+                <div class="list-A-text">
+                  <div class="list-A-label">Once</div>
+                  <div class="list-A-sub">Just this one time</div>
+                </div>
+              </div>
+              <div class="list-A-row selected">
+                <div class="list-A-radio selected"></div>
+                <div class="list-A-text">
+                  <div class="list-A-label">Daily</div>
+                  <div class="list-A-sub">Every day at this time</div>
+                </div>
+              </div>
+              <div class="list-A-row">
+                <div class="list-A-radio"></div>
+                <div class="list-A-text">
+                  <div class="list-A-label">Weekdays</div>
+                  <div class="list-A-sub">Mon · Tue · Wed · Thu · Fri</div>
+                </div>
+              </div>
+              <div class="list-A-row">
+                <div class="list-A-radio"></div>
+                <div class="list-A-text">
+                  <div class="list-A-label">Fortnightly</div>
+                  <div class="list-A-sub">Every 2 weeks</div>
+                </div>
+              </div>
+              <div class="list-A-row">
+                <div class="list-A-radio"></div>
+                <div class="list-A-text">
+                  <div class="list-A-label">Custom</div>
+                  <div class="list-A-sub">Pick specific days</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="sheet-divider"></div>
+          <div class="sheet-section">
+            <div class="ribbon-mock">
+              <div class="ribbon-card"><div class="ribbon-dow">MON</div><div class="ribbon-num">21</div><div class="ribbon-badge">Today</div></div>
+              <div class="ribbon-card selected"><div class="ribbon-dow">TUE</div><div class="ribbon-num">22</div><div class="ribbon-badge">Tomorrow</div></div>
+              <div class="ribbon-card"><div class="ribbon-dow">WED</div><div class="ribbon-num">23</div><div class="ribbon-badge">in 2d</div></div>
+            </div>
+          </div>
+          <div class="sheet-footer">
+            <div>
+              <div class="footer-date">Tuesday, 22nd September 2026</div>
+              <div class="footer-sub">Tomorrow</div>
+            </div>
+            <div class="confirm-btn">Confirm Date</div>
+          </div>
+        </div>
+        <div class="mockup-meta">A · list · radios · 5 rows</div>
+      </div>
+    </div>
+
+    <!-- B — iOS grouped card in schedule sheet -->
+    <div class="concept-card">
+      <div class="concept-header">
+        <div class="concept-tag">Concept B</div>
+        <div class="concept-title">iOS Grouped Card — in Schedule Sheet</div>
+        <div class="concept-desc">Single inset card with full-width rows + checkmark on selection. Familiar iOS settings pattern. Same height as Concept A but less data per row.</div>
+      </div>
+      <div class="mockup">
+        <div class="mockup-context">Schedule Sheet • Recurrence</div>
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-header">
+            <div class="sheet-title">Set Time &amp; Schedule</div>
+            <div style="font-size: 13px; color: var(--primary); font-weight: 600;">Done</div>
+          </div>
+          <div class="sheet-section">
+            <div style="font-size: 10px; color: var(--text-dim); letter-spacing: 0.5px; text-transform: uppercase; font-weight: 700; margin-bottom: 8px;">Repeats</div>
+            <div class="grouped-B">
+              <div class="grouped-B-row">
+                <div class="grouped-B-label">Once</div>
+                <div class="grouped-B-check"></div>
+              </div>
+              <div class="grouped-B-row selected">
+                <div class="grouped-B-label">Daily</div>
+                <div class="grouped-B-check"></div>
+              </div>
+              <div class="grouped-B-row">
+                <div class="grouped-B-label">Weekdays</div>
+                <div class="grouped-B-check"></div>
+              </div>
+              <div class="grouped-B-row">
+                <div class="grouped-B-label">Fortnightly</div>
+                <div class="grouped-B-check"></div>
+              </div>
+              <div class="grouped-B-row">
+                <div class="grouped-B-label">Custom</div>
+                <div class="grouped-B-check"></div>
+              </div>
+            </div>
+          </div>
+          <div class="sheet-divider"></div>
+          <div class="sheet-section">
+            <div class="ribbon-mock">
+              <div class="ribbon-card"><div class="ribbon-dow">MON</div><div class="ribbon-num">21</div><div class="ribbon-badge">Today</div></div>
+              <div class="ribbon-card selected"><div class="ribbon-dow">TUE</div><div class="ribbon-num">22</div><div class="ribbon-badge">Tomorrow</div></div>
+              <div class="ribbon-card"><div class="ribbon-dow">WED</div><div class="ribbon-num">23</div><div class="ribbon-badge">in 2d</div></div>
+            </div>
+          </div>
+          <div class="sheet-footer">
+            <div>
+              <div class="footer-date">Tuesday, 22nd September 2026</div>
+              <div class="footer-sub">Tomorrow</div>
+            </div>
+            <div class="confirm-btn">Confirm Date</div>
+          </div>
+        </div>
+        <div class="mockup-meta">B · iOS card · checkmark</div>
+      </div>
+    </div>
+
+    <!-- C — Collapsed + expandable in schedule sheet -->
+    <div class="concept-card">
+      <div class="concept-header">
+        <div class="concept-tag">Concept C</div>
+        <div class="concept-title">Collapsed + Expandable — in Schedule Sheet</div>
+        <div class="concept-desc">Saves vertical space at rest. Just shows current selection. Tap to expand inline into a vertical list. Compact and elegant.</div>
+      </div>
+      <div class="mockup">
+        <div class="mockup-context">Schedule Sheet • Recurrence (expanded state)</div>
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-header">
+            <div class="sheet-title">Set Time &amp; Schedule</div>
+            <div style="font-size: 13px; color: var(--primary); font-weight: 600;">Done</div>
+          </div>
+          <div class="sheet-section">
+            <div style="font-size: 10px; color: var(--text-dim); letter-spacing: 0.5px; text-transform: uppercase; font-weight: 700; margin-bottom: 8px;">Repeats</div>
+            <div class="expanded-C">
+              <div class="expanded-C-row">
+                <span>Once</span>
+                <span class="check">✓</span>
+              </div>
+              <div class="expanded-C-row selected">
+                <span>Daily</span>
+                <span class="check">✓</span>
+              </div>
+              <div class="expanded-C-row">
+                <span>Weekdays</span>
+                <span class="check">✓</span>
+              </div>
+              <div class="expanded-C-row">
+                <span>Fortnightly</span>
+                <span class="check">✓</span>
+              </div>
+              <div class="expanded-C-row">
+                <span>Custom</span>
+                <span class="check">✓</span>
+              </div>
+            </div>
+          </div>
+          <div class="sheet-divider"></div>
+          <div class="sheet-section">
+            <div class="ribbon-mock">
+              <div class="ribbon-card"><div class="ribbon-dow">MON</div><div class="ribbon-num">21</div><div class="ribbon-badge">Today</div></div>
+              <div class="ribbon-card selected"><div class="ribbon-dow">TUE</div><div class="ribbon-num">22</div><div class="ribbon-badge">Tomorrow</div></div>
+              <div class="ribbon-card"><div class="ribbon-dow">WED</div><div class="ribbon-num">23</div><div class="ribbon-badge">in 2d</div></div>
+            </div>
+          </div>
+          <div class="sheet-footer">
+            <div>
+              <div class="footer-date">Tuesday, 22nd September 2026</div>
+              <div class="footer-sub">Tomorrow</div>
+            </div>
+            <div class="confirm-btn">Confirm Date</div>
+          </div>
+        </div>
+        <div class="mockup-meta">C · collapsible · 1-line default</div>
+      </div>
+    </div>
+
+    <!-- G — Recurrence as a row in pick date modal -->
+    <div class="concept-card">
+      <div class="concept-header">
+        <div class="concept-tag">Concept G • Pick-Date-Integrated</div>
+        <div class="concept-title">Recurrence Row in Pick Date Modal</div>
+        <div class="concept-desc">Compact horizontal recurrence row sits between the macro chips and the date ribbon. Date + recurrence set together. Schedule sheet still has time picker but no recurrence row.</div>
+      </div>
+      <div class="mockup">
+        <div class="mockup-context">Pick Date Modal • Date + Recurrence</div>
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-header">
+            <div class="month-label">September 2026</div>
+            <div class="expand-btn">Expand ▾</div>
+          </div>
+          <div class="macro-row">
+            <div class="macro-chip">Today</div>
+            <div class="macro-chip active">Tomorrow</div>
+          </div>
+          <div style="margin-top: 12px;"></div>
+          <div class="recurrence-row-G">
+            <span class="recurrence-row-G-label">Repeats</span>
+            <div class="recurrence-row-G-options">
+              <div class="recurrence-row-G-opt">Once</div>
+              <div class="recurrence-row-G-opt active">Daily</div>
+              <div class="recurrence-row-G-opt">Wkdays</div>
+              <div class="recurrence-row-G-opt">2wks</div>
+              <div class="recurrence-row-G-opt">Custom</div>
+            </div>
+          </div>
+          <div class="sheet-section">
+            <div class="ribbon-mock">
+              <div class="ribbon-card"><div class="ribbon-dow">MON</div><div class="ribbon-num">21</div><div class="ribbon-badge">Today</div></div>
+              <div class="ribbon-card selected"><div class="ribbon-dow">TUE</div><div class="ribbon-num">22</div><div class="ribbon-badge">Tomorrow</div></div>
+              <div class="ribbon-card"><div class="ribbon-dow">WED</div><div class="ribbon-num">23</div><div class="ribbon-badge">in 2d</div></div>
+            </div>
+          </div>
+          <div class="sheet-footer">
+            <div>
+              <div class="footer-date">Tuesday, 22nd September 2026</div>
+              <div class="footer-sub">Tomorrow · Daily</div>
+            </div>
+            <div class="confirm-btn">Confirm Date</div>
+          </div>
+        </div>
+        <div class="mockup-meta">G · recurrence in pick date</div>
+      </div>
+    </div>
+
+    <!-- H — Recurrence as a tab in pick date modal -->
+    <div class="concept-card">
+      <div class="concept-header">
+        <div class="concept-tag">Concept H • Pick-Date-Integrated</div>
+        <div class="concept-title">Recurrence as 5th Tab in Pick Date</div>
+        <div class="concept-desc">Adds "Recurrence" as a 5th tab alongside Ribbon / Matrix / Tumbler / Type. Tap to switch to recurrence view. Most consistent with existing tab structure.</div>
+      </div>
+      <div class="mockup">
+        <div class="mockup-context">Pick Date Modal • Recurrence Tab</div>
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-header">
+            <div class="month-label">September 2026</div>
+            <div class="expand-btn">Expand ▾</div>
+          </div>
+          <div class="macro-row">
+            <div class="macro-chip">Today</div>
+            <div class="macro-chip active">Tomorrow</div>
+          </div>
+          <div class="tabs-H">
+            <div class="tabs-H-tab">Ribbon</div>
+            <div class="tabs-H-tab">Matrix</div>
+            <div class="tabs-H-tab">Tumbler</div>
+            <div class="tabs-H-tab">Type</div>
+            <div class="tabs-H-tab active">Recur</div>
+          </div>
+          <div class="recurrence-content-H">
+            <div class="recurrence-content-H-row">
+              <span>Once</span>
+              <span style="color: var(--text-muted); font-size: 11px;">Just this one time</span>
+            </div>
+            <div class="recurrence-content-H-row selected">
+              <span>Daily</span>
+              <span style="font-size: 11px;">Every day</span>
+            </div>
+            <div class="recurrence-content-H-row">
+              <span>Weekdays</span>
+              <span style="font-size: 11px;">Mon–Fri</span>
+            </div>
+            <div class="recurrence-content-H-row">
+              <span>Fortnightly</span>
+              <span style="font-size: 11px;">Every 2 wks</span>
+            </div>
+            <div class="recurrence-content-H-row">
+              <span>Custom</span>
+              <span style="font-size: 11px;">Pick days</span>
+            </div>
+          </div>
+          <div class="sheet-footer">
+            <div>
+              <div class="footer-date">Tuesday, 22nd September 2026</div>
+              <div class="footer-sub">Tomorrow · Daily</div>
+            </div>
+            <div class="confirm-btn">Confirm Date</div>
+          </div>
+        </div>
+        <div class="mockup-meta">H · recurrence as tab</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="footer-note">
+    <strong>Comparison.</strong>
+    <ul style="margin-top: 6px; padding-left: 20px;">
+      <li><strong>0 Current</strong> — chips cramped, no room for descriptions.</li>
+      <li><strong>A Vertical list (radios)</strong> — most info per px, scannable, settings-list feel. Adds ~30px height to sheet.</li>
+      <li><strong>B iOS grouped card</strong> — native iOS pattern, full-width taps. Compact but loses per-option subtitles.</li>
+      <li><strong>C Collapsed + expandable</strong> — minimal at rest, expands to 5-row list. Smallest footprint by default.</li>
+      <li><strong>G Recurrence row in Pick Date</strong> — consolidates date + recurrence into one sheet. Schedule sheet becomes just a time picker. Bigger single-modal change.</li>
+      <li><strong>H Recurrence as 5th Tab</strong> — fits existing tab pattern (Ribbon/Matrix/Tumbler/Type). User has to tap tab to find recurrence — extra step.</li>
+    </ul>
+    <br><strong>About Custom.</strong> In all 6 mockups, tapping "Custom" would expand into the existing weekday selector (M T W T F S S circles). The follow-up UI doesn't change — only the entry-point does.
+  </div>
+
+</body>
+</html>

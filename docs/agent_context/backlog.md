@@ -88,3 +88,47 @@ The app has consolidated onto the **3D Cylindrical Drum Tumbler** as the definit
 - **Architecture Consideration**:
   - Google Calendar web servers cannot directly resolve or poll private `.ts.net` Tailscale nodes or private LAN IPs unless the endpoint is exposed via a secure tunnel (e.g. Cloudflare Tunnel / Funnel) or via a light sync daemon that pushes events directly to Google Calendar API using OAuth service account credentials.
   - Alternative: Local calendar subscriptions on macOS / iOS / Android via CalDAV or local iCal feed subscription that runs client-side inside the Tailscale network.
+- **Priority note (2026-09-23)**: User says iCal sync is *not* currently significant — Google Calendar sync already exists. Deferred.
+
+---
+
+## 5. UI Polish Backlog (deferred — not blocking core experience)
+
+Deferred by the user on 2026-09-23 during the design-consistency review. None of these affect the core alarm experience; all are aesthetic consistency items.
+
+### 5.1 Missed Alarms UI — full redesign
+
+- **Problem**: The missed-alarm UI doesn't flow with the rest of the app. The user dislikes the "translucent tinted bubble with colour" treatment. It's also not the same size as the current components.
+- **Direction**: Normal, consistent with the curated design language. Avoid animated pulsing dots and translucent pastel tints.
+- **Also**: the copy currently explains the technical reason (FCM token lost / no connection). The user's view: *"I would not want to read that because… why did it happen? I don't know."* The audience is technical (Docker Compose, self-hosted backend), so a brief factual note is acceptable — but not a technical dump. Keep it short and non-alarming.
+
+### 5.2 Battery indicator — remove or redesign
+
+- **Problem**: The user is "not a big fan of it."
+- **Direction**: Either remove from the header or redesign to match the flatter, lower-case aesthetic.
+
+### 5.3 Home screen header icons — too generic (lucide-like)
+
+- **Problem**: The haptics-lab icon and the settings icon both read as stock/generic.
+- **Direction**:
+  - **Haptics lab icon** — will be removed (the lab itself stays accessible elsewhere).
+  - **Settings icon** — redesign; the current one "looks too much like a generic lucide icon."
+
+### 5.4 Floating Action Button — more texture and shadow
+
+- **Problem**: The "+ new alarm" FAB is visually flat relative to the rest of the design language.
+- **Direction**: Give it more texture and a deeper/richer shadow so it reads as a raised, tactile element. Keep the existing purple accent.
+
+### 5.5 Design-consistency guardrails (apply to all future UI work)
+
+- No animated pulsing dots.
+- No translucent pastel tints.
+- Avoid "pill overdoses" — pill badges used decoratively rather than for real state.
+- Avoid stock lucide-style icons for primary navigation/actions.
+- Prefer **lowercase content** (established on the dashboard, and desired on the main page) over all-caps headers.
+- Prefer plain text actions (e.g. "Reschedule") over decorative slider controls where the slider adds no meaning.
+- Keep components visually consistent in size with existing curated components.
+
+### 5.6 iCal / CalDAV feed — deferred
+
+- Google Calendar sync already covers the primary use case. Revisit only if a concrete need arises.

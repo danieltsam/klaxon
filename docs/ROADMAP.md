@@ -30,7 +30,28 @@ This document tracks implemented features and future enhancements for the Remote
  
 ### 1.6 Calendar Export & Subscriptions
 - **RFC 5545 iCalendar Subscription:** Web dashboard provides a **"Copy iCal Feed"** button with quick instructions to subscribe to `GET /api/calendar.ics` directly in Google Calendar, Apple Calendar, or Outlook.
- 
+
+### 1.7 Missed Alarms
+- **Failure is recorded, not hidden:** a one-time alarm that is overdue by more than 5 minutes becomes
+  `missed` rather than sitting silently overdue. A backend sweep runs every 60 seconds, and the phone
+  reports stale alarms on reconnect through `POST /api/alarms/report-missed`.
+- **`missed_reason`:** a closed set of six values describing what could be determined.
+- **Visible everywhere:** a Missed group in the app with a Reschedule action, an annotated Google
+  Calendar event, the dashboard, the CLI and Raycast.
+- **Never revived automatically.** Spec: `superpowers/specs/2026-09-23-missed-alarms-design.md`.
+
+### 1.8 Relative Time Display
+- **Scales with distance:** `25 mins`, `13 hours 40 mins`, `13 days 19 hours 23 mins`,
+  `3 months 12 days 5 hours`, `1 year 2 months 3 days`. Largest three components, zeros omitted.
+- **One shared contract:** `fixtures/relative-time-cases.json` pins the rule for the Dart,
+  TypeScript and dashboard implementations. Weeks are deliberately excluded from countdowns.
+
+### 1.9 Fortnightly Recurrence
+- **Interval recurrence:** alarms repeat every 1 or 2 weeks, anchored to their first occurrence. The
+  backend validates `recurrence_interval_weeks` (1 or 2) and the Google Calendar mirror emits an
+  `INTERVAL` RRULE.
+- **Known gap:** the ICS feed does not emit `INTERVAL`.
+
 ---
  
 ## 2. Future Backlog (Roadmap)
@@ -53,6 +74,7 @@ This document tracks implemented features and future enhancements for the Remote
 ### 2.3 Post-Alarm Smart Morning Briefing
 - When alarm is dismissed, text-to-speech (TTS) reads greeting, current weather, and first calendar events.
 
-### 2.4 CLI Companion & Raycast Extension — IN PROGRESS
+### 2.4 CLI Companion & Raycast Extension — COMPLETE
 - Rapid terminal command (`alarm 25m "Oven"`) or Raycast extension for zero-friction scheduling without opening the browser.
-- **Design approved** 2026-09-21: [`docs/superpowers/specs/2026-09-21-clients-cli-raycast-design.md`](superpowers/specs/2026-09-21-clients-cli-raycast-design.md). A shared dependency-free core (`clients/core`) with two presentation shells (`clients/cli`, `clients/raycast`). Requires **no backend changes**.
+- **Shipped** from the approved 2026-09-21 design: [`docs/superpowers/specs/2026-09-21-clients-cli-raycast-design.md`](superpowers/specs/2026-09-21-clients-cli-raycast-design.md). A shared dependency-free core (`clients/core`) with two presentation shells (`clients/cli`, `clients/raycast`). No backend changes were required.
+- Verified end-to-end against the live homelab.

@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RemoteAlarm — Hero Card Animation Concepts</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-canvas: #08090A;
+      --bg-surface: #101216;
+      --bg-card: #16181B;
+      --bg-card-subtle: #1C1E24;
+      --border-subtle: #26282E;
+      --border-active: #5E6AD2;
+      --border-focus: #717DF0;
+      --text-primary: #F7F8F8;
+      --text-secondary: #8A8F98;
+      --text-muted: #565A61;
+      --accent-primary: #5E6AD2;
+      --accent-glow: rgba(94, 106, 210, 0.35);
+      --accent-green: #3DD68C;
+      --accent-green-glow: rgba(61, 214, 140, 0.25);
+      --accent-amber: #F2994A;
+      --accent-red: #EB5757;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* TOP NAV BAR */
+    header {
+      background: rgba(16, 18, 22, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 16px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: linear-gradient(135deg, #5E6AD2, #3DD68C);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 14px;
+      color: #fff;
+      box-shadow: 0 0 16px var(--accent-glow);
+    }
+
+    .brand-title {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .brand-badge {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      background: rgba(94, 106, 210, 0.15);
+      color: var(--accent-primary);
+      border: 1px solid rgba(94, 106, 210, 0.3);
+      padding: 2px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+
+    .speed-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      padding: 4px 6px;
+      border-radius: 8px;
+    }
+
+    .speed-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      padding: 4px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .speed-btn.active {
+      background: var(--accent-primary);
+      color: #fff;
+    }
+
+    .speed-btn:hover:not(.active) {
+      color: var(--text-primary);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    /* MAIN CONTAINER */
+    main {
+      flex: 1;
+      display: flex;
+      max-width: 1440px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 24px;
+      gap: 28px;
+    }
+
+    @media (max-width: 1024px) {
+      main {
+        flex-direction: column;
+      }
+    }
+
+    /* LEFT CONTROLS PANEL */
+    .controls-panel {
+      flex: 1;
+      max-width: 440px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    @media (max-width: 1024px) {
+      .controls-panel {
+        max-width: 100%;
+      }
+    }
+
+    .panel-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 18px;
+    }
+
+    .panel-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .concept-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .concept-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 9px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      color: var(--text-primary);
+    }
+
+    .concept-btn:hover {
+      border-color: rgba(94, 106, 210, 0.4);
+      background: rgba(94, 106, 210, 0.04);
+    }
+
+    .concept-btn.active {
+      border-color: var(--accent-primary);
+      background: rgba(94, 106, 210, 0.1);
+      box-shadow: 0 0 12px rgba(94, 106, 210, 0.15);
+    }
+
+    .concept-btn-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+    }
+
+    .concept-btn-title {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: -0.1px;
+    }
+
+    .concept-btn-tag {
+      font-size: 9px;
+      font-family: var(--font-mono);
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-secondary);
+    }
+
+    .concept-btn.active .concept-btn-tag {
+      background: var(--accent-primary);
+      color: #fff;
+    }
+
+    .concept-btn-desc {
+      font-size: 11px;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    /* INTERACTION & PARAMETER CONTROLS */
+    .param-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .param-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .param-label {
+      color: var(--text-secondary);
+    }
+
+    .param-val {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-primary);
+    }
+
+    .btn-action-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .action-btn {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .action-btn:hover {
+      background: var(--bg-card-subtle);
+      border-color: var(--accent-primary);
+    }
+
+    .action-btn.primary {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+      color: white;
+    }
+
+    .action-btn.primary:hover {
+      background: #717DF0;
+    }
+
+    /* RIGHT PREVIEW CANVAS */
+    .preview-canvas {
+      flex: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at 50% 20%, rgba(94, 106, 210, 0.08), transparent 70%), var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 32px 16px;
+      position: relative;
+      min-height: 720px;
+    }
+
+    /* PHONE FRAME */
+    .phone-mockup {
+      width: 370px;
+      height: 690px;
+      background: #0B0D10;
+      border-radius: 40px;
+      border: 3px solid #22252C;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05), 0 0 40px rgba(94, 106, 210, 0.12);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* PHONE STATUS BAR */
+    .phone-status-bar {
+      height: 38px;
+      padding: 0 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      user-select: none;
+      z-index: 20;
+    }
+
+    .camera-notch {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #000;
+      border: 1px solid #26282E;
+    }
+
+    /* PHONE APP HEADER */
+    .phone-header {
+      padding: 12px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(38, 40, 46, 0.6);
+      background: rgba(11, 13, 16, 0.95);
+      z-index: 10;
+    }
+
+    .phone-title {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .phone-sync-pill {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      background: rgba(61, 214, 140, 0.12);
+      color: var(--accent-green);
+      font-weight: 600;
+      border: 1px solid rgba(61, 214, 140, 0.25);
+    }
+
+    .phone-scroll-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      position: relative;
+    }
+
+    .phone-scroll-content::-webkit-scrollbar {
+      width: 4px;
+    }
+    .phone-scroll-content::-webkit-scrollbar-thumb {
+      background: #26282E;
+      border-radius: 4px;
+    }
+
+    /* HERO CARD STYLING */
+    .hero-card {
+      background: linear-gradient(145deg, #181A20, #131418);
+      border: 1px solid var(--border-active);
+      border-radius: 14px;
+      padding: 16px 18px;
+      position: relative;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 20px rgba(94, 106, 210, 0.15);
+      overflow: hidden;
+      transform-origin: top center;
+    }
+
+    .hero-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .hero-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      color: var(--accent-primary);
+      text-transform: uppercase;
+    }
+
+    .hero-badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-primary);
+      box-shadow: 0 0 8px var(--accent-primary);
+    }
+
+    /* CUSTOM TOGGLE SWITCH */
+    .toggle-switch {
+      width: 38px;
+      height: 22px;
+      background: #26282E;
+      border-radius: 12px;
+      position: relative;
+      cursor: pointer;
+      transition: background 0.25s ease;
+    }
+
+    .toggle-switch.active {
+      background: var(--accent-primary);
+      box-shadow: 0 0 10px rgba(94, 106, 210, 0.5);
+    }
+
+    .toggle-knob {
+      width: 16px;
+      height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .toggle-switch.active .toggle-knob {
+      transform: translateX(16px);
+    }
+
+    .hero-time-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .hero-time {
+      font-size: 40px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      font-feature-settings: 'tnum';
+      font-family: var(--font-sans);
+    }
+
+    .hero-time-colon {
+      display: inline-block;
+      transition: opacity 0.3s;
+    }
+
+    .hero-tag {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .hero-countdown-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(94, 106, 210, 0.12);
+      border: 1px solid rgba(94, 106, 210, 0.25);
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #9AA5FF;
+      margin-top: 10px;
+    }
+
+    /* NORMAL ALARM LIST ITEM */
+    .alarm-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .alarm-item-time {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      font-feature-settings: 'tnum';
+    }
+
+    .alarm-item-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    /* CONCEPT SPECIFIC ANIMATIONS */
+
+    /* CONCEPT A: CARD MORPHING */
+    .morph-source-card {
+      transition: all var(--anim-duration, 400ms) cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* CONCEPT B: FLIP COUNTER ROLL */
+    .flip-digit-wrapper {
+      display: inline-flex;
+      position: relative;
+      height: 44px;
+      overflow: hidden;
+    }
+
+    .digit-roll-column {
+      display: flex;
+      flex-direction: column;
+      transition: transform var(--anim-duration, 500ms) cubic-bezier(0.2, 0.9, 0.3, 1.2);
+    }
+
+    .digit-cell {
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+      font-weight: 800;
+      font-feature-settings: 'tnum';
+    }
+
+    /* CONCEPT C: DARK PULSE */
+    .dark-pulse-wave {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at 90% 20%, rgba(235, 87, 87, 0.4), rgba(22, 24, 27, 0.95) 75%);
+      pointer-events: none;
+      opacity: 0;
+      transform: scale(0.2);
+      border-radius: 14px;
+    }
+
+    @keyframes pulseWaveAnim {
+      0% {
+        opacity: 1;
+        transform: scale(0.2);
+      }
+      50% {
+        opacity: 0.9;
+        transform: scale(1.4);
+      }
+      100% {
+        opacity: 0;
+        transform: scale(2.2);
+      }
+    }
+
+    /* CONCEPT D: PARTICLE SHOCKWAVE */
+    .shockwave-ring {
+      position: absolute;
+      top: 22px;
+      right: 32px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      border: 2px solid #5E6AD2;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    @keyframes shockwaveExpand {
+      0% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+        border-color: #717DF0;
+        box-shadow: 0 0 15px #717DF0;
+      }
+      100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(40);
+        border-color: rgba(94, 106, 210, 0);
+        box-shadow: 0 0 0 rgba(94, 106, 210, 0);
+      }
+    }
+
+    /* CONCEPT E: STICKY COMPACT PILL */
+    .sticky-header-pill {
+      position: sticky;
+      top: 0;
+      background: rgba(22, 24, 27, 0.92);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-active);
+      border-radius: 24px;
+      padding: 8px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+      z-index: 15;
+      margin-bottom: 8px;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* FOOTER STATUS */
+    .concept-stats {
+      margin-top: 16px;
+      padding: 12px;
+      background: var(--bg-card);
+      border-radius: 8px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      font-family: var(--font-mono);
+      border: 1px solid var(--border-subtle);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="brand-logo">R</div>
+      <div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="brand-title">RemoteAlarm Studio</span>
+          <span class="brand-badge">Animation Labs</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Speed Controls -->
+    <div class="speed-controls">
+      <span style="font-size: 10px; color: var(--text-muted); font-weight: 700; margin-right: 4px; text-transform: uppercase;">Speed:</span>
+      <button class="speed-btn active" onclick="setSpeed(1.0, this)">1.0x</button>
+      <button class="speed-btn" onclick="setSpeed(0.5, this)">0.5x</button>
+      <button class="speed-btn" onclick="setSpeed(0.25, this)">0.25x</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- LEFT PANEL: CONCEPT SELECTOR -->
+    <div class="controls-panel">
+      <div class="panel-card">
+        <div class="panel-title">
+          <span>Hero Animation Concepts</span>
+          <span style="color: var(--accent-primary); font-family: var(--font-mono);">5 Prototypes</span>
+        </div>
+
+        <div class="concept-nav">
+          <!-- Concept A -->
+          <button class="concept-btn active" id="btn-concept-a" onclick="selectConcept('A')">
+            <div class="concept-btn-head">
+              <span class="concept-btn-title">Concept A: Shared Axis Morph</span>
+              <span class="concept-btn-tag">FLUID</span>
+            </div>
+            <div class="concept-btn-desc">List alarm card smoothly morphs its dimensions, time font, and glowing border directly into the Hero card.</div>
+          </button>
+
+          <!-- Concept B -->
+          <button class="concept-btn" id="btn-concept-b" onclick="selectConcept('B')">
+            <div class="concept-btn-head">
+              <span class="concept-btn-title">Concept B: Live Digit Flip / Roll</span>
+              <span class="concept-btn-tag">MECHANICAL</span>
+            </div>
+            <div class="concept-btn-desc">Vertical mechanical rolling cylinders tumble when the remaining time ticks down or changes.</div>
+          </button>
+
+          <!-- Concept C -->
+          <button class="concept-btn" id="btn-concept-c" onclick="selectConcept('C')">
+            <div class="concept-btn-head">
+              <span class="concept-btn-title">Concept C: "Dark Pulse" on Disarm</span>
+              <span class="concept-btn-tag">EDITORIAL</span>
+            </div>
+            <div class="concept-btn-desc">Toggling off sweeps a desaturating dark ripple wave outward from the switch before spring-folding up.</div>
+          </button>
+
+          <!-- Concept D -->
+          <button class="concept-btn" id="btn-concept-d" onclick="selectConcept('D')">
+            <div class="concept-btn-head">
+              <span class="concept-btn-title">Concept D: Particle Wave / Glow Ring</span>
+              <span class="concept-btn-tag">TACTILE</span>
+            </div>
+            <div class="concept-btn-desc">Arming detonates an electric violet shockwave ring across the dark card with elastic bounce settling.</div>
+          </button>
+
+          <!-- Concept E -->
+          <button class="concept-btn" id="btn-concept-e" onclick="selectConcept('E')">
+            <div class="concept-btn-head">
+              <span class="concept-btn-title">Concept E: Sticky Collapsible Hero</span>
+              <span class="concept-btn-tag">DYNAMIC</span>
+            </div>
+            <div class="concept-btn-desc">Hero card dynamically compresses into a compact 40px sticky pill as you scroll down through alarms.</div>
+          </button>
+        </div>
+
+        <div class="btn-action-row">
+          <button class="action-btn primary" onclick="triggerConceptAction()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Trigger Action
+          </button>
+          <button class="action-btn" onclick="resetActiveConcept()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2.5 2v6h6M21.5 22v-6h-6"/><path d="M22 11.5A10 10 0 0 0 3.2 7.2L2.5 8M2 12.5a10 10 0 0 0 18.8 4.3l.7-.8"/></svg>
+            Reset
+          </button>
+        </div>
+      </div>
+
+      <div class="panel-card">
+        <div class="panel-title">
+          <span>Animation Specs & Physics</span>
+          <span id="spec-curve-tag" style="color: #9AA5FF; font-family: var(--font-mono); font-size: 10px;">Cubic Easing</span>
+        </div>
+        <div class="param-group">
+          <div class="param-row">
+            <span class="param-label">Base Duration:</span>
+            <span class="param-val" id="spec-duration">380ms</span>
+          </div>
+          <div class="param-row">
+            <span class="param-label">Easing Curve:</span>
+            <span class="param-val" id="spec-curve">cubic-bezier(0.16, 1, 0.3, 1)</span>
+          </div>
+          <div class="param-row">
+            <span class="param-label">Suggested Haptic:</span>
+            <span class="param-val" id="spec-haptic" style="color: var(--accent-green);">Double Thud (50ms)</span>
+          </div>
+        </div>
+        <div class="concept-stats" id="concept-explanation">
+          Morphing container smoothly interpolates height from 72px to 164px, time fontSize from 22px to 40px, and changes background gradient while preserving smooth frame pacing.
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL: PHONE CANVAS PREVIEW -->
+    <div class="preview-canvas">
+      <div class="phone-mockup">
+        <!-- Status Bar -->
+        <div class="phone-status-bar">
+          <span style="font-family: var(--font-mono);">09:41</span>
+          <div class="camera-notch"></div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <svg width="12" height="10" viewBox="0 0 14 12" fill="currentColor"><path d="M1 3h12v7H1z"/></svg>
+            <span style="font-size:10px;">100%</span>
+          </div>
+        </div>
+
+        <!-- Phone Header -->
+        <div class="phone-header">
+          <div class="phone-title">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3 2 6"/><path d="M22 6l-3-3"/></svg>
+            <span>RemoteAlarm</span>
+          </div>
+          <div class="phone-sync-pill">● Synced</div>
+        </div>
+
+        <!-- Scroll Content -->
+        <div class="phone-scroll-content" id="phone-content" onscroll="handlePhoneScroll(event)">
+
+          <!-- STICKY PILL (FOR CONCEPT E) -->
+          <div class="sticky-header-pill" id="sticky-pill" style="display: none; opacity: 0; transform: translateY(-10px);">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="color:var(--accent-primary); font-size:12px;">⏰</span>
+              <span style="font-size:14px; font-weight:700;">07:00</span>
+              <span style="color:var(--text-secondary); font-size:11px;">in 7h 19m</span>
+            </div>
+            <div style="font-size:10px; font-weight:700; color:var(--accent-primary); text-transform:uppercase;">Armed</div>
+          </div>
+
+          <!-- HERO CARD -->
+          <div class="hero-card" id="hero-card">
+            <!-- Ripple Wave for Concept C -->
+            <div class="dark-pulse-wave" id="dark-pulse-elem"></div>
+            <!-- Shockwave Ring for Concept D -->
+            <div class="shockwave-ring" id="shockwave-elem"></div>
+
+            <div class="hero-header">
+              <div class="hero-badge">
+                <div class="hero-badge-dot" id="hero-dot"></div>
+                <span id="hero-badge-text">Next Upcoming</span>
+              </div>
+              <div class="toggle-switch active" id="hero-toggle" onclick="toggleHeroState()">
+                <div class="toggle-knob"></div>
+              </div>
+            </div>
+
+            <!-- TIME ROW (WITH FLIP MECHANISM FOR CONCEPT B) -->
+            <div class="hero-time-row">
+              <div class="flip-digit-wrapper" id="flip-wrapper-hour">
+                <div class="digit-roll-column" id="digit-column-hour">
+                  <div class="digit-cell">07</div>
+                  <div class="digit-cell">08</div>
+                  <div class="digit-cell">09</div>
+                  <div class="digit-cell">07</div>
+                </div>
+              </div>
+              <span class="hero-time hero-time-colon" id="hero-colon">:</span>
+              <div class="flip-digit-wrapper" id="flip-wrapper-min">
+                <div class="digit-roll-column" id="digit-column-min">
+                  <div class="digit-cell">00</div>
+                  <div class="digit-cell">15</div>
+                  <div class="digit-cell">30</div>
+                  <div class="digit-cell">45</div>
+                  <div class="digit-cell">00</div>
+                </div>
+              </div>
+              <span class="hero-tag" id="hero-tag-text">Weekday Morning</span>
+            </div>
+
+            <div class="hero-countdown-pill" id="hero-countdown">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              <span id="countdown-text">rings in 7h 19m</span>
+            </div>
+          </div>
+
+          <!-- SECTION DIVIDER -->
+          <div style="display:flex; justify-content:space-between; align-items:center; margin: 8px 0 2px;">
+            <span style="font-size:10px; font-weight:700; letter-spacing:0.8px; color:var(--text-muted); text-transform:uppercase;">All Alarms</span>
+            <span style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono);">3 ALARMS</span>
+          </div>
+
+          <!-- ALARM LIST ITEMS -->
+          <div class="alarm-item morph-source-card" id="list-alarm-1">
+            <div>
+              <div class="alarm-item-time">07:00</div>
+              <div class="alarm-item-label">Weekday Morning • Mon, Tue, Wed, Thu, Fri</div>
+            </div>
+            <div class="toggle-switch active" id="list-toggle-1" onclick="toggleListAlarm(1)">
+              <div class="toggle-knob"></div>
+            </div>
+          </div>
+
+          <div class="alarm-item" id="list-alarm-2">
+            <div>
+              <div class="alarm-item-time">08:30</div>
+              <div class="alarm-item-label">Weekend Workout • Sat, Sun</div>
+            </div>
+            <div class="toggle-switch" id="list-toggle-2" onclick="toggleListAlarm(2)">
+              <div class="toggle-knob"></div>
+            </div>
+          </div>
+
+          <div class="alarm-item" id="list-alarm-3">
+            <div>
+              <div class="alarm-item-time">13:15</div>
+              <div class="alarm-item-label">Afternoon Focus • Once</div>
+            </div>
+            <div class="toggle-switch" id="list-toggle-3" onclick="toggleListAlarm(3)">
+              <div class="toggle-knob"></div>
+            </div>
+          </div>
+
+          <div class="alarm-item" id="list-alarm-4">
+            <div>
+              <div class="alarm-item-time">18:45</div>
+              <div class="alarm-item-label">Evening Wind Down • Daily</div>
+            </div>
+            <div class="toggle-switch" id="list-toggle-4" onclick="toggleListAlarm(4)">
+              <div class="toggle-knob"></div>
+            </div>
+          </div>
+
+          <div class="alarm-item" id="list-alarm-5">
+            <div>
+              <div class="alarm-item-time">22:00</div>
+              <div class="alarm-item-label">Night Check • Mon, Wed, Fri</div>
+            </div>
+            <div class="toggle-switch" id="list-toggle-5" onclick="toggleListAlarm(5)">
+              <div class="toggle-knob"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let currentSpeed = 1.0;
+    let activeConcept = 'A';
+    let heroArmed = true;
+    let rollIndex = 0;
+
+    const specs = {
+      'A': {
+        duration: '380ms',
+        curve: 'cubic-bezier(0.16, 1, 0.3, 1)',
+        haptic: 'Double Thud (50ms)',
+        tag: 'Spring Container Transform',
+        explanation: 'Shared Axis morph: The list item card interpolates position, dimensions, font size (22pt → 40pt), and glowing border up into the Hero slot without jumpy pop-in.'
+      },
+      'B': {
+        duration: '450ms',
+        curve: 'cubic-bezier(0.2, 0.9, 0.3, 1.25)',
+        haptic: 'Crown Ratchet Clicks',
+        tag: 'Mechanical Tumbler Roll',
+        explanation: 'Live mechanical flip roll: When the time or countdown increments, numbers tumble smoothly along a vertical cylindrical axis with elastic overshoot.'
+      },
+      'C': {
+        duration: '320ms',
+        curve: 'cubic-bezier(0.4, 0, 0.2, 1)',
+        haptic: 'Soft Release Click',
+        tag: 'Desaturation Ripple',
+        explanation: 'Dark Pulse on disarm: Toggling off sends a dark desaturation shockwave expanding outwards from the knob, followed by an elegant spring-fold collapse.'
+      },
+      'D': {
+        duration: '420ms',
+        curve: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+        haptic: 'Heavy Latch + Snap',
+        tag: 'Radial Violet Shockwave',
+        explanation: 'Particle Shockwave on arm: Arming the hero alarm detonates an electric violet ring expanding across the dark canvas, accompanied by an elastic spring bounce.'
+      },
+      'E': {
+        duration: '220ms',
+        curve: 'cubic-bezier(0.16, 1, 0.3, 1)',
+        haptic: 'Magnetic Detent',
+        tag: 'Adaptive Sticky Header',
+        explanation: 'Sticky Collapsible Hero: As the user scrolls down through alarms, the large hero card compresses into a sleek 40px sticky pill, retaining active state visibility.'
+      }
+    };
+
+    function setSpeed(speed, btn) {
+      currentSpeed = speed;
+      document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.documentElement.style.setProperty('--anim-duration', (380 / speed) + 'ms');
+    }
+
+    function selectConcept(concept) {
+      activeConcept = concept;
+      document.querySelectorAll('.concept-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('btn-concept-' + concept.toLowerCase()).classList.add('active');
+
+      const s = specs[concept];
+      document.getElementById('spec-duration').textContent = s.duration;
+      document.getElementById('spec-curve').textContent = s.curve;
+      document.getElementById('spec-haptic').textContent = s.haptic;
+      document.getElementById('spec-curve-tag').textContent = s.tag;
+      document.getElementById('concept-explanation').textContent = s.explanation;
+
+      resetActiveConcept();
+    }
+
+    function triggerConceptAction() {
+      if (activeConcept === 'A') {
+        playConceptA();
+      } else if (activeConcept === 'B') {
+        playConceptB();
+      } else if (activeConcept === 'C') {
+        playConceptC();
+      } else if (activeConcept === 'D') {
+        playConceptD();
+      } else if (activeConcept === 'E') {
+        playConceptE();
+      }
+    }
+
+    function resetActiveConcept() {
+      const hero = document.getElementById('hero-card');
+      const toggle = document.getElementById('hero-toggle');
+      const sticky = document.getElementById('sticky-pill');
+      const phoneContent = document.getElementById('phone-content');
+
+      hero.style.display = 'block';
+      hero.style.opacity = '1';
+      hero.style.transform = 'none';
+      hero.style.transition = 'none';
+      toggle.classList.add('active');
+      sticky.style.display = 'none';
+      sticky.style.opacity = '0';
+      phoneContent.scrollTop = 0;
+      heroArmed = true;
+
+      // Reset digit roll
+      document.getElementById('digit-column-hour').style.transform = 'translateY(0)';
+      document.getElementById('digit-column-min').style.transform = 'translateY(0)';
+      rollIndex = 0;
+    }
+
+    /* CONCEPT A: CARD MORPH */
+    function playConceptA() {
+      const hero = document.getElementById('hero-card');
+      const listCard = document.getElementById('list-alarm-1');
+      const speedFactor = 1 / currentSpeed;
+
+      if (heroArmed) {
+        // Disarm and collapse hero
+        hero.style.transition = `all ${350 * speedFactor}ms cubic-bezier(0.16, 1, 0.3, 1)`;
+        hero.style.transform = 'scale(0.94) translateY(-10px)';
+        hero.style.opacity = '0';
+        document.getElementById('hero-toggle').classList.remove('active');
+        document.getElementById('list-toggle-1').classList.remove('active');
+        setTimeout(() => {
+          hero.style.display = 'none';
+          heroArmed = false;
+        }, 350 * speedFactor);
+      } else {
+        // Morph list card into hero
+        hero.style.display = 'block';
+        hero.style.opacity = '0';
+        hero.style.transform = 'scale(0.92) translateY(20px)';
+        document.getElementById('hero-toggle').classList.add('active');
+        document.getElementById('list-toggle-1').classList.add('active');
+
+        requestAnimationFrame(() => {
+          hero.style.transition = `all ${420 * speedFactor}ms cubic-bezier(0.16, 1, 0.3, 1)`;
+          hero.style.opacity = '1';
+          hero.style.transform = 'scale(1) translateY(0)';
+          heroArmed = true;
+        });
+      }
+    }
+
+    /* CONCEPT B: LIVE FLIP / ROLL */
+    function playConceptB() {
+      const minCol = document.getElementById('digit-column-min');
+      const hourCol = document.getElementById('digit-column-hour');
+      const colon = document.getElementById('hero-colon');
+      const speedFactor = 1 / currentSpeed;
+
+      rollIndex = (rollIndex + 1) % 4;
+      const offset = rollIndex * -44;
+
+      minCol.style.transition = `transform ${450 * speedFactor}ms cubic-bezier(0.2, 0.9, 0.3, 1.25)`;
+      minCol.style.transform = `translateY(${offset}px)`;
+
+      if (rollIndex === 0) {
+        hourCol.style.transition = `transform ${450 * speedFactor}ms cubic-bezier(0.2, 0.9, 0.3, 1.25)`;
+        hourCol.style.transform = `translateY(-44px)`;
+        setTimeout(() => {
+          hourCol.style.transform = `translateY(0)`;
+        }, 500 * speedFactor);
+      }
+
+      // Colon blink
+      colon.style.opacity = '0.2';
+      setTimeout(() => colon.style.opacity = '1', 200 * speedFactor);
+    }
+
+    /* CONCEPT C: DARK PULSE */
+    function playConceptC() {
+      const hero = document.getElementById('hero-card');
+      const wave = document.getElementById('dark-pulse-elem');
+      const toggle = document.getElementById('hero-toggle');
+      const speedFactor = 1 / currentSpeed;
+
+      toggle.classList.remove('active');
+      wave.style.animation = `pulseWaveAnim ${400 * speedFactor}ms cubic-bezier(0.4, 0, 0.2, 1) forwards`;
+
+      setTimeout(() => {
+        hero.style.transition = `all ${320 * speedFactor}ms cubic-bezier(0.4, 0, 0.2, 1)`;
+        hero.style.transform = 'scaleY(0.1) translateY(-20px)';
+        hero.style.opacity = '0';
+        setTimeout(() => {
+          hero.style.display = 'none';
+          wave.style.animation = 'none';
+          heroArmed = false;
+        }, 320 * speedFactor);
+      }, 180 * speedFactor);
+    }
+
+    /* CONCEPT D: PARTICLE SHOCKWAVE */
+    function playConceptD() {
+      const hero = document.getElementById('hero-card');
+      const shockwave = document.getElementById('shockwave-elem');
+      const toggle = document.getElementById('hero-toggle');
+      const speedFactor = 1 / currentSpeed;
+
+      hero.style.display = 'block';
+      toggle.classList.add('active');
+
+      // Shockwave animation
+      shockwave.style.animation = `shockwaveExpand ${500 * speedFactor}ms cubic-bezier(0.1, 0.8, 0.2, 1) forwards`;
+
+      // Elastic card spring
+      hero.style.transition = `transform ${480 * speedFactor}ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow ${300 * speedFactor}ms ease`;
+      hero.style.transform = 'scale(1.035)';
+      hero.style.boxShadow = '0 12px 36px rgba(94, 106, 210, 0.4), 0 0 30px rgba(94, 106, 210, 0.3)';
+
+      setTimeout(() => {
+        hero.style.transform = 'scale(1)';
+        hero.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.4), 0 0 20px rgba(94, 106, 210, 0.15)';
+        shockwave.style.animation = 'none';
+        heroArmed = true;
+      }, 480 * speedFactor);
+    }
+
+    /* CONCEPT E: STICKY COMPACT PILL */
+    function playConceptE() {
+      const phoneContent = document.getElementById('phone-content');
+      const speedFactor = 1 / currentSpeed;
+      const targetScroll = phoneContent.scrollTop > 50 ? 0 : 150;
+
+      phoneContent.scrollTo({
+        top: targetScroll,
+        behavior: 'smooth'
+      });
+    }
+
+    function handlePhoneScroll(event) {
+      if (activeConcept !== 'E') return;
+      const scrollTop = event.target.scrollTop;
+      const hero = document.getElementById('hero-card');
+      const sticky = document.getElementById('sticky-pill');
+
+      if (scrollTop > 90) {
+        sticky.style.display = 'flex';
+        requestAnimationFrame(() => {
+          sticky.style.opacity = '1';
+          sticky.style.transform = 'translateY(0)';
+        });
+      } else {
+        sticky.style.opacity = '0';
+        sticky.style.transform = 'translateY(-10px)';
+        setTimeout(() => {
+          if (event.target.scrollTop <= 90) {
+            sticky.style.display = 'none';
+          }
+        }, 200);
+      }
+    }
+
+    function toggleHeroState() {
+      triggerConceptAction();
+    }
+
+    function toggleListAlarm(id) {
+      const toggle = document.getElementById('list-toggle-' + id);
+      toggle.classList.toggle('active');
+    }
+  </script>
+</body>
+</html>
