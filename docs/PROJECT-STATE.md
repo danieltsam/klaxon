@@ -57,10 +57,10 @@ re-auth commands are in `README.md` (gcal credential-expiry section). During thi
 ## 2. Repo state
 
 - `HEAD` is **`7cb9ba4`**, 0 ahead / 0 behind `origin/master`
-- The tree carries **in-flight work from a second agent** (12 files, roughly +1070 / −618),
-  mostly `mobile/lib/main.dart`, `mobile/lib/widgets/recurrence_lab.dart`,
-  `mobile/lib/widgets/recurrence_chip_variants.dart`, `mobile/lib/utils/id_mapper.dart`, and
-  `docs/agent_context/*`
+- The tree carries **in-flight work from a second agent**: uncommitted changes across `mobile/`
+  (notably `main.dart`, `alarm_service.dart`, the recurrence widgets and the calendar picker) and,
+  at times, `backend/public/index.html`. **Run `git status` for the current list**; do not rely on
+  this snapshot, which is dated above.
 - Untracked context artifacts: `AGENT_HANDOFF.md` and all of `docs/agent_context/`
   (41 files, 6.4 MB, of which 6.1 MB is `screenshots/`)
 
