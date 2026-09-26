@@ -172,7 +172,7 @@ own work in a way that left the other agent's changes intact.
 | **Chip variant final selection** | User deciding. See `WORKING_STATE.md` §3.2 for the removal checklist. |
 | **ICS feed `INTERVAL` gap** | `/api/calendar.ics` omits `INTERVAL` for fortnightly alarms; the Google mirror includes it. |
 | **Dashboard has no test harness** | Its `formatRelative` was verified by extracting the function from the HTML and evaluating it against the fixture in node. Worth making permanent. |
-| **Untracked context is one `rm` from gone** | `AGENT_HANDOFF.md` and `docs/agent_context/` (6.4 MB, mostly screenshots). Decide whether to commit. |
+| **Screenshots deliberately untracked** | `docs/agent_context/screenshots/` (6.1 MB, 25 files) stays on disk rather than in git, to keep the repo small. The rest of `docs/agent_context/` and `AGENT_HANDOFF.md` are committed. A clean working tree loses them. |
 | **`AGENT_HANDOFF.md` is stale** | Dated 2026-09-21; its §8 items are all done. `WORKING_STATE.md` supersedes it. |
 
 ---
