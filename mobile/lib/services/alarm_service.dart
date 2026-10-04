@@ -73,13 +73,44 @@ class AlarmService {
     }
   }
 
-  /// Builds a perceptually-weighted logarithmic/power volume ramp.
-  /// Standard linear volume ramps sound like they jump to maximum volume almost
-  /// immediately because human loudness perception is logarithmic (Weber-Fechner / Stevens' power law).
-  /// By applying a steeper power curve v(t) = (t / T)^4:
-  /// - 0% to 50% duration stays whisper-quiet (< 6.25% volume)
-  /// - 50% to 75% duration stays in the gentle wake-up zone (< 31.6% volume)
-  /// - 75% to 100% duration accelerates smoothly to full alert volume
+  /// Exponent of the perceptual power curve used by [perceivedVolumeProgress].
+  /// Lower values make the ramp rise earlier and feel more linear; higher
+  /// values keep the start whisper-quiet for longer. 4.5 gives a smooth 30s
+  /// wake that starts barely audible and reaches full volume without a final
+  /// spike.
+  static const double rampExponent = 4.5;
+
+  /// Single source of truth for the gentle wake volume curve.
+  ///
+  /// Returns the perceived volume amplitude (0.001..1.0) for a normalized point
+  /// [progress] (0..1) along the ramp. The curve is a power law v = p^e, which
+  /// compensates for logarithmic human loudness perception while avoiding the
+  /// near-silent-then-spiking feel of the previous e=6 curve.
+  static double perceivedVolumeProgress(double progress) {
+    final t = progress.clamp(0.0, 1.0);
+    return math.pow(t, rampExponent).toDouble().clamp(0.001, 1.0);
+  }
+
+  /// Maps a linear amplitude [gain] (0.001..1.0) to a 0..1 perceived-loudness
+  /// fraction.
+  ///
+  /// Human loudness perception is logarithmic, so a small gain like 1.6% reads
+  /// as much more than 1.6% of full volume. This converts gain to decibels
+  /// relative to full scale, with a -60 dB floor matching the 0.001 gain floor,
+  /// then normalizes that range to 0..1 for the ring-screen bar and percentage.
+  static double perceivedLoudnessProgress(double gain) {
+    if (gain <= 0.0) return 0.0;
+    if (gain >= 1.0) return 1.0;
+    final db = 20.0 * math.log(gain) / math.ln10;
+    return (1.0 + db / 60.0).clamp(0.0, 1.0);
+  }
+
+  /// Builds a perceptually-weighted volume ramp with fine-grained fade steps.
+  ///
+  /// Uses [perceivedVolumeProgress] so the ring-screen progress bar and the
+  /// actual audio fade cannot drift. Step count scales with ramp duration so
+  /// 30s ramps get ~120 imperceptible steps instead of the previous 20 coarse
+  /// jumps.
   static VolumeSettings buildPerceptualVolumeSettings(int rampSec) {
     if (rampSec <= 0) {
       return const VolumeSettings.fixed(volume: 1.0);
@@ -88,11 +119,11 @@ class AlarmService {
     final steps = <VolumeFadeStep>[];
     steps.add(VolumeFadeStep(Duration.zero, 0.001));
 
-    final stepCount = rampSec.clamp(8, 20);
+    final stepCount = (rampSec * 4).clamp(30, 200);
     for (int i = 1; i <= stepCount; i++) {
       final progress = i / stepCount;
       final timeMillis = ((rampSec * 1000 * i) / stepCount).round();
-      final volume = math.pow(progress, 4.0).toDouble().clamp(0.001, 1.0);
+      final volume = perceivedVolumeProgress(progress);
       steps.add(VolumeFadeStep(Duration(milliseconds: timeMillis), volume));
     }
 
@@ -223,7 +254,7 @@ class AlarmService {
           notificationSettings: NotificationSettings(
             title: label.toString(),
             body: 'Tap to dismiss or snooze',
-            stopButton: 'Stop',
+            stopButton: 'stop',
           ),
         );
 
@@ -474,7 +505,7 @@ class AlarmService {
       notificationSettings: NotificationSettings(
         title: label,
         body: 'Tap to dismiss or snooze',
-        stopButton: 'Stop',
+        stopButton: 'stop',
       ),
     );
 

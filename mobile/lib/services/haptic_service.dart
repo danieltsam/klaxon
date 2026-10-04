@@ -325,15 +325,15 @@ class HapticService {
   static String armStyleTitle(ArmHapticStyle style) {
     switch (style) {
       case ArmHapticStyle.dualClack180:
-        return 'Dual Mechanical Clack (180ms)';
+        return 'dual mechanical clack (180ms)';
       case ArmHapticStyle.dualClackFast110:
-        return 'Fast Dual Clack (110ms)';
+        return 'fast dual clack (110ms)';
       case ArmHapticStyle.tripleRelayClack:
-        return 'Triple Relay Clack (90/120ms)';
+        return 'triple relay clack (90/120ms)';
       case ArmHapticStyle.heavySolenoidSnap:
-        return 'Heavy Solenoid Snap (140ms)';
+        return 'heavy solenoid snap (140ms)';
       case ArmHapticStyle.doubleReboundStrike:
-        return 'Double Rebound Strike (180ms)';
+        return 'double rebound strike (180ms)';
     }
   }
 
@@ -355,15 +355,15 @@ class HapticService {
   static String disarmStyleTitle(DisarmHapticStyle style) {
     switch (style) {
       case DisarmHapticStyle.doubleSoftTap150:
-        return 'Double Soft Tap (150ms)';
+        return 'double soft tap (150ms)';
       case DisarmHapticStyle.gentleDoubleTap100:
-        return 'Gentle Double Tap (100ms)';
+        return 'gentle double tap (100ms)';
       case DisarmHapticStyle.tripleSoftFade:
-        return 'Triple Soft Fade (80/100ms)';
+        return 'triple soft fade (80/100ms)';
       case DisarmHapticStyle.mechanicalSoftRelease:
-        return 'Mechanical Soft Release (130ms)';
+        return 'mechanical soft release (130ms)';
       case DisarmHapticStyle.featherDecouple:
-        return 'Feather Decouple (175ms)';
+        return 'feather decouple (175ms)';
     }
   }
 
@@ -385,15 +385,15 @@ class HapticService {
   static String scrollStyleTitle(ScrollHapticStyle style) {
     switch (style) {
       case ScrollHapticStyle.quarterMilestonesOnly:
-        return '15-Min Milestones Only';
+        return '15-min milestones only';
       case ScrollHapticStyle.fiveMinuteMilestones:
-        return '5-Min Milestones Only';
+        return '5-min milestones only';
       case ScrollHapticStyle.softCrownHalved:
-        return 'Relaxed Crown (Every 2 Units)';
+        return 'relaxed crown (every 2 units)';
       case ScrollHapticStyle.softCrownThirds:
-        return 'Relaxed Crown (Every 3 Units)';
+        return 'relaxed crown (every 3 units)';
       case ScrollHapticStyle.muted:
-        return 'Muted (Silent)';
+        return 'muted (silent)';
     }
   }
 
@@ -415,11 +415,11 @@ class HapticService {
   static String presetStyleTitle(PresetHapticStyle style) {
     switch (style) {
       case PresetHapticStyle.magneticSnap:
-        return 'Magnetic Snap (80ms)';
+        return 'magnetic snap (80ms)';
       case PresetHapticStyle.mediumImpact:
-        return 'Medium Impact';
+        return 'medium impact';
       case PresetHapticStyle.heavyLatch:
-        return 'Heavy Latch';
+        return 'heavy latch';
     }
   }
 

@@ -739,18 +739,18 @@
     function formatMissedReason(reason) {
       switch (reason) {
         case 'no_device_registered':
-          return 'No device was registered when the alarm was due.';
+          return 'fcm token unavailable';
         case 'delivery_failed':
-          return 'The push dispatch failed.';
+          return 'fcm delivery failed';
         case 'dispatched_not_reported':
-          return 'The system sent the trigger, but the phone never reported back. This does not mean it was received.';
+          return 'fcm delivery unconfirmed';
         case 'device_reported_stale':
-          return 'The phone refused to arm a stale alarm.';
+          return 'fcm delivery delayed';
         case 'device_reported_failed':
-          return 'The phone reported it could not fire the alarm.';
+          return 'device couldn\'t ring';
         case 'unknown':
         default:
-          return 'The reason could not be determined.';
+          return '';
       }
     }
 
@@ -805,6 +805,10 @@
         missedList.innerHTML = missedAlarms.map(alarm => {
           const targetStr = `${formatDate(alarm.target_time)} ${formatTime(alarm.target_time)}`;
           const missedStr = `${formatDate(alarm.missed_at)} ${formatTime(alarm.missed_at)}`;
+          const missedReasonStr = formatMissedReason(alarm.missed_reason);
+          const missedReasonLine = missedReasonStr
+            ? `<div class="mt-2 text-xs text-amber-200/90 leading-relaxed">${missedReasonStr}</div>`
+            : '';
           const dispatchAudit = alarm.last_dispatch_at
             ? `<div class="mt-2 text-[11px] text-zinc-500">last dispatch attempted: <span class="font-mono text-zinc-400">${formatDate(alarm.last_dispatch_at)} ${formatTime(alarm.last_dispatch_at)}</span> · sent: <span class="font-mono text-zinc-400">${alarm.last_dispatch_sent ?? 0}</span> · failed: <span class="font-mono text-zinc-400">${alarm.last_dispatch_failed ?? 0}</span></div>`
             : '';
@@ -822,7 +826,7 @@
                     <div>original time: <span class="font-mono text-zinc-300">${targetStr}</span></div>
                     <div>missed at: <span class="font-mono text-zinc-300">${missedStr}</span></div>
                   </div>
-                  <div class="mt-2 text-xs text-amber-200/90 leading-relaxed">${formatMissedReason(alarm.missed_reason)}</div>
+                  ${missedReasonLine}
                   ${dispatchAudit}
                 </div>
                 <button onclick="openAlarmDetail('${alarm.id}')" class="shrink-0 text-[11px] text-zinc-500 hover:text-zinc-200 transition-colors" type="button">reschedule</button>
@@ -1072,6 +1076,7 @@
 
       document.getElementById('new-alarm-time').value = `${hh}:${mm}`;
       document.getElementById('new-alarm-date').value = `${yyyy}-${m}-${dd}`;
+      document.getElementById('new-alarm-date').min = `${yyyy}-${m}-${dd}`;
       document.getElementById('new-alarm-title').value = '';
       document.getElementById('new-alarm-desc').value = '';
       document.getElementById('new-alarm-tone').value = appSettings.sound_tone || 'alarm';
@@ -1122,7 +1127,13 @@
       const ramp = parseInt(document.getElementById('new-alarm-ramp').value, 10);
       const feedback = document.getElementById('create-alarm-feedback');
 
-      const targetIso = new Date(`${date}T${time}:00`).toISOString();
+      feedback.textContent = '';
+      const composed = new Date(`${date}T${time}:00`);
+      if (composed.getTime() <= Date.now()) {
+        feedback.textContent = 'pick a time in the future';
+        return;
+      }
+      const targetIso = composed.toISOString();
       const repeatDaysStr = selectedDays.length > 0 ? selectedDays.sort().join(',') : null;
 
       try {

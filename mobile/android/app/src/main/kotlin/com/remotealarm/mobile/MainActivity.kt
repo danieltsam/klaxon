@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
@@ -45,7 +46,7 @@ class MainActivity : FlutterActivity() {
                 "canUseFullScreenIntent" -> {
                     if (Build.VERSION.SDK_INT >= 34) { // Android 14+
                         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-                        result.success(nm?.canUseFullScreenIntent() ?: true)
+                        result.success(nm?.canUseFullScreenIntent() ?: false)
                     } else {
                         result.success(true)
                     }
@@ -82,6 +83,27 @@ class MainActivity : FlutterActivity() {
                         }
                     } else {
                         result.success(true)
+                    }
+                }
+                "isIgnoringBatteryOptimizations" -> {
+                    val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+                    result.success(pm?.isIgnoringBatteryOptimizations(packageName) ?: true)
+                }
+                "openBatteryOptimizationSettings" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                            data = Uri.parse("package:$packageName")
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        try {
+                            val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                            startActivity(fallback)
+                            result.success(true)
+                        } catch (e2: Exception) {
+                            result.success(false)
+                        }
                     }
                 }
                 "getLaunchIntentAction" -> {

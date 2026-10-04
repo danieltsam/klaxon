@@ -160,7 +160,7 @@ void main() {
     expect(find.byKey(_editorKey), findsNothing);
 
     // Switch to matrix view.
-    await tester.tap(find.text('Expand'));
+    await tester.tap(find.text('expand'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('monthMatrix')), findsOneWidget);
     expect(find.byKey(const ValueKey('horizontalRibbon')), findsNothing);
@@ -179,7 +179,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(500, 1200));
     await _openPicker(tester);
 
-    await tester.tap(find.text('Expand'));
+    await tester.tap(find.text('expand'));
     await tester.pumpAndSettle();
 
     final headerBefore = tester.widget<Text>(find.text('May 2030')).data!;

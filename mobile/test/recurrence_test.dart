@@ -1,5 +1,7 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/services/alarm_service.dart';
+import 'package:mobile/widgets/recurrence_chip_variants.dart';
 
 DateTime getNextOccurrence(DateTime targetTime, List<int> repeatDays,
     {int intervalWeeks = 1, DateTime? anchorDate, DateTime? mockNow}) {
@@ -189,6 +191,28 @@ void main() {
       expect(result.minute, equals(48));
     });
 
+    test('Rolls a one-time target earlier today forward to tomorrow', () {
+      final mockNow = DateTime(2026, 9, 19, 16, 0, 0); // 4:00 PM
+      final earlierToday = DateTime(2026, 9, 19, 15, 48, 0); // 3:48 PM, already passed
+
+      final result = AlarmService.computeFutureOccurrence(earlierToday, mockNow: mockNow);
+      expect(result.year, equals(2026));
+      expect(result.month, equals(9));
+      expect(result.day, equals(20)); // Tomorrow, same hour:minute
+      expect(result.hour, equals(15));
+      expect(result.minute, equals(48));
+      expect(result.isAfter(mockNow), isTrue);
+    });
+
+    test('Returns a later-today one-time target as-is when it is still future', () {
+      final mockNow = DateTime(2026, 9, 19, 10, 0, 0); // 10:00 AM
+      final laterToday = DateTime(2026, 9, 19, 15, 48, 0); // 3:48 PM
+
+      final result = AlarmService.computeFutureOccurrence(laterToday, mockNow: mockNow);
+      expect(result, equals(laterToday));
+      expect(result.isAfter(mockNow), isTrue);
+    });
+
     test('Rolls past recurring alarm to next scheduled day', () {
       final saturdayNow = DateTime(2026, 9, 19, 10, 0, 0); // Saturday
       final staleAlarm = DateTime(2026, 9, 18, 7, 0, 0); // 7:00 AM Mon-Fri
@@ -288,6 +312,43 @@ void main() {
       expect(result.day, equals(21));
       expect(result.hour, equals(7));
       expect(result.minute, equals(30));
+    });
+  });
+
+  group('Recurrence chip variant smoke tests', () {
+    const labels = ['Once', 'Daily', 'Weekdays', '2wks', 'Custom'];
+
+    Future<void> pumpRow(WidgetTester tester, Widget row) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 400,
+                child: row,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('SegmentedStackedChipRow renders main and subtitle labels', (tester) async {
+      await pumpRow(
+        tester,
+        SegmentedStackedChipRow(
+          labels: labels,
+          selectedIndex: 1,
+          onSelect: (_) {},
+        ),
+      );
+      for (final label in labels) {
+        expect(find.text(label), findsOneWidget);
+      }
+      expect(find.text('every day'), findsOneWidget);
+      expect(find.text('every 2 wks'), findsOneWidget);
+      expect(find.text('you pick'), findsOneWidget);
     });
   });
 }

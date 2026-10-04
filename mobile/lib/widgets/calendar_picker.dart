@@ -550,8 +550,8 @@ class _CustomCalendarPickerSheetState extends State<CustomCalendarPickerSheet> {
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = today.add(const Duration(days: 1));
 
-    if (dt.isAtSameMomentAs(today)) return 'Today';
-    if (dt.isAtSameMomentAs(tomorrow)) return 'Tomorrow';
+    if (dt.isAtSameMomentAs(today)) return 'today';
+    if (dt.isAtSameMomentAs(tomorrow)) return 'tomorrow';
     final diff = dt.difference(today).inDays;
     if (diff > 1 && diff <= 7) return 'in $diff days';
     if (diff > 7) return 'in ${(diff / 7).round()} wks';
@@ -680,7 +680,7 @@ class _CustomCalendarPickerSheetState extends State<CustomCalendarPickerSheet> {
   }
 
   Widget _buildExpandToggle() {
-    final label = _isExpanded ? 'Collapse' : 'Expand';
+    final label = _isExpanded ? 'collapse' : 'expand';
     final icon = _isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded;
 
     return Material(
@@ -1085,7 +1085,7 @@ class _CustomCalendarPickerSheetState extends State<CustomCalendarPickerSheet> {
               HapticService.selectionClick();
               Navigator.pop(context, _selectedDate);
             },
-            child: const Text('Confirm Date', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+            child: const Text('confirm date', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
@@ -1178,7 +1178,7 @@ class _CustomCalendarPickerSheetState extends State<CustomCalendarPickerSheet> {
               borderRadius: BorderRadius.circular(6),
             ),
             child: const Text(
-              'Done',
+              'done',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,

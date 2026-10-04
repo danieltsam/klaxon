@@ -13,14 +13,15 @@ class RingScreen extends StatefulWidget {
   State<RingScreen> createState() => _RingScreenState();
 }
 
-class _RingScreenState extends State<RingScreen> with SingleTickerProviderStateMixin {
+class _RingScreenState extends State<RingScreen> with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+  late AnimationController _rampController;
   late Timer _clockTimer;
   StreamSubscription<int>? _remoteDismissSub;
   DateTime _now = DateTime.now();
+  DateTime _rampStartTime = DateTime.now();
   bool _isProcessing = false;
-  int _elapsedRampSeconds = 0;
   int _rampDurationSeconds = 30;
   String _soundTone = 'alarm';
 
@@ -37,13 +38,17 @@ class _RingScreenState extends State<RingScreen> with SingleTickerProviderStateM
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
+    _rampController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 30),
+    );
+    _rampStartTime = DateTime.now();
+    _rampController.forward();
+
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         setState(() {
           _now = DateTime.now();
-          if (_elapsedRampSeconds < _rampDurationSeconds) {
-            _elapsedRampSeconds++;
-          }
         });
       }
     });
@@ -66,6 +71,20 @@ class _RingScreenState extends State<RingScreen> with SingleTickerProviderStateM
         _rampDurationSeconds = ramp;
         _soundTone = tone;
       });
+
+      final newDuration = Duration(seconds: _rampDurationSeconds);
+      final elapsed = DateTime.now().difference(_rampStartTime);
+      _rampController.duration = newDuration;
+
+      if (_rampDurationSeconds <= 0) {
+        _rampController.value = 1.0;
+      } else {
+        final targetValue = (elapsed.inMilliseconds / newDuration.inMilliseconds).clamp(0.0, 1.0);
+        _rampController.value = targetValue;
+        if (!_rampController.isAnimating && _rampController.value < 1.0) {
+          _rampController.forward(from: _rampController.value);
+        }
+      }
     }
   }
 
@@ -73,6 +92,7 @@ class _RingScreenState extends State<RingScreen> with SingleTickerProviderStateM
   void dispose() {
     _remoteDismissSub?.cancel();
     _pulseController.dispose();
+    _rampController.dispose();
     _clockTimer.cancel();
     super.dispose();
   }
@@ -108,11 +128,6 @@ class _RingScreenState extends State<RingScreen> with SingleTickerProviderStateM
     final hourStr = _now.hour.toString().padLeft(2, '0');
     final minuteStr = _now.minute.toString().padLeft(2, '0');
     final amPmStr = _now.hour >= 12 ? 'PM' : 'AM';
-
-    final rampProgress = _rampDurationSeconds > 0
-        ? (_elapsedRampSeconds / _rampDurationSeconds).clamp(0.0, 1.0)
-        : 1.0;
-    final rampPercentage = (rampProgress * 100).toInt();
 
     return PopScope(
       canPop: false, // Prevent accidental back gesture
@@ -207,63 +222,72 @@ class _RingScreenState extends State<RingScreen> with SingleTickerProviderStateM
                 const SizedBox(height: 32),
 
                 // Gentle Wake Ramp Progress Card (Linear style)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF121316),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFF222326)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                AnimatedBuilder(
+                  animation: _rampController,
+                  builder: (context, child) {
+                    final rampGain = AlarmService.perceivedVolumeProgress(_rampController.value);
+                    final rampProgress = AlarmService.perceivedLoudnessProgress(rampGain);
+                    final rampPercentage = (rampProgress * 100).toInt();
+
+                    return Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF121316),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF222326)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            '$_soundTone sound',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFFF7F8F8),
-                              fontWeight: FontWeight.w500,
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '$_soundTone sound',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: Color(0xFFF7F8F8),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              Text(
+                                _rampDurationSeconds > 0
+                                    ? '$_rampDurationSeconds' 's gentle wake ramp'
+                                    : 'immediate full volume',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF8A8F98),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(2),
+                            child: LinearProgressIndicator(
+                              value: rampProgress,
+                              minHeight: 4,
+                              backgroundColor: const Color(0xFF1C1D21),
+                              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF5E6AD2)),
                             ),
                           ),
-                          Text(
-                            _rampDurationSeconds > 0
-                                ? '$_rampDurationSeconds' 's gentle wake ramp'
-                                : 'immediate full volume',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF8A8F98),
+                          const SizedBox(height: 6),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              '$rampPercentage%',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF8A8F98),
+                                fontFeatures: [FontFeature.tabularFigures()],
+                              ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 10),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(2),
-                        child: LinearProgressIndicator(
-                          value: rampProgress,
-                          minHeight: 4,
-                          backgroundColor: const Color(0xFF1C1D21),
-                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF5E6AD2)),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Text(
-                          '$rampPercentage%',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF8A8F98),
-                            fontFeatures: [FontFeature.tabularFigures()],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
 
                 const Spacer(),
@@ -291,7 +315,7 @@ class _RingScreenState extends State<RingScreen> with SingleTickerProviderStateM
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               )
                             : const Text(
-                                '[ Dismiss ]',
+                                '[ dismiss ]',
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
@@ -315,7 +339,7 @@ class _RingScreenState extends State<RingScreen> with SingleTickerProviderStateM
                         ),
                         onPressed: _isProcessing ? null : _handleSnooze,
                         child: const Text(
-                          '[ Snooze +9m ]',
+                          '[ snooze +9m ]',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,

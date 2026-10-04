@@ -113,7 +113,7 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
                       ),
                       const SizedBox(width: 10),
                       const Text(
-                        'Haptic Testing Lab',
+                        'haptic testing lab',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -160,7 +160,7 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
                             Icon(Icons.warning_amber_rounded, color: Color(0xFFE66432), size: 18),
                             SizedBox(width: 8),
                             Text(
-                              'Full-Screen Intent Restricted (Android 14+)',
+                              'full-screen intent restricted (Android 14+)',
                               style: TextStyle(color: Color(0xFFE66432), fontSize: 12, fontWeight: FontWeight.bold),
                             ),
                           ],
@@ -181,7 +181,7 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
                           onPressed: () async {
                             await _permissionsChannel.invokeMethod('openFullScreenIntentSettings');
                           },
-                          child: const Text('Open Settings & Allow', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          child: const Text('open settings & allow', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
@@ -189,7 +189,7 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
                 ],
 
                 // SECTION 1: LIVE INTERACTIVE ACTION BUTTONS
-                _buildSectionHeader('INTERACTIVE BUTTONS & TOGGLES', 'Test active arming, disarming & snooze on actual controls'),
+                _buildSectionHeader('interactive buttons & toggles', 'Test active arming, disarming & snooze on actual controls'),
                 const SizedBox(height: 8),
 
                 Container(
@@ -210,11 +210,11 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'Alarm Toggle Switch',
+                                'alarm toggle switch',
                                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFFF7F8F8)),
                               ),
                               Text(
-                                _testSwitchState ? 'Armed (Plays Active Arm Style)' : 'Disarmed (Plays Active Disarm Style)',
+                                _testSwitchState ? 'armed (plays active arm style)' : 'disarmed (plays active disarm style)',
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: _testSwitchState ? const Color(0xFF5E6AD2) : const Color(0xFF8A8F98),
@@ -254,7 +254,7 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
                               ),
                               onPressed: () => HapticService.playArm(),
                               icon: const Icon(Icons.alarm_on, size: 15),
-                              label: const Text('Arm', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                              label: const Text('arm', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -268,7 +268,7 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
                               ),
                               onPressed: () => HapticService.playDisarm(),
                               icon: const Icon(Icons.alarm_off, size: 15),
-                              label: const Text('Disarm', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                              label: const Text('disarm', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -283,7 +283,7 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
                               ),
                               onPressed: () => HapticService.playPreset(),
                               icon: const Icon(Icons.snooze, size: 15),
-                              label: const Text('Snooze', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                              label: const Text('snooze', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                             ),
                           ),
                         ],
@@ -293,7 +293,7 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
                 ),
 
                 // SECTION 2: LIVE CIRCULAR DRUM TUMBLER DEMO
-                _buildSectionHeader('LIVE DRUM TUMBLER DEMO', 'Spin our circular tumbler to test scroll / crown haptics'),
+                _buildSectionHeader('live drum tumbler demo', 'Spin our circular tumbler to test scroll / crown haptics'),
                 const SizedBox(height: 8),
 
                 Container(
@@ -310,7 +310,7 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'Active: ${HapticService.scrollStyleTitle(HapticService.activeScrollStyle)}',
+                            'active: ${HapticService.scrollStyleTitle(HapticService.activeScrollStyle)}',
                             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF5E6AD2)),
                           ),
                           Text(
@@ -386,7 +386,7 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
                 ),
 
                 // SECTION 3: SCROLL / TUMBLER HAPTIC STYLES
-                _buildSectionHeader('TUMBLER HAPTIC STYLES', 'Select your preferred detent feel for the wheels'),
+                _buildSectionHeader('tumbler haptic styles', 'Select your preferred detent feel for the wheels'),
                 const SizedBox(height: 8),
 
                 ...ScrollHapticStyle.values.map((style) {
@@ -409,7 +409,7 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
                 const SizedBox(height: 20),
 
                 // SECTION 4: ARMING ALARMS (Dual Clack Variations)
-                _buildSectionHeader('ARMING CADENCES (DUAL CLACK FOCUS)', 'Rhythmic mechanical relay cadences (>60ms spacing)'),
+                _buildSectionHeader('arming cadences (dual clack focus)', 'Rhythmic mechanical relay cadences (>60ms spacing)'),
                 const SizedBox(height: 8),
 
                 ...ArmHapticStyle.values.map((style) {
@@ -430,7 +430,7 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
                 const SizedBox(height: 20),
 
                 // SECTION 5: DISARMING ALARMS (Double Soft Tap Variations)
-                _buildSectionHeader('DISARMING CADENCES (SOFT TAP FOCUS)', 'Gentle decoupling, dissolving releases & soft rebounds'),
+                _buildSectionHeader('disarming cadences (soft tap focus)', 'Gentle decoupling, dissolving releases & soft rebounds'),
                 const SizedBox(height: 8),
 
                 ...DisarmHapticStyle.values.map((style) {
@@ -451,26 +451,26 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
                 const SizedBox(height: 20),
 
                 // SECTION 6: CONTINUOUS URGENT ALARM PATTERNS
-                _buildSectionHeader('CONTINUOUS URGENT ALARM PATTERNS', 'Rhythmic multi-beat emergency motor cadences'),
+                _buildSectionHeader('continuous urgent alarm patterns', 'Rhythmic multi-beat emergency motor cadences'),
                 const SizedBox(height: 8),
 
                 _buildUrgentCard(
-                  'Siren Wave (5-Pulse Ascending)',
+                  'siren wave (5-pulse ascending)',
                   'Progressive build-up: light → medium → peak heavy → medium → light (90-120ms)',
                   UrgentHapticStyle.sirenWave,
                 ),
                 _buildUrgentCard(
-                  'Double Heartbeat (Repeat Cycle)',
+                  'double heartbeat (repeat cycle)',
                   'Authoritative lub-dub pair with 350ms rest interval',
                   UrgentHapticStyle.doubleHeartbeat,
                 ),
                 _buildUrgentCard(
-                  'SOS Morse Rhythm',
+                  'sos morse rhythm',
                   '3 short (80ms) → 3 long (140ms) → 3 short (80ms) rhythmic sequence',
                   UrgentHapticStyle.sosMorse,
                 ),
                 _buildUrgentCard(
-                  'Rapid Alert (4 Heavy Pulses)',
+                  'rapid alert (4 heavy pulses)',
                   '4 authoritative heavy thuds spaced at 120ms intervals',
                   UrgentHapticStyle.rapidAlert4,
                 ),
@@ -548,7 +548,7 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: const Text(
-                          'ACTIVE',
+                          'active',
                           style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white),
                         ),
                       ),
@@ -569,7 +569,7 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
             children: [
               IconButton(
                 icon: const Icon(Icons.play_arrow_rounded, size: 20, color: Color(0xFFF7F8F8)),
-                tooltip: 'Test Haptic Pattern',
+                tooltip: 'test haptic pattern',
                 onPressed: onTest,
                 style: IconButton.styleFrom(
                   backgroundColor: const Color(0xFF26282E),
@@ -622,7 +622,7 @@ class _HapticsLabModalState extends State<HapticsLabModal> {
           const SizedBox(width: 8),
           IconButton(
             icon: const Icon(Icons.play_arrow_rounded, size: 20, color: Color(0xFFE66432)),
-            tooltip: 'Play Urgent Pattern',
+            tooltip: 'play urgent pattern',
             onPressed: () => HapticService.playUrgent(style),
             style: IconButton.styleFrom(
               backgroundColor: const Color(0xFFE66432).withValues(alpha: 0.15),

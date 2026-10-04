@@ -19,7 +19,6 @@ import 'widgets/time_pickers.dart';
 import 'services/haptic_service.dart';
 import 'widgets/haptics_lab_modal.dart';
 import 'widgets/calendar_picker.dart';
-import 'widgets/recurrence_lab.dart';
 import 'widgets/recurrence_chip_variants.dart';
 
 class _DirectionalStrikePainter extends CustomPainter {
@@ -169,6 +168,10 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   String _searchQuery = '';
   final AudioPlayer _previewAudioPlayer = AudioPlayer();
   List<Map<String, dynamic>>? _lastRemoteAlarms;
+
+  // Bulk multi-select mode state
+  bool _isMultiSelectMode = false;
+  final Set<int> _selectedAlarmIds = <int>{};
 
   Future<void> _previewTone(String tone) async {
     try {
@@ -323,6 +326,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       _syncWithBackend(silent: true);
       _reportBatteryTelemetry();
       _checkActiveRingingAlarm();
+      _ensureFullScreenIntentPermission();
     }
   }
 
@@ -364,7 +368,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         _backendError = 'Server at $_backendUrl is unreachable';
       });
       if (!silent) {
-        _showToast('Cannot reach backend server');
+        _showToast('cannot reach backend server');
         _showBackendConnectionModal();
       }
       return _SyncResult(success: false);
@@ -389,7 +393,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     if (mounted) {
       setState(() => _isSyncing = false);
       if (!silent) {
-        _showToast('Synced with backend ($count active alarms)');
+        _showToast('synced with backend ($count active alarms)');
       }
     }
     return _SyncResult(success: true, syncedCount: count);
@@ -460,7 +464,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           ),
                           const SizedBox(width: 8),
                           const Text(
-                            'Backend Connection',
+                            'backend connection',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
@@ -529,7 +533,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                   Row(
                     children: [
                       const Text(
-                        'Presets:',
+                        'presets:',
                         style: TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
                       ),
                       const SizedBox(width: 8),
@@ -588,8 +592,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: const [
                         Text(
-                          'CONNECTION TIPS',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF8A8F98), letterSpacing: 0.6),
+                          'connection tips',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF8A8F98)),
                         ),
                         SizedBox(height: 4),
                         Text(
@@ -617,7 +621,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                               : () async {
                                   setModalState(() {
                                     isTesting = true;
-                                    testResult = 'Testing connection...';
+                                    testResult = 'testing connection...';
                                   });
                                   final ok = await _runConnectionTest(controller.text.trim());
                                   if (builderCtx.mounted) {
@@ -644,13 +648,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                     ),
                                     const SizedBox(width: 8),
                                     const Text(
-                                      'Testing...',
+                                      'testing...',
                                       style: TextStyle(fontSize: 12, color: Color(0xFFF7F8F8)),
                                     ),
                                   ],
                                 )
                               : const Text(
-                                  'Test Connection',
+                                  'test connection',
                                   style: TextStyle(fontSize: 12, color: Color(0xFFF7F8F8)),
                                 ),
                         ),
@@ -677,7 +681,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             }
                           },
                           child: const Text(
-                            'Save & Sync',
+                            'save & sync',
                             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
                           ),
                         ),
@@ -722,7 +726,9 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       if (alarms.isNotEmpty) {
         _handleAlarmFired(alarms.first);
       }
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('[RingScreen] _checkActiveRingingAlarm failed: $e\n$st');
+    }
   }
 
   void _handleAlarmFired(AlarmSettings alarmSettings) {
@@ -878,16 +884,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           assetAudioPath: audioPath,
           loopAudio: true,
           vibrate: true,
-          volumeSettings: item.rampSeconds > 0
-              ? VolumeSettings.fade(
-                  volume: 1.0,
-                  fadeDuration: Duration(seconds: item.rampSeconds),
-                )
-              : VolumeSettings.fixed(volume: 1.0),
+          volumeSettings: AlarmService.buildPerceptualVolumeSettings(item.rampSeconds),
           notificationSettings: NotificationSettings(
             title: item.title,
             body: 'Tap to dismiss or snooze',
-            stopButton: 'Stop',
+            stopButton: 'stop',
           ),
         );
 
@@ -901,12 +902,12 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
             targetTime: target.toUtc().toIso8601String(),
           );
         }
-        _showToast('Alarm armed for ${_formatTime(target)}');
+        _showToast('alarm armed for ${_formatTime(target)}');
       } catch (e) {
         setState(() {
           item.isEnabled = false;
         });
-        _showToast('Failed to arm alarm: $e');
+        _showToast('failed to arm alarm: $e');
       }
     } else {
       HapticService.playDisarm();
@@ -916,12 +917,12 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         if (item.uuid != null && !item.uuid!.startsWith('local_')) {
           BackendClient.updateAlarmState(item.uuid!, 'disabled');
         }
-        _showToast('Alarm deactivated');
+        _showToast('alarm deactivated');
       } catch (e) {
         setState(() {
           item.isEnabled = true;
         });
-        _showToast('Failed to deactivate: $e');
+        _showToast('failed to deactivate: $e');
       }
     }
 
@@ -935,7 +936,151 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       await BackendClient.deleteRemoteAlarm(item.uuid!);
     }
     await IdMapper.removeMapping(item.id);
-    _showToast('Alarm deleted');
+    _showToast('alarm deleted');
+    _loadAllAlarms();
+  }
+
+  // ── Bulk multi-select ────────────────────────────────────────────────
+
+  void _enterMultiSelect(int alarmId) {
+    HapticService.selectionClick();
+    setState(() {
+      _isMultiSelectMode = true;
+      _selectedAlarmIds.add(alarmId);
+    });
+  }
+
+  void _exitMultiSelect() {
+    HapticService.selectionClick();
+    setState(() {
+      _isMultiSelectMode = false;
+      _selectedAlarmIds.clear();
+    });
+  }
+
+  void _toggleAlarmSelection(int alarmId) {
+    HapticService.selectionClick();
+    setState(() {
+      if (_selectedAlarmIds.contains(alarmId)) {
+        _selectedAlarmIds.remove(alarmId);
+        if (_selectedAlarmIds.isEmpty) {
+          _isMultiSelectMode = false;
+        }
+      } else {
+        _selectedAlarmIds.add(alarmId);
+      }
+    });
+  }
+
+  Future<void> _bulkDeleteSelected() async {
+    final ids = List<int>.from(_selectedAlarmIds);
+    if (ids.isEmpty) return;
+    await HapticService.playPreset();
+    final itemsToDelete = _allAlarms.where((a) => ids.contains(a.id)).toList();
+    for (final item in itemsToDelete) {
+      await _deleteAlarmItem(item);
+    }
+    if (!mounted) return;
+    setState(() {
+      _isMultiSelectMode = false;
+      _selectedAlarmIds.clear();
+    });
+    _showToast('${itemsToDelete.length} alarm${itemsToDelete.length == 1 ? '' : 's'} deleted');
+  }
+
+  Future<void> _bulkDuplicateSelected() async {
+    final ids = List<int>.from(_selectedAlarmIds);
+    if (ids.isEmpty) return;
+    await HapticService.playPreset();
+    final itemsToDuplicate = _allAlarms.where((a) => ids.contains(a.id)).toList();
+    for (final item in itemsToDuplicate) {
+      // Exact copy with a fresh local identity.
+      final newUuid = 'local_${DateTime.now().millisecondsSinceEpoch}_${item.id}';
+      final intId = IdMapper.uuidToInt(newUuid);
+      final newTitle = '${item.title} (copy)';
+
+      // Next future occurrence (same computation as the arm flow) so an
+      // enabled copy never rings immediately when the original's stored time
+      // has already passed. The persisted target time stays identical to the
+      // original, keeping the copy exact.
+      final nextTarget = AlarmService.computeFutureOccurrence(
+        item.dateTime,
+        repeatDays: item.repeatDays,
+        intervalWeeks: item.intervalWeeks,
+        anchorDate: item.anchorDate != null ? DateTime.tryParse(item.anchorDate!) : null,
+      );
+
+      final audioPath = AlarmService.getAudioPathForTone(item.soundTone);
+      final settings = AlarmSettings(
+        id: intId,
+        dateTime: nextTarget,
+        assetAudioPath: audioPath,
+        loopAudio: true,
+        vibrate: true,
+        volumeSettings: AlarmService.buildPerceptualVolumeSettings(item.rampSeconds),
+        notificationSettings: NotificationSettings(
+          title: newTitle,
+          body: 'Tap to open alarm',
+          stopButton: 'stop',
+        ),
+      );
+
+      // Only schedule when the copy inherits the enabled state; disabled
+      // copies stay unscheduled so they never fire in the OS alarm plugin.
+      if (item.isEnabled) {
+        await Alarm.set(alarmSettings: settings);
+      }
+      await IdMapper.saveMapping(
+        intId,
+        newUuid,
+        label: newTitle,
+        description: item.description,
+        targetTime: item.dateTime,
+        soundTone: item.soundTone,
+        rampSeconds: item.rampSeconds,
+        repeatDays: item.repeatDays,
+      );
+      await IdMapper.setSoundTone(intId, item.soundTone);
+      await IdMapper.setRampSeconds(intId, item.rampSeconds);
+      await IdMapper.setIntervalWeeks(intId, item.intervalWeeks);
+      await IdMapper.setAnchorDate(intId, item.anchorDate);
+      await IdMapper.setRepeatDays(intId, item.repeatDays);
+      await IdMapper.setEnabled(intId, item.isEnabled);
+
+      // Background backend sync (fire-and-forget) when the original has a
+      // remote uuid, mirroring the Arm Alarm flow.
+      if (item.uuid != null && !item.uuid!.startsWith('local_')) {
+        BackendClient.createRemoteAlarm(
+          targetTime: nextTarget,
+          label: newTitle,
+          description: item.description,
+          repeatDays: item.repeatDays.isNotEmpty ? item.repeatDays : null,
+          intervalWeeks: item.intervalWeeks > 1 ? item.intervalWeeks : null,
+          anchorDate: item.anchorDate,
+          soundTone: item.soundTone,
+          rampSeconds: item.rampSeconds,
+        ).then((remoteId) {
+          if (remoteId != null && remoteId != newUuid) {
+            IdMapper.saveMapping(
+              intId,
+              remoteId,
+              label: newTitle,
+              description: item.description,
+              targetTime: item.dateTime,
+              soundTone: item.soundTone,
+              rampSeconds: item.rampSeconds,
+              repeatDays: item.repeatDays,
+            );
+          }
+        });
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _isMultiSelectMode = false;
+      _selectedAlarmIds.clear();
+    });
+    _showToast('${itemsToDuplicate.length} alarm${itemsToDuplicate.length == 1 ? '' : 's'} duplicated');
     _loadAllAlarms();
   }
 
@@ -956,7 +1101,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           anchorDate: anchorDate,
         );
         if (armTarget == null) {
-          _showToast('Cannot reschedule a one-time alarm to the past');
+          _showToast('cannot reschedule a one-time alarm to the past');
           return;
         }
 
@@ -976,16 +1121,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           assetAudioPath: audioPath,
           loopAudio: true,
           vibrate: true,
-          volumeSettings: item.rampSeconds > 0
-              ? VolumeSettings.fade(
-                  volume: 1.0,
-                  fadeDuration: Duration(seconds: item.rampSeconds),
-                )
-              : VolumeSettings.fixed(volume: 1.0),
+          volumeSettings: AlarmService.buildPerceptualVolumeSettings(item.rampSeconds),
           notificationSettings: NotificationSettings(
             title: item.title,
             body: 'Tap to dismiss or snooze',
-            stopButton: 'Stop',
+            stopButton: 'stop',
           ),
         );
 
@@ -1013,7 +1153,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           );
         }
 
-        _showToast('Alarm rescheduled for ${_formatTime(finalTarget)}');
+        _showToast('alarm rescheduled for ${_formatTime(finalTarget)}');
         await _syncWithBackend(silent: true);
       },
     );
@@ -1047,54 +1187,33 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     return days.map((d) => names[d - 1]).join(', ');
   }
 
+  /// Render a date as a lowercase relative title: today / yesterday / tomorrow,
+  /// a weekday name for offsets within ±2-7 days, or DD/MM/YYYY beyond that.
+  String _relativeDateTitle(DateTime dt) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(dt.year, dt.month, dt.day);
+    final diff = target.difference(today).inDays;
+
+    if (diff == 0) return 'today';
+    if (diff == -1) return 'yesterday';
+    if (diff == 1) return 'tomorrow';
+
+    if (diff >= -7 && diff <= 7) {
+      const names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+      return names[target.weekday - 1];
+    }
+
+    final d = target.day.toString().padLeft(2, '0');
+    final m = target.month.toString().padLeft(2, '0');
+    return '$d/$m/${target.year}';
+  }
+
   String _formatRepeatDaysOrDate(List<int> days, DateTime targetTime, {int intervalWeeks = 1}) {
     if (days.isNotEmpty) {
       return _formatRepeatDays(days, intervalWeeks: intervalWeeks);
     }
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final alarmDay = DateTime(targetTime.year, targetTime.month, targetTime.day);
-    final diffDays = alarmDay.difference(today).inDays;
-    if (diffDays == 0) return 'Today';
-    if (diffDays == 1) return 'Tomorrow';
-    return _formatDate(targetTime);
-  }
-
-  String _formatRepeatSummary(List<int> days, {int intervalWeeks = 1}) {
-    if (days.isEmpty) return 'Does not repeat (one-time alarm)';
-    if (intervalWeeks > 1) return 'Repeats every 2 weeks';
-    if (days.length == 7) return 'Repeats every day';
-    if (days.length == 5 &&
-        days.contains(1) &&
-        days.contains(2) &&
-        days.contains(3) &&
-        days.contains(4) &&
-        days.contains(5)) {
-      return 'Repeats every weekday (Mon - Fri)';
-    }
-    if (days.length == 2 && days.contains(6) && days.contains(7)) {
-      return 'Repeats every weekend (Sat, Sun)';
-    }
-    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return 'Repeats on ${days.map((d) => names[d - 1]).join(', ')}';
-  }
-
-  String _formatMissedReason(String? reason) {
-    switch (reason) {
-      case 'no_device_registered':
-        return 'No device was registered to receive this alarm.';
-      case 'delivery_failed':
-        return 'Delivery failed.';
-      case 'dispatched_not_reported':
-        return 'Sent from the server, but this phone never reported back.';
-      case 'device_reported_stale':
-        return 'This phone saw the alarm too late and did not ring.';
-      case 'device_reported_failed':
-        return 'This phone tried to ring but could not.';
-      case 'unknown':
-      default:
-        return 'Reason unknown.';
-    }
+    return _relativeDateTitle(targetTime);
   }
 
   String _formatMicroPillRecurrence(List<int> days, DateTime targetTime, {int intervalWeeks = 1}) {
@@ -1113,104 +1232,16 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       return '${days.length} days';
     }
 
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final tomorrow = today.add(const Duration(days: 1));
-    final targetDay = DateTime(targetTime.year, targetTime.month, targetTime.day);
-
-    if (targetDay.isAtSameMomentAs(today)) return 'Today';
-    if (targetDay.isAtSameMomentAs(tomorrow)) return 'Tomorrow';
-    return _formatDate(targetTime);
+    return _relativeDateTitle(targetTime);
   }
 
   String _formatMicroPillSound(String tone, int rampSec) {
-    String toneName = 'Radar';
-    if (tone.toLowerCase() == 'chime') toneName = 'Chime';
-    if (tone.toLowerCase() == 'digital') toneName = 'Digital';
+    String toneName = 'radar';
+    if (tone.toLowerCase() == 'chime') toneName = 'chime';
+    if (tone.toLowerCase() == 'digital') toneName = 'digital';
 
-    final rampName = rampSec <= 0 ? 'Instant' : '${rampSec}s';
+    final rampName = rampSec <= 0 ? 'instant' : '${rampSec}s';
     return '$toneName • $rampName';
-  }
-
-  Widget _buildPresetChip(String label, bool isSelected, VoidCallback onTap) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF5E6AD2) : const Color(0xFF20232A),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isSelected ? const Color(0xFF5E6AD2) : const Color(0xFF2E323D),
-            ),
-          ),
-          alignment: Alignment.center,
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                color: isSelected ? Colors.white : const Color(0xFF8A8F98),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Renders the whole recurrence chip row in the persisted visual variant.
-  /// Variant '0' (default) keeps the original `_buildPresetChip` row.
-  Widget _buildRecurrenceRow({
-    required List<String> labels,
-    required int selectedIndex,
-    required void Function(int) onSelect,
-    required String variant,
-  }) {
-    switch (variant) {
-      case '1':
-        return GlassmorphicChipRow(
-          labels: labels,
-          selectedIndex: selectedIndex,
-          onSelect: onSelect,
-        );
-      case '2':
-        return SoftGlowChipRow(
-          labels: labels,
-          selectedIndex: selectedIndex,
-          onSelect: onSelect,
-        );
-      case '4':
-        return OutlineChipRow(
-          labels: labels,
-          selectedIndex: selectedIndex,
-          onSelect: onSelect,
-        );
-      case '5':
-        return TwoRowChipRow(
-          labels: labels,
-          selectedIndex: selectedIndex,
-          onSelect: onSelect,
-        );
-      case '6':
-        return SegmentedChipRow(
-          labels: labels,
-          selectedIndex: selectedIndex,
-          onSelect: onSelect,
-        );
-      case '0':
-      default:
-        return DefaultChipRow(
-          labels: labels,
-          selectedIndex: selectedIndex,
-          onSelect: onSelect,
-          chipBuilder: (label, active, onTap) =>
-              _buildPresetChip(label, active, onTap),
-        );
-    }
   }
 
   void _openTimeAndScheduleSheet({
@@ -1226,11 +1257,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = today.add(const Duration(days: 1));
     final initialDay = DateTime(initialTime.year, initialTime.month, initialTime.day);
-
-    // Persisted recurrence chip row variant ('0' = default). Loaded async
-    // after the sheet opens so the row reflects the last lab selection.
-    String chipVariant = '0';
-    bool chipVariantLoaded = false;
 
     int curHour = initialTime.hour;
     int curMinute = initialTime.minute;
@@ -1308,16 +1334,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
             final isWeekdays = recurrenceMode == 'weekdays';
             final isFortnightly = recurrenceMode == 'fortnightly';
             final isCustom = recurrenceMode == 'custom';
-
-            // Load the persisted chip variant once the sheet is open.
-            if (!chipVariantLoaded) {
-              chipVariantLoaded = true;
-              IdMapper.getRecurrenceChipVariant().then((v) {
-                if (v != null && v.isNotEmpty && builderCtx.mounted) {
-                  setSheetState(() => chipVariant = v);
-                }
-              });
-            }
 
             DateTime computeFinalTime(
               int h,
@@ -1421,7 +1437,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'Set Time & Schedule',
+                        'set time & schedule',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -1435,7 +1451,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           Navigator.pop(sheetCtx);
                         },
                         child: const Text(
-                          'Done',
+                          'done',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -1468,38 +1484,22 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
                   const SizedBox(height: 14),
 
-                  // Repeats section label — long-press opens the recurrence debug lab.
-                  GestureDetector(
-                    onLongPress: () async {
-                      HapticService.selectionClick();
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const RecurrenceLab()),
-                      );
-                      // Lab popped — re-read the persisted variant so the row
-                      // updates immediately without reopening the sheet.
-                      if (builderCtx.mounted) {
-                        final v = await IdMapper.getRecurrenceChipVariant();
-                        setSheetState(() => chipVariant = v ?? '0');
-                      }
-                    },
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 2),
-                      child: Text(
-                        'REPEATS',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.8,
-                          color: Color(0xFF8A8F98),
-                        ),
+                  // Repeats section label.
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 2),
+                    child: Text(
+                      'repeats',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8A8F98),
                       ),
                     ),
                   ),
                   const SizedBox(height: 8),
 
-                  // Recurrence Mode Chips — rendered in the persisted variant.
-                  _buildRecurrenceRow(
+                  // Recurrence Mode Chips.
+                  SegmentedStackedChipRow(
                     labels: const [
                       'Once',
                       'Daily',
@@ -1566,7 +1566,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           updateTime(clearCustom: true);
                       }
                     },
-                    variant: chipVariant,
                   ),
 
                   // Animated Slide-out: Dynamic Date Row if Once, Day Circles if Repeating
@@ -1626,7 +1625,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                                   ? Colors.white
                                                   : const Color(0xFF8A8F98)),
                                         ),
-                                        child: const Text('Today'),
+                                        child: const Text('today'),
                                       ),
                                     ),
                                   ],
@@ -1658,7 +1657,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                   ),
                                 ),
                                 child: Text(
-                                  'Tomorrow',
+                                  'tomorrow',
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: (isTomorrow && customDate == null)
@@ -1724,7 +1723,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                       child: Text(
                                         customDate != null
                                             ? '${customDate!.day}/${customDate!.month}'
-                                            : 'Pick Date',
+                                            : 'pick date',
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           fontSize: 12,
@@ -1861,7 +1860,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'Sound & Gentle Ramp',
+                        'sound & gentle ramp',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -1874,7 +1873,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           Navigator.pop(sheetCtx);
                         },
                         child: const Text(
-                          'Done',
+                          'done',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -1891,12 +1890,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'SOUND TONE',
+                        'sound tone',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFF8A8F98),
-                          letterSpacing: 0.8,
                         ),
                       ),
                       const Text(
@@ -1913,7 +1911,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                   _buildLinearSegmentedControl<String>(
                     values: const ['alarm', 'chime', 'digital'],
                     selectedValue: curTone,
-                    labels: const ['Radar', 'Chime', 'Digital'],
+                    labels: const ['radar', 'chime', 'digital'],
                     icons: const [
                       Icons.volume_up_rounded,
                       Icons.volume_up_rounded,
@@ -1929,12 +1927,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
                   // Gentle Ramp
                   const Text(
-                    'GENTLE VOLUME RAMP',
+                    'gentle volume ramp',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       color: Color(0xFF8A8F98),
-                      letterSpacing: 0.8,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -1949,7 +1946,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                   _buildLinearSegmentedControl<int>(
                     values: const [0, 15, 30, 60],
                     selectedValue: curRamp,
-                    labels: const ['0s Instant', '15s', '30s', '60s'],
+                    labels: const ['0s instant', '15s', '30s', '60s'],
                     onSelected: (val) => setSheetState(() => curRamp = val),
                   ),
 
@@ -1971,7 +1968,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         Navigator.pop(sheetCtx);
                       },
                       child: const Text(
-                        'Save Sound Settings',
+                        'save sound settings',
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                       ),
                     ),
@@ -2100,15 +2097,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
             );
           }),
         ),
-        const SizedBox(height: 6),
-        Text(
-          _formatRepeatSummary(selectedDays, intervalWeeks: intervalWeeks),
-          style: const TextStyle(
-            fontSize: 11,
-            color: Color(0xFF8A8F98),
-            fontStyle: FontStyle.italic,
-          ),
-        ),
       ],
     );
   }
@@ -2141,6 +2129,19 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         }
       }
       return null;
+    });
+
+    // Cold-start: if the app was launched by the alarm plugin's full-screen
+    // notification intent, pick it up once on the first frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      try {
+        const ch = MethodChannel('com.remotealarm.mobile/permissions');
+        final action = await ch.invokeMethod<String>('getLaunchIntentAction');
+        if (action == 'com.gdelataillade.alarm.action.RING' && mounted) {
+          if (await Alarm.isRinging()) _checkActiveRingingAlarm();
+        }
+      } catch (_) {}
     });
 
     try {
@@ -2189,7 +2190,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         });
       }
 
-      _ensureCriticalPermissions();
+      _ensureFullScreenIntentPermission();
+      _ensureBatteryOptimizationExemption();
     } catch (e) {
       if (mounted) {
         setState(() => _fcmToken = 'Firebase unavailable: $e');
@@ -2197,20 +2199,23 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     }
   }
 
-  /// One-time check on app launch: if the user hasn't enabled full-screen-intent
-  /// permission (required on Android 14+ for the alarm plugin's notification to
-  /// actually surface as full-screen), show a single snackbar with a button to
-  /// open the relevant system Settings page. Persisted via SharedPreferences so
-  /// we only prompt once per install.
-  Future<void> _ensureCriticalPermissions() async {
+  /// Best-effort check that Android 14+ full-screen-intent permission is granted
+  /// (required for the alarm plugin's notification to actually surface as
+  /// full-screen). If not granted, show a snackbar with a button to open the
+  /// relevant system Settings page. The prompt is rate-limited (re-shown at most
+  /// every ~2 hours, or immediately when [force] is true) so a missed prompt is
+  /// re-shown on later launches/resumes instead of never.
+  Future<void> _ensureFullScreenIntentPermission({bool force = false}) async {
     try {
       const channel = MethodChannel('com.remotealarm.mobile/permissions');
-      final granted = await channel.invokeMethod<bool>('canUseFullScreenIntent') ?? true;
+      final granted = await channel.invokeMethod<bool>('canUseFullScreenIntent') ?? false;
       if (granted) return;
 
       final prefs = await SharedPreferences.getInstance();
-      final alreadyPrompted = prefs.getBool('fsi_prompt_shown') ?? false;
-      if (alreadyPrompted) return;
+      final lastShownMs = prefs.getInt('fsi_prompt_last_shown_ms') ?? 0;
+      final elapsedMs = DateTime.now().millisecondsSinceEpoch - lastShownMs;
+      const rePromptAfter = Duration(hours: 2);
+      if (!force && elapsedMs < rePromptAfter.inMilliseconds) return;
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2218,13 +2223,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           backgroundColor: const Color(0xFF16181B),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          duration: const Duration(seconds: 7),
+          duration: const Duration(seconds: 10),
           content: const Text(
             'Enable "Use full screen" notifications so alarms can wake you even on lock screen.',
             style: TextStyle(color: Color(0xFFF7F8F8), fontSize: 13),
           ),
           action: SnackBarAction(
-            label: 'OPEN',
+            label: 'open',
             textColor: const Color(0xFF5E6AD2),
             onPressed: () {
               channel.invokeMethod('openFullScreenIntentSettings');
@@ -2233,7 +2238,58 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         ),
       );
 
-      await prefs.setBool('fsi_prompt_shown', true);
+      await prefs.setInt(
+        'fsi_prompt_last_shown_ms',
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (_) {
+      // Best-effort; never block app startup on a permission check failure.
+    }
+  }
+
+  /// Best-effort check that the app is exempt from Android battery optimization
+  /// (needed for alarms and push to stay reliable in the background). If not
+  /// exempt, show a snackbar with a button to open the relevant system Settings
+  /// page. The prompt is rate-limited (re-shown at most every ~2 hours, or
+  /// immediately when [force] is true) so a missed prompt is re-shown on later
+  /// launches/resumes instead of never.
+  Future<void> _ensureBatteryOptimizationExemption({bool force = false}) async {
+    try {
+      const channel = MethodChannel('com.remotealarm.mobile/permissions');
+      final exempt = await channel.invokeMethod<bool>('isIgnoringBatteryOptimizations') ?? true;
+      if (exempt) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      final lastShownMs = prefs.getInt('battery_prompt_last_shown_ms') ?? 0;
+      final elapsedMs = DateTime.now().millisecondsSinceEpoch - lastShownMs;
+      const rePromptAfter = Duration(hours: 2);
+      if (!force && elapsedMs < rePromptAfter.inMilliseconds) return;
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFF16181B),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          duration: const Duration(seconds: 10),
+          content: const Text(
+            'Allow the app to ignore battery optimization so alarms and push stay reliable in the background.',
+            style: TextStyle(color: Color(0xFFF7F8F8), fontSize: 13),
+          ),
+          action: SnackBarAction(
+            label: 'open',
+            textColor: const Color(0xFF5E6AD2),
+            onPressed: () {
+              channel.invokeMethod('openBatteryOptimizationSettings');
+            },
+          ),
+        ),
+      );
+
+      await prefs.setInt(
+        'battery_prompt_last_shown_ms',
+        DateTime.now().millisecondsSinceEpoch,
+      );
     } catch (_) {
       // Best-effort; never block app startup on a permission check failure.
     }
@@ -2309,7 +2365,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          'Alarm Details & Adjustments',
+                          'alarm details & adjustments',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -2472,11 +2528,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             TextField(
                               controller: titleController,
                               textAlign: TextAlign.center,
+                              textCapitalization: TextCapitalization.none,
+                              autocorrect: false,
                               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFFF7F8F8)),
                               decoration: const InputDecoration(
                                 border: InputBorder.none,
                                 isDense: true,
-                                hintText: 'Alarm title...',
+                                hintText: 'alarm title...',
                                 hintStyle: TextStyle(color: Color(0xFF565A61)),
                               ),
                             ),
@@ -2497,6 +2555,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         child: TextField(
                           controller: descController,
                           maxLines: 2,
+                          textCapitalization: TextCapitalization.none,
+                          autocorrect: false,
                           style: const TextStyle(fontSize: 12, color: Color(0xFFF7F8F8), height: 1.4),
                           decoration: const InputDecoration(
                             border: InputBorder.none,
@@ -2540,7 +2600,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                     anchorDate: anchorDate != null ? DateTime.tryParse(anchorDate ?? '') : null,
                                   );
                                 } else {
-                                  finalTarget = selectedTime;
+                                  finalTarget = AlarmService.computeFutureOccurrence(selectedTime);
                                 }
 
                                 item.title = updatedTitle;
@@ -2569,7 +2629,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                 if (bottomSheetContext.mounted) {
                                   Navigator.pop(bottomSheetContext);
                                 }
-                                _showToast('Adjustments saved');
+                                _showToast('adjustments saved');
 
                                 // Background sync — fire-and-forget
                                 if (item.uuid != null && !item.uuid!.startsWith('local_')) {
@@ -2592,7 +2652,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                 }
                               },
                               child: const Text(
-                                'Save Adjustments',
+                                'save adjustments',
                                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                               ),
                             ),
@@ -2613,7 +2673,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                               Navigator.pop(bottomSheetContext);
                               await _deleteAlarmItem(item);
                             },
-                            child: const Text('Delete'),
+                            child: const Text('delete'),
                           ),
                         ),
                       ],
@@ -2676,7 +2736,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          'Settings & Configuration',
+                          'settings & configuration',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -2694,19 +2754,18 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
                     // SECTION 1: ALARM CONFIGURATION
                     const Text(
-                      'ALARM CONFIGURATION',
+                      'alarm configuration',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
                       ),
                     ),
                     const SizedBox(height: 12),
 
                     // Sound Tone Dropdown
                     _buildModalDropdown<String>(
-                      label: 'Default Sound Profile',
+                      label: 'default sound profile',
                       description: 'audio feedback sequence played when alarm triggers',
                       value: _defaultSoundTone,
                       items: const [
@@ -2737,7 +2796,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
                     // Ramp Seconds Dropdown
                     _buildModalDropdown<int>(
-                      label: 'Volume Ramp Duration',
+                      label: 'volume ramp duration',
                       description: 'gradual volume increase curve to prevent abrupt awakening',
                       value: _defaultRampSeconds,
                       items: const [
@@ -2758,19 +2817,18 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
                     // SECTION 2: DISPLAY & FORMATTING
                     const Text(
-                      'DISPLAY & FORMATTING RULES',
+                      'display & formatting rules',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
                       ),
                     ),
                     const SizedBox(height: 12),
 
                     // Time Format
                     _buildModalDropdown<String>(
-                      label: 'Time Format Convention',
+                      label: 'time format convention',
                       description: 'clock readout and alarm time formatting rules',
                       value: _timeFormat,
                       items: const [
@@ -2789,7 +2847,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
                     // Date Format
                     _buildModalDropdown<String>(
-                      label: 'Date Format Convention',
+                      label: 'date format convention',
                       description: 'standard system timestamp display layout',
                       value: _dateFormat,
                       items: const [
@@ -2809,12 +2867,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
                     // SECTION 3: CALENDAR FEED
                     const Text(
-                      'CALENDAR SUBSCRIPTION (RFC 5545)',
+                      'calendar subscription (RFC 5545)',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -2822,7 +2879,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         icon: const Icon(Icons.copy_rounded, size: 14),
-                        label: const Text('Copy iCal Feed URL', style: TextStyle(fontSize: 12)),
+                        label: const Text('copy iCal Feed URL', style: TextStyle(fontSize: 12)),
                         style: OutlinedButton.styleFrom(
                           backgroundColor: const Color(0xFF16181B),
                           foregroundColor: const Color(0xFFF7F8F8),
@@ -2833,7 +2890,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         onPressed: () async {
                           final url = '$_backendUrl/api/calendar.ics';
                           await Clipboard.setData(ClipboardData(text: url));
-                          _showToast('Copied iCal URL to clipboard');
+                          _showToast('copied iCal URL to clipboard');
                         },
                       ),
                     ),
@@ -2842,12 +2899,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
                     // SECTION 4: SERVER & DEVICE TELEMETRY
                     const Text(
-                      'SERVER & HARDWARE TELEMETRY',
+                      'server & hardware telemetry',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -2863,7 +2919,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          _isBackendConnected ? 'Backend Reachable' : 'Backend Unreachable',
+                          _isBackendConnected ? 'backend reachable' : 'backend unreachable',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -2935,13 +2991,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                       ),
                                       const SizedBox(width: 8),
                                       const Text(
-                                        'Testing...',
+                                        'testing...',
                                         style: TextStyle(fontSize: 13, color: Color(0xFFF7F8F8)),
                                       ),
                                     ],
                                   )
                                 : const Text(
-                                    'Test',
+                                    'test',
                                     style: TextStyle(fontSize: 13, color: Color(0xFFF7F8F8)),
                                   ),
                           ),
@@ -2999,13 +3055,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                       ),
                                       const SizedBox(width: 8),
                                       const Text(
-                                        'Saving...',
+                                        'saving...',
                                         style: TextStyle(fontSize: 13, color: Colors.white),
                                       ),
                                     ],
                                   )
                                 : const Text(
-                                    'Save & Resync',
+                                    'save & resync',
                                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                                   ),
                           ),
@@ -3034,17 +3090,17 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       ),
                       child: Column(
                         children: [
-                          _telemetryRow('Phone Model', 'Android Device'),
+                          _telemetryRow('phone model', 'Android Device'),
                           const Divider(color: Color(0xFF26282E), height: 16),
                           _telemetryRow(
-                            'Battery',
+                            'battery',
                             _batteryLevel != null
                                 ? '$_batteryLevel% (${_isCharging ? 'Charging' : 'On Battery'})'
                                 : 'Checking...',
                           ),
                           const Divider(color: Color(0xFF26282E), height: 16),
                           _telemetryRow(
-                            'Push Token',
+                            'push token',
                             _fcmToken != null && _fcmToken!.length > 16
                                 ? '${_fcmToken!.substring(0, 8)}...${_fcmToken!.substring(_fcmToken!.length - 6)}'
                                 : 'Acquiring...',
@@ -3057,12 +3113,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
                     // SECTION 4: EXPERIMENTS & TACTILE ENGINE
                     const Text(
-                      'EXPERIMENTS & TACTILE ENGINE',
+                      'experiments & tactile engine',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF8A8F98),
-                        letterSpacing: 0.8,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -3096,7 +3151,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text(
-                                    'Haptic Testing Lab',
+'haptic testing lab',
                                     style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,
@@ -3105,7 +3160,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    'Active: ${HapticService.armStyleTitle(HapticService.activeArmStyle)}',
+                                    'active: ${HapticService.armStyleTitle(HapticService.activeArmStyle)}',
                                     style: const TextStyle(fontSize: 11, color: Color(0xFF8A8F98)),
                                   ),
                                 ],
@@ -3192,7 +3247,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
         onPressed: () {
-          _showToast('Previewing $label audio');
+          _showToast('previewing $label audio');
         },
         child: Text(label, style: const TextStyle(fontSize: 11)),
       ),
@@ -3276,7 +3331,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          'Schedule New Alarm',
+                          'schedule new alarm',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -3439,11 +3494,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             TextField(
                               controller: labelController,
                               textAlign: TextAlign.center,
+                              textCapitalization: TextCapitalization.none,
+                              autocorrect: false,
                               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFFF7F8F8)),
                               decoration: const InputDecoration(
                                 border: InputBorder.none,
                                 isDense: true,
-                                hintText: 'Alarm title...',
+                                hintText: 'alarm title...',
                                 hintStyle: TextStyle(color: Color(0xFF565A61)),
                               ),
                             ),
@@ -3464,6 +3521,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         child: TextField(
                           controller: descController,
                           maxLines: 2,
+                          textCapitalization: TextCapitalization.none,
+                          autocorrect: false,
                           style: const TextStyle(fontSize: 12, color: Color(0xFFF7F8F8), height: 1.4),
                           decoration: const InputDecoration(
                             border: InputBorder.none,
@@ -3508,7 +3567,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                               anchorDate: selectedAnchorDate != null ? DateTime.tryParse(selectedAnchorDate ?? '') : null,
                             );
                           } else {
-                            finalTarget = cleanTime;
+                            finalTarget = AlarmService.computeFutureOccurrence(cleanTime);
                           }
                           final recurrenceAnchor = selectedIntervalWeeks > 1 ? _isoDate(finalTarget) : null;
 
@@ -3528,16 +3587,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             assetAudioPath: assetAudio,
                             loopAudio: true,
                             vibrate: true,
-                            volumeSettings: selectedRampSeconds > 0
-                                ? VolumeSettings.fade(
-                                    volume: 1.0,
-                                    fadeDuration: Duration(seconds: selectedRampSeconds),
-                                  )
-                                : VolumeSettings.fixed(volume: 1.0),
+                            volumeSettings: AlarmService.buildPerceptualVolumeSettings(selectedRampSeconds),
                             notificationSettings: NotificationSettings(
                               title: title,
                               body: 'Tap to open alarm',
-                              stopButton: 'Stop',
+                              stopButton: 'stop',
                             ),
                           );
 
@@ -3562,7 +3616,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           if (bottomSheetContext.mounted) {
                             Navigator.pop(bottomSheetContext);
                           }
-                          _showToast('Alarm armed for ${_formatTime(finalTarget)}');
+                          _showToast('alarm armed for ${_formatTime(finalTarget)}');
                           _loadAllAlarms();
 
                           // Background sync to backend; if it succeeds, remap local intId → remoteId
@@ -3592,7 +3646,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           });
                         },
                         child: const Text(
-                          'Arm Alarm',
+                          'arm alarm',
                           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                         ),
                       ),
@@ -3631,7 +3685,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     final enabledAlarms = activeAlarms.where((a) => a.isEnabled).toList();
     final upcomingHeroAlarm = enabledAlarms.isNotEmpty ? enabledAlarms.first : null;
 
-    return Scaffold(
+    // Back (swipe-back) exits multi-select mode instead of leaving the app.
+    final Widget homeScaffold = Scaffold(
       backgroundColor: const Color(0xFF08090A),
       body: SafeArea(
         child: Column(
@@ -3677,8 +3732,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           letterSpacing: -0.2,
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.unfold_more_rounded, size: 14, color: Color(0xFF8A8F98)),
                     ],
                   ),
 
@@ -3741,7 +3794,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       // Haptic Testing Lab
                       IconButton(
                         icon: const Icon(Icons.vibration_rounded, size: 18, color: Color(0xFF8A8F98)),
-                        tooltip: 'Haptic Testing Lab',
+                        tooltip: 'haptic testing lab',
                         onPressed: () => HapticsLabModal.show(context),
                       ),
 
@@ -3834,7 +3887,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     const Text(
-                                      'Backend Unreachable',
+                                      'backend unreachable',
                                       style: TextStyle(
                                         color: Color(0xFFF2994A),
                                         fontSize: 13,
@@ -3862,7 +3915,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: const Text(
-                                  'Fix',
+                                  'fix',
                                   style: TextStyle(
                                     color: Color(0xFFF2994A),
                                     fontSize: 11,
@@ -3946,12 +3999,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         Row(
                           children: [
                             const Text(
-                              'ALL ALARMS',
+                              'all alarms',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 color: Color(0xFF8A8F98),
-                                letterSpacing: 0.8,
                               ),
                             ),
                             const SizedBox(width: 6),
@@ -4023,12 +4075,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           const Icon(Icons.warning_amber_rounded, size: 14, color: Color(0xFFEB5757)),
                           const SizedBox(width: 6),
                           const Text(
-                            'MISSED ALARMS',
+                            'missed alarms',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
                               color: Color(0xFFEB5757),
-                              letterSpacing: 0.8,
                             ),
                           ),
                           const SizedBox(width: 6),
@@ -4071,40 +4122,59 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: GestureDetector(
-        onTap: _showCreateAlarmModal,
-        child: Container(
-          height: 42,
-          padding: const EdgeInsets.symmetric(horizontal: 22),
-          decoration: BoxDecoration(
-            color: const Color(0xFF5E6AD2),
-            borderRadius: BorderRadius.circular(21),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x66000000),
-                blurRadius: 16,
-                offset: Offset(0, 6),
-              ),
-            ],
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.add_rounded, size: 18, color: Color(0xFFF7F8F8)),
-              SizedBox(width: 8),
-              Text(
-                'new alarm',
-                style: TextStyle(
-                  color: Color(0xFFF7F8F8),
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                  letterSpacing: 0.2,
+      floatingActionButton: _isMultiSelectMode
+          ? _buildMultiSelectActionBar()
+          : GestureDetector(
+              onTap: _showCreateAlarmModal,
+              child: Container(
+                height: 42,
+                padding: const EdgeInsets.symmetric(horizontal: 22),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF5E6AD2),
+                  borderRadius: BorderRadius.circular(21),
+                  boxShadow: const [
+                    // Outer purple glow.
+                    BoxShadow(
+                      color: Color(0x665E6AD2),
+                      blurRadius: 24,
+                      spreadRadius: 2,
+                    ),
+                    // Deeper drop shadow beneath.
+                    BoxShadow(
+                      color: Color(0x99000000),
+                      blurRadius: 20,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.add_rounded, size: 18, color: Color(0xFFF7F8F8)),
+                    SizedBox(width: 8),
+                    Text(
+                      'new alarm',
+                      style: TextStyle(
+                        color: Color(0xFFF7F8F8),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
+            ),
+    );
+
+    return PopScope(
+      canPop: !_isMultiSelectMode,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _isMultiSelectMode) {
+          _exitMultiSelect();
+        }
+      },
+      child: homeScaffold,
     );
   }
 
@@ -4254,42 +4324,51 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     );
   }
 
-  // Missed Alarm Row Card: visually distinct from disabled; no toggle, only
-  // audit detail and a Reschedule action (§8.3).
+  /// Map the backend's closed missed-reason vocabulary (§7 / server.ts) to a
+  /// lowercase FCM-cause line, matching the app's content style. Returns null
+  /// when the cause is genuinely unknown so the caller can omit the line.
+  String? _formatMissedReason(String? reason) {
+    switch (reason) {
+      case 'no_device_registered':
+        return 'fcm token unavailable';
+      case 'delivery_failed':
+        return 'fcm delivery failed';
+      case 'dispatched_not_reported':
+        return 'fcm delivery unconfirmed';
+      case 'device_reported_stale':
+        return 'fcm delivery delayed';
+      case 'device_reported_failed':
+        return 'device couldn\'t ring';
+      case 'unknown':
+      default:
+        return null;
+    }
+  }
+
+  // Missed Alarm Row Card: same dimensions as a normal alarm row, no
+  // translucent fill — a red outline is the only colour cue (§8.3). No toggle,
+  // just audit detail and a plain-text Reschedule action.
   Widget _buildMissedAlarmCard(_AlarmItem alarm) {
     final timeStr = _formatTime(alarm.dateTime);
     final missedAtStr = alarm.missedAt != null
         ? '${_formatDate(alarm.missedAt!)} at ${_formatTime(alarm.missedAt!)}'
         : 'time unknown';
+    final missedReasonStr = _formatMissedReason(alarm.missedReason);
+    final missedDetailStr = missedReasonStr != null
+        ? '$missedReasonStr · missed $missedAtStr'
+        : 'missed $missedAtStr';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1414),
+        color: const Color(0xFF16181B),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF4A2424), width: 1),
+        border: Border.all(color: const Color(0xFFEB5757), width: 1.5),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Left warning indicator
-          Container(
-            width: 3,
-            height: 44,
-            margin: const EdgeInsets.only(right: 14, top: 2),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEB5757),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          Icon(
-            Icons.warning_amber_rounded,
-            size: 18,
-            color: const Color(0xFFEB5757),
-          ),
-          const SizedBox(width: 14),
-
-          // Middle Column: audit detail
+          // Middle Column: audit detail (time + badge + title on the main row,
+          // technical reason on a secondary line below).
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -4316,12 +4395,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: const Text(
-                        'MISSED',
+                        'missed',
                         style: TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.w700,
                           color: Color(0xFFEB5757),
-                          letterSpacing: 0.4,
                         ),
                       ),
                     ),
@@ -4341,16 +4419,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Did not ring • missed $missedAtStr',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFFEB5757),
-                    height: 1.3,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  _formatMissedReason(alarm.missedReason),
+                  missedDetailStr,
                   style: const TextStyle(
                     fontSize: 11,
                     color: Color(0xFF8A8F98),
@@ -4361,21 +4430,18 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
             ),
           ),
 
-          // Reschedule button
+          // Reschedule action: plain text, no border, no fill.
           const SizedBox(width: 10),
-          OutlinedButton(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFFEB5757),
-              side: const BorderSide(color: Color(0xFF4A2424)),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          TextButton(
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.zero,
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: () => _rescheduleMissedAlarm(alarm),
             child: const Text(
-              'Reschedule',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+              'reschedule',
+              style: TextStyle(color: Color(0xFFF7F8F8), fontSize: 12, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -4388,24 +4454,41 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     final timeStr = _formatTime(alarm.dateTime);
     final textColor = alarm.isEnabled ? const Color(0xFFF7F8F8) : const Color(0xFF565A61);
     final subtextColor = alarm.isEnabled ? const Color(0xFF8A8F98) : const Color(0xFF45484F);
+    final bool isSelected = _selectedAlarmIds.contains(alarm.id);
 
-    return InkWell(
-      onTap: () => _showAlarmDetailModal(alarm),
-      borderRadius: BorderRadius.circular(14),
+    return GestureDetector(
+      onLongPress: () {
+        if (_isMultiSelectMode) {
+          _toggleAlarmSelection(alarm.id);
+        } else {
+          _enterMultiSelect(alarm.id);
+        }
+      },
+      onTap: () {
+        if (_isMultiSelectMode) {
+          _toggleAlarmSelection(alarm.id);
+        } else {
+          _showAlarmDetailModal(alarm);
+        }
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: alarm.isEnabled
-                ? [const Color(0xFF16181C), const Color(0xFF121417)]
-                : [const Color(0xFF111215), const Color(0xFF0D0E10)],
+            colors: isSelected
+                ? [const Color(0xFF1B1D2E), const Color(0xFF161829)]
+                : alarm.isEnabled
+                    ? [const Color(0xFF16181C), const Color(0xFF121417)]
+                    : [const Color(0xFF111215), const Color(0xFF0D0E10)],
           ),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: alarm.isEnabled ? const Color(0xFF262930) : const Color(0xFF1C1D21),
-            width: 1,
+            color: isSelected
+                ? const Color(0xFF5E6AD2)
+                : (alarm.isEnabled ? const Color(0xFF262930) : const Color(0xFF1C1D21)),
+            width: isSelected ? 1.5 : 1,
           ),
           boxShadow: alarm.isEnabled
               ? const [
@@ -4420,15 +4503,25 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         ),
         child: Row(
           children: [
-            // Left Status Icon
-            Icon(
-              Icons.access_time_rounded,
-              size: 18,
-              color: alarm.isEnabled
-                  ? (alarm.isSnoozed ? const Color(0xFFE5A158) : const Color(0xFF5E6AD2))
-                  : const Color(0xFF45484F),
+            // Leading slot: clock status icon normally, selection checkbox in
+            // multi-select mode. Both live in an identical 20px slot so the
+            // time/label/toggle never shift when multi-select toggles on/off.
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: Center(
+                child: _isMultiSelectMode
+                    ? _buildMultiSelectCheckbox(isSelected)
+                    : Icon(
+                        Icons.access_time_rounded,
+                        size: 18,
+                        color: alarm.isEnabled
+                            ? (alarm.isSnoozed ? const Color(0xFFE5A158) : const Color(0xFF5E6AD2))
+                            : const Color(0xFF45484F),
+                      ),
+              ),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
 
             // Middle Column: Time + Title (Only title is shown from dashboard view)
             Expanded(
@@ -4496,7 +4589,10 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
               ),
             ),
 
-            // Smooth Slider Switch (Linear style)
+            // Smooth Slider Switch (Linear style).
+            // Kept enabled with its normal colours during multi-select; the
+            // Switch consumes its own taps so it toggles enabled state rather
+            // than selecting the row.
             Switch.adaptive(
               value: alarm.isEnabled,
               activeThumbColor: const Color(0xFFFFFFFF),
@@ -4508,6 +4604,129 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // 20×20 rounded checkbox shown at the row's leading position in
+  // multi-select mode. AnimatedContainer gives the 150ms check transition.
+  Widget _buildMultiSelectCheckbox(bool isSelected) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      width: 20,
+      height: 20,
+      decoration: BoxDecoration(
+        color: isSelected ? const Color(0xFF5E6AD2) : Colors.transparent,
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(
+          color: isSelected ? const Color(0xFF5E6AD2) : const Color(0xFF4A4E58),
+          width: 1.5,
+        ),
+      ),
+      child: isSelected
+          ? const Center(
+              child: Icon(Icons.check_rounded, size: 14, color: Color(0xFFFFFFFF)),
+            )
+          : null,
+    );
+  }
+
+  // Bottom action bar shown while multi-select mode is active. Replaces the
+  // FAB slot (centerFloat) so it floats above the content with full width.
+  Widget _buildMultiSelectActionBar() {
+    final count = _selectedAlarmIds.length;
+    return Container(
+      width: MediaQuery.of(context).size.width - 32,
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF16181B),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+        border: const Border(top: BorderSide(color: Color(0xFF5E6AD2), width: 2)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x66000000),
+            blurRadius: 16,
+            offset: Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // "N selected" count
+          Text.rich(
+            TextSpan(
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF8A8F98),
+                letterSpacing: 0.3,
+              ),
+              children: [
+                TextSpan(
+                  text: '$count',
+                  style: const TextStyle(
+                    color: Color(0xFFF7F8F8),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const TextSpan(text: ' selected'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _multiSelectBarButton(
+                label: 'cancel',
+                onTap: _exitMultiSelect,
+                bg: const Color(0xFF1B1E26),
+                fg: const Color(0xFF8A8F98),
+              ),
+              const Spacer(),
+              _multiSelectBarButton(
+                label: 'duplicate ($count)',
+                onTap: _bulkDuplicateSelected,
+                bg: const Color(0x265E6AD2),
+                fg: const Color(0xFF5E6AD2),
+              ),
+              const SizedBox(width: 8),
+              _multiSelectBarButton(
+                label: 'delete ($count)',
+                onTap: _bulkDeleteSelected,
+                bg: const Color(0xFFEB5757),
+                fg: Colors.white,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _multiSelectBarButton({
+    required String label,
+    required VoidCallback onTap,
+    required Color bg,
+    required Color fg,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(7),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: fg,
+          ),
         ),
       ),
     );
@@ -4552,12 +4771,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'ALARM IS FIRING RIGHT NOW',
+                      'alarm is firing right now',
                       style: TextStyle(
                         color: Color(0xFFEB5757),
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -4580,7 +4798,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 onPressed: () => _navigateToRingScreen(alarm),
-                child: const Text('Open Screen', style: TextStyle(color: Color(0xFFEB5757), fontSize: 11, fontWeight: FontWeight.bold)),
+                child: const Text('open screen', style: TextStyle(color: Color(0xFFEB5757), fontSize: 11, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -4590,7 +4808,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
               Expanded(
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.snooze_rounded, size: 14),
-                  label: const Text('Snooze 10m', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  label: const Text('snooze 10m', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: const Color(0xFFF7F8F8),
                     side: const BorderSide(color: Color(0xFF45484F)),
@@ -4601,7 +4819,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                   onPressed: () async {
                     await AlarmService.snoozeAlarm(alarm);
                     if (mounted) setState(() => _currentlyRingingAlarm = null);
-                    _showToast('Alarm snoozed for 10 minutes');
+                    _showToast('alarm snoozed for 10 minutes');
                     _loadAllAlarms();
                   },
                 ),
@@ -4610,7 +4828,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
               Expanded(
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.stop_circle_outlined, size: 16),
-                  label: const Text('Dismiss', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  label: const Text('dismiss', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFEB5757),
                     foregroundColor: Colors.white,
@@ -4621,7 +4839,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                   onPressed: () async {
                     await AlarmService.dismissAlarm(alarm);
                     if (mounted) setState(() => _currentlyRingingAlarm = null);
-                    _showToast('Alarm dismissed');
+                    _showToast('alarm dismissed');
                     _loadAllAlarms();
                   },
                 ),

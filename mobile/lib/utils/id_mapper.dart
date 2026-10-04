@@ -14,7 +14,6 @@ class IdMapper {
   static const String _rampPrefix = 'ramp_seconds_';
   static const String _enabledPrefix = 'enabled_';
   static const String _timePrefix = 'time_iso_';
-  static const String _chipVariantKey = 'recurrence_chip_variant';
 
   /// Convert a string UUID into a 32-bit positive integer (0 to 2,147,483,646)
   static int uuidToInt(String uuid) {
@@ -218,19 +217,6 @@ class IdMapper {
       }
     }
     return ids.toList();
-  }
-
-  /// Retrieve the currently selected recurrence chip row variant
-  /// (null = default / variant '0').
-  static Future<String?> getRecurrenceChipVariant() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_chipVariantKey);
-  }
-
-  /// Persist the selected recurrence chip row variant ('0'..'6').
-  static Future<void> setRecurrenceChipVariant(String variant) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_chipVariantKey, variant);
   }
 
   /// Remove mapping after alarm is permanently completed/canceled

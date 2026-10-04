@@ -15,6 +15,22 @@ dotenv.config();
 
 const app = fastify({ logger: true });
 
+// Empty-tolerant JSON parser. Fastify's default rejects an empty body when a
+// client sends Content-Type: application/json, which turns bodyless POSTs into
+// spurious 400s. Empty input becomes {}; malformed JSON still fails.
+app.removeContentTypeParser('application/json');
+app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+  const raw = typeof body === 'string' ? body.trim() : '';
+  if (raw.length === 0) return done(null, {});
+  try {
+    done(null, JSON.parse(raw));
+  } catch (err) {
+    // Preserve Fastify's default contract: malformed JSON is a 400, not a 500.
+    (err as { statusCode?: number }).statusCode = 400;
+    done(err as Error, undefined);
+  }
+});
+
 // Register CORS for client access
 await app.register(cors, {
   origin: true,
@@ -365,6 +381,19 @@ app.post<{
     repeatDaysStr = repeat_days.trim();
   }
 
+  // Roll a stale target forward so a raw/strange request cannot create an
+  // instantly-missed alarm. Recurring past targets always advance; one-time
+  // past targets within the 5-minute grace window are left alone (a one-time
+  // alarm may still ring up to 5 min late).
+  const nowMs = Date.now();
+  const isRecurring = !!repeatDaysStr && repeatDaysStr.trim().length > 0;
+  const targetIsPast = dateObj.getTime() < nowMs;
+  const beyondGrace = dateObj.getTime() + MISSED_GRACE_MS < nowMs;
+  const effectiveTargetIso =
+    (isRecurring && targetIsPast) || (!isRecurring && beyondGrace)
+      ? rollTargetTimeToFuture(dateObj.toISOString(), repeatDaysStr)
+      : dateObj.toISOString();
+
   if (ramp_seconds !== undefined && (typeof ramp_seconds !== 'number' || ramp_seconds < 0 || !Number.isInteger(ramp_seconds))) {
     return reply.status(400).send({
       error: 'Invalid ramp_seconds: must be a non-negative integer.'
@@ -399,7 +428,7 @@ app.post<{
 
   // Auto-anchor: a fortnightly alarm without an anchor defaults to its start date
   if (normalizedInterval === 2 && !normalizedAnchorDate) {
-    normalizedAnchorDate = dateObj.toISOString().slice(0, 10);
+    normalizedAnchorDate = effectiveTargetIso.slice(0, 10);
   }
 
   const id = uuidv4();
@@ -410,7 +439,7 @@ app.post<{
 
   const newAlarm: AlarmRecord = {
     id,
-    target_time: dateObj.toISOString(),
+    target_time: effectiveTargetIso,
     label: label.trim(),
     description: description ? description.trim() : undefined,
     status: 'pending',
