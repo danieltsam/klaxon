@@ -3,65 +3,87 @@ import type { AlarmRecord } from './db.js';
 /**
  * The closed set of reasons delivery is considered unhealthy. A quiet interval
  * with no alarms is NOT one of them: the monitor is due-aware, not a heartbeat.
+ *
+ * Every reason must be *transient*: it has to clear on its own once the
+ * condition is fixed, or the webhook and phone push cry wolf forever (spec
+ * §5.4, §8). That is why a failed dispatch only counts for an alarm that can
+ * still be dispatched again (pending/snoozed) — a terminal alarm never sends
+ * another message, so its historical failure is not actionable.
  */
 export type DeliveryHealthReason =
   | 'no_registered_devices'
-  | 'last_dispatch_failed'
-  | 'alarm_due_without_report';
+  | 'firebase_uninitialized'
+  | 'dispatch_failed'
+  | 'alarm_missed';
 
 export interface DeliveryHealth {
   ok: boolean;
   reasons: DeliveryHealthReason[];
 }
 
-/** How far ahead an alarm counts as "due soon" for the without-report check. */
-export const DUE_WITHIN_MS = 15 * 60 * 1000;
+/**
+ * How long a `missed` alarm stays actionable. A recently missed alarm is worth
+ * raising; an older one is history, and flagging it would make `ok` false
+ * forever because a missed alarm never transitions again.
+ */
+export const MISSED_ALERT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Pure, due-aware delivery-health evaluation.
  *
- * Flags: zero registered devices; any alarm whose most recent dispatch failed;
- * and a pending/snoozed alarm that is due soon but was never dispatched
- * (`last_dispatch_sent` falsy). It never flags merely because time passed —
- * quiet intervals with no alarms stay healthy.
+ * Flags: zero registered devices; Firebase unable to send while a device is
+ * registered (mock mode delivers nothing — spec §2); an active (pending or
+ * snoozed) alarm whose most recent dispatch failed; and a `missed` alarm inside
+ * the alert window. It never flags merely because time passed — quiet intervals
+ * with no alarms stay healthy — and every reason clears when its cause does.
  */
 export function evaluateDeliveryHealth(input: {
   deviceCount: number;
   alarms: AlarmRecord[];
   now: Date;
-  dueWithinMs?: number;
+  firebaseReady?: boolean;
+  missedAlertWindowMs?: number;
 }): DeliveryHealth {
   const reasons: DeliveryHealthReason[] = [];
-  const dueWithinMs = input.dueWithinMs ?? DUE_WITHIN_MS;
+  const firebaseReady = input.firebaseReady ?? true;
+  const missedAlertWindowMs = input.missedAlertWindowMs ?? MISSED_ALERT_WINDOW_MS;
   const nowMs = input.now.getTime();
-  const horizonMs = nowMs + dueWithinMs;
+  const missedFloorMs = nowMs - missedAlertWindowMs;
 
   if (input.deviceCount === 0) {
     reasons.push('no_registered_devices');
+  } else if (!firebaseReady) {
+    reasons.push('firebase_uninitialized');
   }
 
-  let lastDispatchFailed = false;
-  let dueWithoutReport = false;
+  let dispatchFailed = false;
+  let alarmMissed = false;
 
   for (const alarm of input.alarms) {
-    if (alarm.last_dispatch_failed != null && alarm.last_dispatch_failed > 0) {
-      lastDispatchFailed = true;
+    // Only an alarm that can still be dispatched again makes a past failure
+    // actionable. A terminal alarm (missed/dismissed/disabled/canceled) never
+    // sends another message, so its failure must not keep `ok` false.
+    if (
+      (alarm.status === 'pending' || alarm.status === 'snoozed') &&
+      alarm.last_dispatch_failed != null &&
+      alarm.last_dispatch_failed > 0
+    ) {
+      dispatchFailed = true;
     }
 
-    if (alarm.status === 'pending' || alarm.status === 'snoozed') {
-      const targetMs = new Date(alarm.target_time).getTime();
-      const dueSoon = Number.isFinite(targetMs) && targetMs >= nowMs && targetMs <= horizonMs;
-      if (dueSoon && !alarm.last_dispatch_sent) {
-        dueWithoutReport = true;
+    if (alarm.status === 'missed' && alarm.missed_at) {
+      const missedMs = new Date(alarm.missed_at).getTime();
+      if (Number.isFinite(missedMs) && missedMs >= missedFloorMs && missedMs <= nowMs) {
+        alarmMissed = true;
       }
     }
   }
 
-  if (lastDispatchFailed) {
-    reasons.push('last_dispatch_failed');
+  if (dispatchFailed) {
+    reasons.push('dispatch_failed');
   }
-  if (dueWithoutReport) {
-    reasons.push('alarm_due_without_report');
+  if (alarmMissed) {
+    reasons.push('alarm_missed');
   }
 
   return { ok: reasons.length === 0, reasons };
