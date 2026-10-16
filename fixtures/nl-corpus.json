@@ -1,0 +1,3998 @@
+{
+  "schemaVersion": 1,
+  "artifact": "Categorised synthetic corpus of natural-language alarm inputs and their expected resolution. Measurement artifact only: no parser or application source was modified.",
+  "canonicalParser": "clients/core/src/time.ts (parseTime / parseLeadingTime)",
+  "resolution": "Resolution = parseLeadingTime(input, now): `local` is the targetTime wall-clock, `repeatDays` are ISO weekdays (1=Mon..7=Sun, [] = one-time), `label` is the unconsumed remainder (rest). For an invalid case `local`/`repeatDays`/`label` are null.",
+  "nowConvention": "Local wall-clock ISO date-time WITHOUT a timezone offset, matching fixtures/time-parse-cases.json. Default now is Monday 21 Sep 2026 10:00 local; cases that need a Monday-is-today, forward-only, or January/December-rollover view vary it.",
+  "statusLegend": {
+    "supported": "Verified to pass against the current parser (machine-checked; machineVerified=true).",
+    "target": "Should resolve this way after the grammar expansion but does not today; actual_today records current behaviour."
+  },
+  "verification": "Every `supported` case was executed against clients/core/src/time.ts via `npx tsx` (parseLeadingTime) and matched; a failing supported case would have been a corpus defect. `actual_today` on every `target` case is the live parser's real output.",
+  "grammarNotes": {
+    "forwardOnly": "A weekday/clock resolves to the next occurrence strictly in the future: a passed 'mon 8:30am' on a Monday is next Monday, an unpassed one is today.",
+    "bareMeridiemlessHour": "A bare or colon time without a meridiem is 24-hour; a meridiem implies a 1-12 hour (13pm and 0am are invalid).",
+    "connectorStripping": "'at' and 'in' connectors are stripped.",
+    "labelSpan": "Time is the longest leading prefix; when none parses, the longest parseable span anywhere is used (trailing spans preferred), so label-first phrasing works and a stray bare integer inside a label is left alone."
+  },
+  "semantics": {
+    "dayPeriods": "morning = 09:00, afternoon = 15:00, evening = 19:00, tonight = 21:00, noon = 12:00, midnight = 00:00; a passed period rolls forward (day periods, target).",
+    "intervals": "intervalWeeks encodes fortnightly recurrence (every 2 weeks / every other <day> / every 2nd <day>). With no clock, an interval anchors to now + interval preserving wall-clock; with a weekday it anchors to that weekday's next occurrence.",
+    "next/last/this-week": "next monday = the following Monday; next week = same wall-clock one week ahead; this weekend = the coming Saturday 00:00; last friday = the already-passed Friday (backwards; target).",
+    "absoluteDates": "Accepted once supported: '25 dec', '25/12' (day/month), '2026-12-31', 'jan 4th', 'december 25'. No year => the next occurrence (a passed date rolls to next year).",
+    "metadata": "Inline alarm metadata (target): tone words chime/digital; ramp 'Ns ramp' | no ramp=0 | quick ramp=15 | gentle ramp=30 | deep ramp=60; 'note: <text>' sets the description."
+  },
+  "summary": {
+    "total": 162,
+    "supported": 106,
+    "target": 56,
+    "traps": 17,
+    "byCategory": {
+      "durations": 25,
+      "clocks": 18,
+      "day-qualified": 14,
+      "weekdays": 14,
+      "weekday-sets": 30,
+      "absolute-dates": 13,
+      "intervals": 6,
+      "day-periods": 8,
+      "label-placement": 10,
+      "alarm-metadata": 12,
+      "traps": 6,
+      "invalid": 6
+    }
+  },
+  "cases": [
+    {
+      "id": "dur-25m",
+      "category": "durations",
+      "input": "25m",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 10,
+          "mi": 25,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-in-25m",
+      "category": "durations",
+      "input": "in 25m",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 10,
+          "mi": 25,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-25m-oven",
+      "category": "durations",
+      "input": "25m Oven",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 10,
+          "mi": 25,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "Oven"
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-in-25m-oven",
+      "category": "durations",
+      "input": "in 25m Oven",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 10,
+          "mi": 25,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "Oven"
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-1h",
+      "category": "durations",
+      "input": "1h",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 11,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-1h30m",
+      "category": "durations",
+      "input": "1h30m",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 11,
+          "mi": 30,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-2h15m",
+      "category": "durations",
+      "input": "2h15m",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 12,
+          "mi": 15,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-in-1h-30m",
+      "category": "durations",
+      "input": "in 1h 30m",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 11,
+          "mi": 30,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-90s",
+      "category": "durations",
+      "input": "90s",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 10,
+          "mi": 1,
+          "s": 30
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-45s",
+      "category": "durations",
+      "input": "45s",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 10,
+          "mi": 0,
+          "s": 45
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-45-seconds",
+      "category": "durations",
+      "input": "45 seconds",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 10,
+          "mi": 0,
+          "s": 45
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-99m",
+      "category": "durations",
+      "input": "99m",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 11,
+          "mi": 39,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-in-90-minutes",
+      "category": "durations",
+      "input": "in 90 minutes",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 11,
+          "mi": 30,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-in-1-hour",
+      "category": "durations",
+      "input": "in 1 hour",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 11,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-in-2-hours",
+      "category": "durations",
+      "input": "in 2 hours",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 12,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-in-2h-30m-words",
+      "category": "durations",
+      "input": "in 2 hours 30 minutes",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 12,
+          "mi": 30,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-in-100-seconds",
+      "category": "durations",
+      "input": "in 100 seconds",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 10,
+          "mi": 1,
+          "s": 40
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-30s",
+      "category": "durations",
+      "input": "30s",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 10,
+          "mi": 0,
+          "s": 30
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "trap": true,
+      "note": "30s is a duration, not a ramp; the parser must not read it as ramp_seconds.",
+      "machineVerified": true
+    },
+    {
+      "id": "dur-in-3-days",
+      "category": "durations",
+      "input": "in 3 days",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 24,
+          "h": 10,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "trap": true,
+      "note": "Day/week duration units are unsupported: the 'in 3' prefix parses as 03:00 tomorrow and 'days' is rejected.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 3,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "days"
+      }
+    },
+    {
+      "id": "dur-in-1-day",
+      "category": "durations",
+      "input": "in 1 day",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 10,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "note": "Day unit unsupported; 'in 1' parses as 01:00 tomorrow and 'day' is rejected.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 1,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "day"
+      }
+    },
+    {
+      "id": "dur-in-2-weeks",
+      "category": "durations",
+      "input": "in 2 weeks",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 10,
+          "d": 5,
+          "h": 10,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "note": "Week unit unsupported; 'in 2' parses as 02:00 tomorrow and 'weeks' is rejected.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 2,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "weeks"
+      }
+    },
+    {
+      "id": "dur-2-weeks-from-now",
+      "category": "durations",
+      "input": "2 weeks from now",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 10,
+          "d": 5,
+          "h": 10,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "trap": true,
+      "note": "'2' is read as the bare hour 02:00 tomorrow; 'weeks from now' becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 2,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "weeks from now"
+      }
+    },
+    {
+      "id": "dur-in-1w-2d",
+      "category": "durations",
+      "input": "in 1w 2d",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 30,
+          "h": 10,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "note": "w/d unit abbreviations are unknown, so nothing at all parses.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "dur-3-days-bare",
+      "category": "durations",
+      "input": "3 days",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 24,
+          "h": 10,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "trap": true,
+      "note": "Without 'in', '3' parses as 03:00 tomorrow and 'days' is rejected.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 3,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "days"
+      }
+    },
+    {
+      "id": "dur-2-weeks-bare",
+      "category": "durations",
+      "input": "2 weeks",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 10,
+          "d": 5,
+          "h": 10,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "trap": true,
+      "note": "'2' parses as 02:00 tomorrow, 'weeks' becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 2,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "weeks"
+      }
+    },
+    {
+      "id": "clk-7am",
+      "category": "clocks",
+      "input": "7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-730pm",
+      "category": "clocks",
+      "input": "7:30pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 19,
+          "mi": 30,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-1900",
+      "category": "clocks",
+      "input": "19:00",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 19,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-2359",
+      "category": "clocks",
+      "input": "23:59",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 23,
+          "mi": 59,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-2359-eq",
+      "category": "clocks",
+      "input": "23:59",
+      "now": "2026-09-21T23:59:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 23,
+          "mi": 59,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "At exact equality the time is treated as passed and rolls a day.",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-12am",
+      "category": "clocks",
+      "input": "12am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-12pm",
+      "category": "clocks",
+      "input": "12pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 12,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-1200am",
+      "category": "clocks",
+      "input": "12:00am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-0000",
+      "category": "clocks",
+      "input": "00:00",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-7pm-split",
+      "category": "clocks",
+      "input": "7 pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 19,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-730pm-split",
+      "category": "clocks",
+      "input": "7:30 pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 19,
+          "mi": 30,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-at-7am",
+      "category": "clocks",
+      "input": "at 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-6pm",
+      "category": "clocks",
+      "input": "6pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 18,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-bare-7",
+      "category": "clocks",
+      "input": "7",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "trap": true,
+      "note": "A lone integer is a valid 24-hour bare hour; safe only because it is the entire input.",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-bare-7-future",
+      "category": "clocks",
+      "input": "7",
+      "now": "2026-09-21T06:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-bare-19",
+      "category": "clocks",
+      "input": "19",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 19,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-730",
+      "category": "clocks",
+      "input": "7:30",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 30,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "No meridiem means 24-hour; 07:30 has passed so it rolls to tomorrow.",
+      "machineVerified": true
+    },
+    {
+      "id": "clk-0700-future",
+      "category": "clocks",
+      "input": "07:00",
+      "now": "2026-09-21T06:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "day-today",
+      "category": "day-qualified",
+      "input": "today",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "A passed 'today' (midnight) rolls forward to tomorrow.",
+      "machineVerified": true
+    },
+    {
+      "id": "day-tomorrow",
+      "category": "day-qualified",
+      "input": "tomorrow",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "day-tmr",
+      "category": "day-qualified",
+      "input": "tmr",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "day-tomorrow-8pm",
+      "category": "day-qualified",
+      "input": "tomorrow at 8pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 20,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "day-tomorrow-6pm",
+      "category": "day-qualified",
+      "input": "tomorrow 6pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 18,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "day-today-6pm",
+      "category": "day-qualified",
+      "input": "today 6pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 18,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "day-today-3pm",
+      "category": "day-qualified",
+      "input": "today at 3pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 15,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "day-today-9am",
+      "category": "day-qualified",
+      "input": "today 9am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 9,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "A passed 'today' clock rolls forward to tomorrow.",
+      "machineVerified": true
+    },
+    {
+      "id": "day-next-monday",
+      "category": "day-qualified",
+      "input": "next monday",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 28,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "note": "'next' is not a qualifier: 'monday' parses as next Monday and 'next' is captured as the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 28,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "next"
+      }
+    },
+    {
+      "id": "day-next-week",
+      "category": "day-qualified",
+      "input": "next week",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 28,
+          "h": 10,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "'next week' = same wall-clock one week ahead.",
+      "note": "Neither token parses, so the whole input is unparseable.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "day-this-weekend",
+      "category": "day-qualified",
+      "input": "this weekend",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 26,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "'this weekend' = the coming Saturday at 00:00.",
+      "note": "'weekend' (singular) is not recognised; nothing parses.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "day-last-friday",
+      "category": "day-qualified",
+      "input": "last friday",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 18,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "'last friday' = the Friday that already passed (backwards resolution).",
+      "note": "'friday' resolves forward to Fri 25 Sep and 'last' becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 25,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "last"
+      }
+    },
+    {
+      "id": "day-tomorrow-morning",
+      "category": "day-qualified",
+      "input": "tomorrow morning",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 9,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "'morning' = 09:00.",
+      "note": "'tomorrow' parses to midnight and 'morning' becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "morning"
+      }
+    },
+    {
+      "id": "day-tomorrow-noon",
+      "category": "day-qualified",
+      "input": "tomorrow noon",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 12,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "'noon' = 12:00.",
+      "note": "'tomorrow' parses to midnight and 'noon' becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "noon"
+      }
+    },
+    {
+      "id": "wd-mon-830-future",
+      "category": "weekdays",
+      "input": "mon 8:30am",
+      "now": "2026-09-21T08:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 8,
+          "mi": 30,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "Forward-only: an unpassed weekday time is today.",
+      "machineVerified": true
+    },
+    {
+      "id": "wd-mon-830-passed",
+      "category": "weekdays",
+      "input": "mon 8:30am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 28,
+          "h": 8,
+          "mi": 30,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "Forward-only: a passed Monday rolls to next Monday, never today/past.",
+      "machineVerified": true
+    },
+    {
+      "id": "wd-tue-830",
+      "category": "weekdays",
+      "input": "tue 8:30am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 8,
+          "mi": 30,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "wd-wed-830",
+      "category": "weekdays",
+      "input": "wed 8:30am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 23,
+          "h": 8,
+          "mi": 30,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "wd-thu-830",
+      "category": "weekdays",
+      "input": "thu 8:30am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 24,
+          "h": 8,
+          "mi": 30,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "wd-fri-830",
+      "category": "weekdays",
+      "input": "fri 8:30am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 25,
+          "h": 8,
+          "mi": 30,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "wd-sat-830",
+      "category": "weekdays",
+      "input": "sat 8:30am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 26,
+          "h": 8,
+          "mi": 30,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "wd-sun-830",
+      "category": "weekdays",
+      "input": "sun 8:30am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 27,
+          "h": 8,
+          "mi": 30,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "wd-mon-6pm",
+      "category": "weekdays",
+      "input": "mon 6pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 18,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "Forward-only: an unpassed Monday time is today.",
+      "machineVerified": true
+    },
+    {
+      "id": "wd-tuesday-7pm",
+      "category": "weekdays",
+      "input": "tuesday 7pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 19,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "wd-weds-7am",
+      "category": "weekdays",
+      "input": "weds 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 23,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "wd-thurs-7am",
+      "category": "weekdays",
+      "input": "thurs 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 24,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "wd-tues-9am",
+      "category": "weekdays",
+      "input": "tues 9am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 9,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "wd-monday-bare",
+      "category": "weekdays",
+      "input": "monday",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 28,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "A bare weekday is a one-off day qualifier at midnight, rolled forward.",
+      "machineVerified": true
+    },
+    {
+      "id": "set-daily-7am",
+      "category": "weekday-sets",
+      "input": "daily 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-every-day-7am",
+      "category": "weekday-sets",
+      "input": "every day 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-every-day-at-10pm",
+      "category": "weekday-sets",
+      "input": "every day at 10pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 22,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-daily-6am",
+      "category": "weekday-sets",
+      "input": "daily 6am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 6,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-daily-at-6am",
+      "category": "weekday-sets",
+      "input": "daily at 6am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 6,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-weekdays-7am",
+      "category": "weekday-sets",
+      "input": "weekdays 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-weekdays-at-7am",
+      "category": "weekday-sets",
+      "input": "weekdays at 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-weekends-7am",
+      "category": "weekday-sets",
+      "input": "weekends 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 26,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          6,
+          7
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-weekends-at-9am",
+      "category": "weekday-sets",
+      "input": "weekends at 9am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 26,
+          "h": 9,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          6,
+          7
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-mon-fri-7am",
+      "category": "weekday-sets",
+      "input": "mon-fri 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-mon-wed-fri-7am",
+      "category": "weekday-sets",
+      "input": "mon,wed,fri 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 23,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          3,
+          5
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-mon-wed-fri-spaced",
+      "category": "weekday-sets",
+      "input": "mon, wed, fri 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 23,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          3,
+          5
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-mon-wed-fri-at",
+      "category": "weekday-sets",
+      "input": "mon,wed,fri at 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 23,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          3,
+          5
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-every-mon-7am",
+      "category": "weekday-sets",
+      "input": "every mon 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 28,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-every-tuesday-8pm",
+      "category": "weekday-sets",
+      "input": "every tuesday 8pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 20,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          2
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-every-saturday-10am",
+      "category": "weekday-sets",
+      "input": "every saturday 10am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 26,
+          "h": 10,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          6
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-every-friday-6pm",
+      "category": "weekday-sets",
+      "input": "every friday 6pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 25,
+          "h": 18,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          5
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-every-mon-wed",
+      "category": "weekday-sets",
+      "input": "every mon,wed 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 23,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          3
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-every-mon-wed-spaced",
+      "category": "weekday-sets",
+      "input": "every mon, wed 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 23,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          3
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-2day-mon-tue",
+      "category": "weekday-sets",
+      "input": "mon,tue 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          2
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "Explicit 2-day set.",
+      "machineVerified": true
+    },
+    {
+      "id": "set-3day-tue-thu-sat",
+      "category": "weekday-sets",
+      "input": "tue,thu,sat 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          2,
+          4,
+          6
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "Explicit 3-day set.",
+      "machineVerified": true
+    },
+    {
+      "id": "set-4day",
+      "category": "weekday-sets",
+      "input": "mon,tue,wed,thu 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "Explicit 4-day set.",
+      "machineVerified": true
+    },
+    {
+      "id": "set-5day",
+      "category": "weekday-sets",
+      "input": "mon,tue,wed,thu,fri 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "Explicit 5-day set.",
+      "machineVerified": true
+    },
+    {
+      "id": "set-6day",
+      "category": "weekday-sets",
+      "input": "mon,tue,wed,thu,fri,sat 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "Explicit 6-day set.",
+      "machineVerified": true
+    },
+    {
+      "id": "set-7day",
+      "category": "weekday-sets",
+      "input": "mon,tue,wed,thu,fri,sat,sun 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "Explicit 7-day set (equivalent to daily).",
+      "machineVerified": true
+    },
+    {
+      "id": "set-range-fri-mon",
+      "category": "weekday-sets",
+      "input": "fri-mon 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 25,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          5,
+          6,
+          7,
+          1
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "Wrapping inclusive range.",
+      "machineVerified": true
+    },
+    {
+      "id": "set-range-sat-sun",
+      "category": "weekday-sets",
+      "input": "sat-sun 9am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 26,
+          "h": 9,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          6,
+          7
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-tue-thu-6pm",
+      "category": "weekday-sets",
+      "input": "tue,thu 6pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 18,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          2,
+          4
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-sat-sun-8am",
+      "category": "weekday-sets",
+      "input": "sat,sun 8am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 26,
+          "h": 8,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          6,
+          7
+        ],
+        "label": ""
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "set-recur-label",
+      "category": "weekday-sets",
+      "input": "gym every tuesday at 8pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 20,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          2
+        ],
+        "label": "gym"
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "abs-dec25-7am",
+      "category": "absolute-dates",
+      "input": "dec 25 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 12,
+          "d": 25,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "trap": true,
+      "note": "'dec' is unknown and rejected; no absolute-date grammar exists.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "dec 25"
+      }
+    },
+    {
+      "id": "abs-dec25",
+      "category": "absolute-dates",
+      "input": "dec 25",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 12,
+          "d": 25,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "note": "'dec' unparseable, nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "abs-25-dec",
+      "category": "absolute-dates",
+      "input": "25 dec",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 12,
+          "d": 25,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "note": "Suffix month unsupported; '25' is invalid as a bare hour and nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "abs-25-12",
+      "category": "absolute-dates",
+      "input": "25/12",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 12,
+          "d": 25,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "day/month order, matching '25 dec'.",
+      "note": "Slash dates unsupported; nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "abs-31-12",
+      "category": "absolute-dates",
+      "input": "31/12",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 12,
+          "d": 31,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "note": "Slash dates unsupported; nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "abs-iso-date",
+      "category": "absolute-dates",
+      "input": "2026-12-31",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 12,
+          "d": 31,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "note": "ISO dates unsupported; the hyphen form is tried as a weekday range and fails.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "abs-iso-9am",
+      "category": "absolute-dates",
+      "input": "2026-12-31 9am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 12,
+          "d": 31,
+          "h": 9,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "note": "The trailing '9am' parses on its own (tomorrow 09:00) and the date becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 9,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "2026-12-31"
+      }
+    },
+    {
+      "id": "abs-jan-4th",
+      "category": "absolute-dates",
+      "input": "jan 4th",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2027,
+          "mo": 1,
+          "d": 4,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "no year given; a passed date rolls to next year.",
+      "note": "'jan' and the ordinal suffix are unsupported; nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "abs-25th-december",
+      "category": "absolute-dates",
+      "input": "25th december",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 12,
+          "d": 25,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "note": "Ordinal day + full month unsupported; nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "abs-december-25",
+      "category": "absolute-dates",
+      "input": "december 25",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 12,
+          "d": 25,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "note": "Full month name unsupported; nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "abs-dec25-upcoming",
+      "category": "absolute-dates",
+      "input": "dec 25",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 12,
+          "d": 25,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "note": "September: 'dec 25' is upcoming this year but nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "abs-dec25-passed-year",
+      "category": "absolute-dates",
+      "input": "dec 25",
+      "now": "2026-01-05T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 12,
+          "d": 25,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "January: 'dec 25' without a year is the coming 25 Dec 2026.",
+      "note": "January: 'dec 25' is upcoming this year but nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "abs-jan1-from-dec",
+      "category": "absolute-dates",
+      "input": "1 jan",
+      "now": "2026-12-28T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2027,
+          "mo": 1,
+          "d": 1,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "late December: '1 jan' without a year is the coming 1 Jan 2027.",
+      "note": "Year rollover date unsupported; nothing resolves.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 12,
+          "d": 29,
+          "h": 1,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "jan"
+      }
+    },
+    {
+      "id": "int-every-2-weeks",
+      "category": "intervals",
+      "input": "every 2 weeks",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 10,
+          "d": 5,
+          "h": 10,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "",
+        "intervalWeeks": 2
+      },
+      "status": "target",
+      "semantics": "no clock: anchored to now + interval, preserving wall-clock.",
+      "note": "The interval is lost: '2' parses as the bare hour 02:00 tomorrow and the label becomes 'every weeks'.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 2,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "every weeks"
+      }
+    },
+    {
+      "id": "int-every-2-weeks-7am",
+      "category": "intervals",
+      "input": "every 2 weeks 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "",
+        "intervalWeeks": 2
+      },
+      "status": "target",
+      "trap": true,
+      "note": "The interval is lost: the trailing '7am' parses and 'every 2 weeks' becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "every 2 weeks"
+      }
+    },
+    {
+      "id": "int-every-other-monday",
+      "category": "intervals",
+      "input": "every other monday",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 28,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1
+        ],
+        "label": "",
+        "intervalWeeks": 2
+      },
+      "status": "target",
+      "semantics": "every 2nd Monday; first occurrence is the next Monday.",
+      "note": "'other' breaks the weekday group; trailing 'monday' resolves and 'every other' becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 28,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "every other"
+      }
+    },
+    {
+      "id": "int-every-other-monday-7am",
+      "category": "intervals",
+      "input": "every other monday 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 28,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          1
+        ],
+        "label": "",
+        "intervalWeeks": 2
+      },
+      "status": "target",
+      "note": "'other' breaks the group; trailing 'monday 7am' resolves and 'every other' becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 28,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "every other"
+      }
+    },
+    {
+      "id": "int-every-2nd-tuesday",
+      "category": "intervals",
+      "input": "every 2nd tuesday",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          2
+        ],
+        "label": "",
+        "intervalWeeks": 2
+      },
+      "status": "target",
+      "semantics": "every 2nd Tuesday; first occurrence is the next Tuesday.",
+      "note": "'2nd' breaks the group; trailing 'tuesday' resolves and 'every 2nd' becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "every 2nd"
+      }
+    },
+    {
+      "id": "int-every-2nd-tuesday-7am",
+      "category": "intervals",
+      "input": "every 2nd tuesday 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          2
+        ],
+        "label": "",
+        "intervalWeeks": 2
+      },
+      "status": "target",
+      "note": "'2nd' breaks the group; trailing 'tuesday 7am' resolves and 'every 2nd' becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "every 2nd"
+      }
+    },
+    {
+      "id": "per-this-afternoon",
+      "category": "day-periods",
+      "input": "this afternoon",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 15,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "'afternoon' = 15:00.",
+      "note": "Day-period words are unsupported; nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "per-afternoon",
+      "category": "day-periods",
+      "input": "afternoon",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 15,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "'afternoon' = 15:00 (rolled forward if passed).",
+      "note": "Day-period words are unsupported; nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "per-morning",
+      "category": "day-periods",
+      "input": "morning",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 9,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "'morning' = 09:00 (rolled forward if passed).",
+      "note": "Day-period words are unsupported; nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "per-this-morning",
+      "category": "day-periods",
+      "input": "this morning",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 9,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "'morning' = 09:00; passed so rolls forward.",
+      "note": "Day-period words are unsupported; nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "per-tonight",
+      "category": "day-periods",
+      "input": "tonight",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 21,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "'tonight' = 21:00 today (rolled forward if passed).",
+      "note": "Day-period words are unsupported; nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "per-this-evening",
+      "category": "day-periods",
+      "input": "this evening",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 19,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "'evening' = 19:00.",
+      "note": "Day-period words are unsupported; nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "per-noon",
+      "category": "day-periods",
+      "input": "noon",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 12,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "'noon' = 12:00.",
+      "note": "'noon' is unsupported; nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "per-midnight",
+      "category": "day-periods",
+      "input": "midnight",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "'midnight' = 00:00 (rolled forward if passed).",
+      "note": "'midnight' is unsupported; nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
+      "id": "lab-leading",
+      "category": "label-placement",
+      "input": "uni meeting tomorrow at 8pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 20,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "uni meeting"
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "lab-trailing",
+      "category": "label-placement",
+      "input": "tomorrow 8pm uni meeting",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 20,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "uni meeting"
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "lab-interior",
+      "category": "label-placement",
+      "input": "uni meeting tomorrow 7am yoga",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "uni meeting yoga"
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "lab-casing",
+      "category": "label-placement",
+      "input": "Uni Meeting tomorrow at 8pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 20,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "Uni Meeting"
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "lab-gym",
+      "category": "label-placement",
+      "input": "gym tomorrow 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "gym"
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "lab-call-mum",
+      "category": "label-placement",
+      "input": "tomorrow 6pm Call mum",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 18,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "Call mum"
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "lab-casing2",
+      "category": "label-placement",
+      "input": "tomorrow 6pm Call Mum",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 18,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "Call Mum"
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "lab-5-min-warning",
+      "category": "label-placement",
+      "input": "8am 5 minute warning",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 8,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "5 minute warning"
+      },
+      "status": "supported",
+      "trap": true,
+      "note": "'5 minute' must not be joined to '8am' as a duration; the whole trailing text is the label.",
+      "machineVerified": true
+    },
+    {
+      "id": "lab-call-at-5",
+      "category": "label-placement",
+      "input": "call at 5 tomorrow 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "call at 5"
+      },
+      "status": "supported",
+      "trap": true,
+      "note": "The stray '5' stays in the label; the trailing 'tomorrow 7am' wins.",
+      "machineVerified": true
+    },
+    {
+      "id": "lab-walk-at-5",
+      "category": "label-placement",
+      "input": "walk at 5 tomorrow 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "walk at 5"
+      },
+      "status": "supported",
+      "trap": true,
+      "note": "The stray '5' stays in the label; the trailing 'tomorrow 7am' wins.",
+      "machineVerified": true
+    },
+    {
+      "id": "meta-chime-lead",
+      "category": "alarm-metadata",
+      "input": "chime tomorrow 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "",
+        "alarm": {
+          "sound_tone": "chime"
+        }
+      },
+      "status": "target",
+      "note": "'chime' is not extracted; it becomes the label and the alarm keeps the app's default tone.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "chime"
+      }
+    },
+    {
+      "id": "meta-chime-trail",
+      "category": "alarm-metadata",
+      "input": "tomorrow 7am chime",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "",
+        "alarm": {
+          "sound_tone": "chime"
+        }
+      },
+      "status": "target",
+      "note": "'chime' is not extracted; it becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "chime"
+      }
+    },
+    {
+      "id": "meta-digital",
+      "category": "alarm-metadata",
+      "input": "digital tomorrow 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "",
+        "alarm": {
+          "sound_tone": "digital"
+        }
+      },
+      "status": "target",
+      "note": "'digital' is not extracted; it becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "digital"
+      }
+    },
+    {
+      "id": "meta-gentle-ramp",
+      "category": "alarm-metadata",
+      "input": "gentle ramp tomorrow 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "",
+        "alarm": {
+          "ramp_seconds": 30
+        }
+      },
+      "status": "target",
+      "semantics": "gentle ramp = 30s (Gradual, the default).",
+      "note": "'gentle ramp' is not extracted; it becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "gentle ramp"
+      }
+    },
+    {
+      "id": "meta-30s-ramp",
+      "category": "alarm-metadata",
+      "input": "30s ramp tomorrow 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "",
+        "alarm": {
+          "ramp_seconds": 30
+        }
+      },
+      "status": "target",
+      "note": "'30s ramp' is not extracted; it becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 10,
+          "mi": 0,
+          "s": 30
+        },
+        "repeatDays": [],
+        "label": "ramp tomorrow 7am"
+      }
+    },
+    {
+      "id": "meta-15s-ramp",
+      "category": "alarm-metadata",
+      "input": "15s ramp tomorrow 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "",
+        "alarm": {
+          "ramp_seconds": 15
+        }
+      },
+      "status": "target",
+      "note": "'15s ramp' is not extracted; it becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 10,
+          "mi": 0,
+          "s": 15
+        },
+        "repeatDays": [],
+        "label": "ramp tomorrow 7am"
+      }
+    },
+    {
+      "id": "meta-no-ramp",
+      "category": "alarm-metadata",
+      "input": "no ramp tomorrow 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "",
+        "alarm": {
+          "ramp_seconds": 0
+        }
+      },
+      "status": "target",
+      "semantics": "no ramp = 0s (Instant).",
+      "note": "'no ramp' is not extracted; it becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "no ramp"
+      }
+    },
+    {
+      "id": "meta-quick-ramp",
+      "category": "alarm-metadata",
+      "input": "quick ramp tomorrow 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "",
+        "alarm": {
+          "ramp_seconds": 15
+        }
+      },
+      "status": "target",
+      "semantics": "quick ramp = 15s.",
+      "note": "'quick ramp' is not extracted; it becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "quick ramp"
+      }
+    },
+    {
+      "id": "meta-deep-ramp",
+      "category": "alarm-metadata",
+      "input": "deep ramp tomorrow 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "",
+        "alarm": {
+          "ramp_seconds": 60
+        }
+      },
+      "status": "target",
+      "semantics": "deep ramp = 60s (Deep Sleep).",
+      "note": "'deep ramp' is not extracted; it becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "deep ramp"
+      }
+    },
+    {
+      "id": "meta-note",
+      "category": "alarm-metadata",
+      "input": "tomorrow 7am note: bring towel",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "",
+        "alarm": {
+          "description": "bring towel"
+        }
+      },
+      "status": "target",
+      "note": "'note: …' is not extracted; the whole 'note: bring towel' becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "note: bring towel"
+      }
+    },
+    {
+      "id": "meta-combined",
+      "category": "alarm-metadata",
+      "input": "chime 30s ramp tomorrow 7am note: gym",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "",
+        "alarm": {
+          "sound_tone": "chime",
+          "ramp_seconds": 30,
+          "description": "gym"
+        }
+      },
+      "status": "target",
+      "note": "None of the metadata is extracted; all of it collapses into the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "chime 30s ramp note: gym"
+      }
+    },
+    {
+      "id": "meta-note-with-label",
+      "category": "alarm-metadata",
+      "input": "uni meeting tomorrow 7am note: bring towel",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "uni meeting",
+        "alarm": {
+          "description": "bring towel"
+        }
+      },
+      "status": "target",
+      "note": "The interior 'note: …' is no longer purely trailing, so the span search leaves the label as 'uni meeting note: bring towel'.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "uni meeting note: bring towel"
+      }
+    },
+    {
+      "id": "trap-5pm-date",
+      "category": "traps",
+      "input": "5pm 10/31",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 10,
+          "d": 31,
+          "h": 17,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "trap": true,
+      "note": "'5pm' is taken as today, and the date '10/31' silently becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 17,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "10/31"
+      }
+    },
+    {
+      "id": "trap-dance-practice",
+      "category": "traps",
+      "input": "dance practice every tuesday in the gym at 8pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 20,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [
+          2
+        ],
+        "label": "dance practice in the gym"
+      },
+      "status": "target",
+      "trap": true,
+      "note": "The trailing '8pm' wins: recurrence is lost, '8pm' resolves to today 20:00, and the rest is the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 20,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "dance practice every tuesday in the gym"
+      }
+    },
+    {
+      "id": "trap-buy-2-loaves",
+      "category": "traps",
+      "input": "buy 2 loaves tomorrow 8am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 8,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "buy 2 loaves"
+      },
+      "status": "supported",
+      "trap": true,
+      "note": "The bare '2' is correctly kept inside the label because the trailing span wins.",
+      "machineVerified": true
+    },
+    {
+      "id": "trap-meeting-3",
+      "category": "traps",
+      "input": "meeting 3 tomorrow 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "meeting 3"
+      },
+      "status": "supported",
+      "trap": true,
+      "note": "The bare '3' is correctly kept inside the label because the trailing span wins.",
+      "machineVerified": true
+    },
+    {
+      "id": "trap-next-monday-7am",
+      "category": "traps",
+      "input": "next monday 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 28,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "trap": true,
+      "note": "'next' is not consumed: the trailing 'monday 7am' resolves to next Monday and 'next' becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 28,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "next"
+      }
+    },
+    {
+      "id": "trap-30s-ramp",
+      "category": "traps",
+      "input": "30s ramp 7am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 10,
+          "mi": 0,
+          "s": 30
+        },
+        "repeatDays": [],
+        "label": "ramp 7am"
+      },
+      "status": "target",
+      "trap": true,
+      "note": "'30s' is consumed as a duration (now + 30s) instead of ramp_seconds, and 'ramp 7am' becomes the label.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 21,
+          "h": 10,
+          "mi": 0,
+          "s": 30
+        },
+        "repeatDays": [],
+        "label": "ramp 7am"
+      }
+    },
+    {
+      "id": "inv-25",
+      "category": "invalid",
+      "input": "25",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": null,
+        "repeatDays": null,
+        "label": null,
+        "invalid": true,
+        "rejectedToken": "25"
+      },
+      "status": "supported",
+      "note": "25 is out of range for a bare hour and no other form matches.",
+      "machineVerified": true
+    },
+    {
+      "id": "inv-24",
+      "category": "invalid",
+      "input": "24",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": null,
+        "repeatDays": null,
+        "label": null,
+        "invalid": true,
+        "rejectedToken": "24"
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "inv-13pm",
+      "category": "invalid",
+      "input": "13pm",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": null,
+        "repeatDays": null,
+        "label": null,
+        "invalid": true,
+        "rejectedToken": "13pm"
+      },
+      "status": "supported",
+      "note": "A meridiem implies a 1-12 hour.",
+      "machineVerified": true
+    },
+    {
+      "id": "inv-0am",
+      "category": "invalid",
+      "input": "0am",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": null,
+        "repeatDays": null,
+        "label": null,
+        "invalid": true,
+        "rejectedToken": "0am"
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "inv-7-60",
+      "category": "invalid",
+      "input": "7:60",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": null,
+        "repeatDays": null,
+        "label": null,
+        "invalid": true,
+        "rejectedToken": "7:60"
+      },
+      "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "inv-banana",
+      "category": "invalid",
+      "input": "banana",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": null,
+        "repeatDays": null,
+        "label": null,
+        "invalid": true,
+        "rejectedToken": "banana"
+      },
+      "status": "supported",
+      "machineVerified": true
+    }
+  ]
+}
