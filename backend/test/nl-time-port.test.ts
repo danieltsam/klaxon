@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
 /**
@@ -13,8 +13,12 @@ import vm from 'node:vm';
  * fixture that pins the TypeScript suite — `fixtures/time-parse-cases.json` —
  * pins this port. If this suite and clients/core's disagree, the port is wrong.
  *
- * The file is loaded exactly as the browser loads it (a classic script) plus via
- * CommonJS `require()`, which is what the file's UMD wrapper supports.
+ * The file is loaded exactly as the browser ships it — evaluated as a classic
+ * script in a fresh VM global — but with a CommonJS `module.exports` shim in
+ * that global so the UMD wrapper's node branch runs and the suite can drive the
+ * exported API. This needs no `public/package.json` marker (which would
+ * otherwise be publicly served at `/package.json`), and leaves `nl-time.js`
+ * itself untouched.
  */
 
 interface ExpectFields {
@@ -95,13 +99,34 @@ function findFixture(startDir: string): string {
   }
 }
 
-const require = createRequire(import.meta.url);
-// CommonJS require — the path the deliverable promises node can use.
-const NLTime = require('../public/nl-time.js') as NLTimeApi;
+/** Absolute path to the shipped port; this suite never modifies the file. */
+const nlTimePath = fileURLToPath(new URL('../public/nl-time.js', import.meta.url));
+const source = readFileSync(nlTimePath, 'utf8');
+
+/**
+ * Evaluate `nl-time.js` as a classic script in a fresh VM global carrying both a
+ * `window` (its browser root) and a `module.exports` shim (the UMD node branch),
+ * then hand back the exported API. Unlike `require()` this never consults a
+ * `public/package.json`, so that marker stays deleted and `/package.json` is no
+ * longer served.
+ */
+function loadNLTime(): NLTimeApi {
+  const sandbox: { module: { exports: unknown }; window: unknown } = {
+    module: { exports: {} },
+    window: {},
+  };
+  // In a browser `window` is the global object; mirror that here.
+  sandbox.window = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(source, sandbox);
+  return sandbox.module.exports as NLTimeApi;
+}
+
+// The same vm path the shape test below exercises, used to drive every case.
+const NLTime = loadNLTime();
 
 const fixturePath = findFixture(process.cwd());
 const fixture = JSON.parse(readFileSync(fixturePath, 'utf8')) as Fixture;
-const source = readFileSync(require.resolve('../public/nl-time.js'), 'utf8');
 
 function assertLocal(date: Date, expect: ExpectFields): void {
   assert.equal(date.getFullYear(), expect.y, `year of ${date.toISOString()}`);
@@ -113,7 +138,7 @@ function assertLocal(date: Date, expect: ExpectFields): void {
 }
 
 describe('nl-time.js — exported shape', () => {
-  it('exposes parseTime, parseLeadingTime and TimeParseError via require()', () => {
+  it('exposes parseTime, parseLeadingTime and TimeParseError via the vm module shim', () => {
     assert.equal(typeof NLTime.parseTime, 'function');
     assert.equal(typeof NLTime.parseLeadingTime, 'function');
     assert.equal(typeof NLTime.TimeParseError, 'function');
@@ -140,7 +165,8 @@ describe('nl-time.js — grammar table (shared fixture)', () => {
     it(`parses "${testCase.name}"`, () => {
       const parsed = NLTime.parseTime(testCase.input, new Date(testCase.now));
       assertLocal(parsed.targetTime, testCase.expect);
-      assert.deepEqual(parsed.repeatDays, testCase.days);
+      // `Array.from` re-homes the vm-realm array onto the host Array prototype.
+      assert.deepEqual(Array.from(parsed.repeatDays), testCase.days);
     });
   }
 });
