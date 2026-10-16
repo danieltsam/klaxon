@@ -319,9 +319,22 @@ so a hosted endpoint is a swap of *where* the URL points, not a rewrite.
 
 ## 11. Open Items for the Builder
 
-1. Does the `alarm` package use `setAlarmClock`? If not, what is the smallest change to get the strongest wake?
-2. Confirm `USE_EXACT_ALARM` alone suffices (no `SCHEDULE_EXACT_ALARM` runtime prompt) on the target devices.
-3. Choose the schedule-version representation (max `updated_at` vs a counter) and where it is exposed.
+Resolved or deferred during the reliability-core implementation (2026-10-17):
+
+1. **AlarmManager primitive — resolved, no code.** The `alarm` package (5.13.1) uses
+   `AlarmManager.setExactAndAllowWhileIdle`, **not** `setAlarmClock`, and it ships a
+   native `BootReceiver`. The ring is therefore already local-first and reboot-safe,
+   so **§5.1 needs no code**. `setExactAndAllowWhileIdle` is Doze-aware and is the
+   right call here; a future switch to `setAlarmClock` is an optional stronger wake,
+   not a requirement.
+2. **Exact-alarm permission — needs on-device confirmation.** The manifest declares
+   both `USE_EXACT_ALARM` (install-granted) and `SCHEDULE_EXACT_ALARM`. Confirm on the
+   target devices that arming never blocks on a runtime prompt. No code change is
+   indicated.
+3. **Schedule version — deferred (YAGNI).** The phone now pulls authoritative state on
+   every FCM receipt (in the foreground) plus on launch/resume, so state converges
+   without a version guard. Add a version only if a no-op pull proves costly or
+   out-of-order pokes are observed in practice.
 
 ---
 
