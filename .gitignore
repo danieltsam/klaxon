@@ -67,3 +67,10 @@ Thumbs.db
 # calendar mirror, so it must never be committed. docker-compose.yml interpolates
 # from it. See the README "Google Calendar sync" section.
 .env
+
+# Internal working notes and agent handoff docs. Kept in the local working copy
+# only: they carry homelab host/IP details and past-state snapshots that must not
+# go out with the public tree.
+AGENT_HANDOFF.md
+docs/PROJECT-STATE.md
+docs/agent_context/
