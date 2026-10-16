@@ -140,6 +140,46 @@ export function buildFcmMessage(
   };
 }
 
+/**
+ * A token is dead only when FCM says it is not registered. A payload error
+ * (`messaging/invalid-argument`) must NOT prune a healthy token.
+ */
+export function shouldPruneToken(code: string | undefined): boolean {
+  return code === 'messaging/registration-token-not-registered';
+}
+
+export interface RetryOptions {
+  attempts?: number;
+  baseDelayMs?: number;
+  isRetryable?: (e: unknown) => boolean;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * Retry a transient operation with exponential backoff. A non-retryable error
+ * (by default, a dead-token prune code) is rethrown immediately.
+ */
+export async function withRetry<T>(fn: () => Promise<T>, opts: RetryOptions = {}): Promise<T> {
+  const attempts = opts.attempts ?? 3;
+  const baseDelayMs = opts.baseDelayMs ?? 500;
+  const isRetryable = opts.isRetryable ?? ((e: unknown) => !shouldPruneToken((e as { code?: string } | undefined)?.code));
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isRetryable(err) || attempt === attempts - 1) {
+        throw err;
+      }
+      await sleep(baseDelayMs * 2 ** attempt);
+    }
+  }
+
+  // Unreachable: the loop either returns or throws.
+  throw new Error('withRetry: no attempts were made');
+}
+
 export async function sendFcmDataMessage(
   action: FcmAction,
   payload: FcmPayload
@@ -173,18 +213,15 @@ export async function sendFcmDataMessage(
     const message = buildFcmMessage(action, payload, token) as admin.messaging.Message;
 
     try {
-      await admin.messaging().send(message);
+      await withRetry(() => admin.messaging().send(message));
       sent++;
       console.log(`[FCM] Successfully delivered ${action} to token ${token.slice(0, 10)}...`);
     } catch (err: any) {
       failed++;
       console.error(`[FCM] Error sending message to token ${token.slice(0, 10)}...:`, err.message || err);
-      // Prune invalid or unregistered tokens
-      if (
-        err.code === 'messaging/registration-token-not-registered' ||
-        err.code === 'messaging/invalid-argument'
-      ) {
-        console.log(`[FCM] Pruning invalid token from DB: ${token.slice(0, 10)}...`);
+      // Prune only a genuinely dead token; a payload error must not delete a healthy one.
+      if (shouldPruneToken(err?.code)) {
+        console.log(`[FCM] Pruning dead token from DB: ${token.slice(0, 10)}...`);
         DeviceRepo.remove(token);
       }
     }
