@@ -67,17 +67,18 @@ export interface FcmPayload {
   [key: string]: any;
 }
 
-export async function sendFcmDataMessage(
-  action: 'CREATE' | 'CANCEL' | 'DISMISS' | 'DISABLE',
-  payload: FcmPayload
-): Promise<{ sent: number; failed: number }> {
-  const tokens = DeviceRepo.getAllTokens();
+export type FcmAction = 'CREATE' | 'CANCEL' | 'DISMISS' | 'DISABLE';
 
-  if (tokens.length === 0) {
-    console.log(`[FCM] No registered devices to send ${action} message for alarm ${payload.id}`);
-    return { sent: 0, failed: 0 };
-  }
+/** Freshness window for an FCM message: 1 hour. Safety still comes from local-first arming. */
+export const FCM_TTL_MS = 60 * 60 * 1000;
 
+/** FCM's hard limit for a data payload. A message over this is rejected by FCM. */
+export const FCM_MAX_PAYLOAD_BYTES = 4096;
+
+/**
+ * Build the string-valued data map FCM transports. FCM data values must be strings.
+ */
+export function buildFcmData(action: FcmAction, payload: FcmPayload): Record<string, string> {
   const dataPayload: Record<string, string> = {
     action,
     id: payload.id
@@ -104,6 +105,60 @@ export async function sendFcmDataMessage(
   dataPayload.recurrence_interval_weeks = String(payload.recurrence_interval_weeks ?? 1);
   dataPayload.recurrence_anchor_date = payload.recurrence_anchor_date ?? '';
 
+  return dataPayload;
+}
+
+/**
+ * Guard the payload before send so an oversized message fails loudly instead of
+ * being silently dropped at FCM's 4096-byte wall.
+ */
+export function validateFcmPayload(payload: FcmPayload): { ok: true } | { ok: false; error: string } {
+  const bytes = Buffer.byteLength(JSON.stringify(buildFcmData('CREATE', payload)), 'utf8');
+  if (bytes > FCM_MAX_PAYLOAD_BYTES) {
+    return { ok: false, error: `FCM payload exceeds 4096 bytes (got ${bytes})` };
+  }
+  return { ok: true };
+}
+
+/**
+ * Build a complete per-token FCM message: high priority, a moderate TTL (freshness,
+ * not safety), and a per-alarm collapse key so a superseded schedule is replaced.
+ */
+export function buildFcmMessage(
+  action: FcmAction,
+  payload: FcmPayload,
+  token: string
+): Record<string, unknown> {
+  return {
+    token,
+    android: {
+      priority: 'high',
+      ttl: FCM_TTL_MS,
+      collapseKey: `alarm:${payload.id}`
+    },
+    data: buildFcmData(action, payload)
+  };
+}
+
+export async function sendFcmDataMessage(
+  action: FcmAction,
+  payload: FcmPayload
+): Promise<{ sent: number; failed: number }> {
+  const tokens = DeviceRepo.getAllTokens();
+
+  if (tokens.length === 0) {
+    console.log(`[FCM] No registered devices to send ${action} message for alarm ${payload.id}`);
+    return { sent: 0, failed: 0 };
+  }
+
+  const validation = validateFcmPayload(payload);
+  if (!validation.ok) {
+    console.error(`[FCM] Refusing to send ${action} for alarm ${payload.id}: ${validation.error}`);
+    return { sent: 0, failed: tokens.length };
+  }
+
+  const dataPayload = buildFcmData(action, payload);
+
   console.log(`[FCM] Dispatching ${action} data payload to ${tokens.length} device(s):`, dataPayload);
 
   if (!isFirebaseInitialized) {
@@ -115,13 +170,7 @@ export async function sendFcmDataMessage(
   let failed = 0;
 
   for (const token of tokens) {
-    const message: admin.messaging.Message = {
-      token,
-      android: {
-        priority: 'high'
-      },
-      data: dataPayload
-    };
+    const message = buildFcmMessage(action, payload, token) as admin.messaging.Message;
 
     try {
       await admin.messaging().send(message);
