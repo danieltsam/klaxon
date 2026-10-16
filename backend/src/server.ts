@@ -10,7 +10,7 @@ import { GcalMirror, unconfiguredTransport, classifyGcalError, type GcalTranspor
 import { createGcalTransport } from './gcal-google.js';
 import { resolveGcalConfig } from './gcal-config.js';
 import { reconcile } from './gcal-reconcile.js';
-import { evaluateDeliveryHealth, type DeliveryHealth } from './alerts.js';
+import { evaluateDeliveryHealth, shouldSendAlert, sendWebhookAlert, type DeliveryHealth, type WebhookKind } from './alerts.js';
 
 dotenv.config();
 
@@ -129,6 +129,13 @@ const isTestRun =
 
 /** True once the sweep timer is armed. Stays false under a test run. */
 export let missedSweepStarted = false;
+
+/**
+ * When the last delivery-health alert was sent, so repeated sweep ticks during
+ * a persistent outage are throttled (spec §5.4). Module-level by design: it
+ * must survive across timer ticks.
+ */
+let lastAlertAt: Date | null = null;
 
 /**
  * Derive the miss reason from the last persisted dispatch outcome (spec §7).
@@ -1059,6 +1066,18 @@ if (!isTestRun) {
       const health = computeDeliveryHealth();
       if (!health.ok) {
         console.error('[alerts] delivery unhealthy:', health.reasons);
+        const decision = shouldSendAlert(health.reasons[0], new Date(), lastAlertAt);
+        if (decision.send) {
+          lastAlertAt = decision.sentAt;
+          void sendWebhookAlert(
+            process.env.ALERT_WEBHOOK_URL ?? '',
+            (process.env.ALERT_WEBHOOK_KIND as WebhookKind) ?? 'generic',
+            {
+              title: 'Remote Alarm delivery unhealthy',
+              body: health.reasons.join(', ')
+            }
+          );
+        }
       }
     } catch (err) {
       // sweepMissedAlarms catches per-alarm errors; this is the last line of

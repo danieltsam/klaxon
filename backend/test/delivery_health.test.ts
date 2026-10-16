@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluateDeliveryHealth } from '../src/alerts.js';
+import { evaluateDeliveryHealth, shouldSendAlert } from '../src/alerts.js';
 import { app, missedSweepStarted } from '../src/server.js';
 
 const base = { deviceCount: 1, now: new Date('2026-10-16T00:00:00Z'), dueWithinMs: 900000 };
@@ -24,6 +24,17 @@ describe('evaluateDeliveryHealth', () => {
 
   it('stays healthy through a quiet interval with no alarms', () => {
     assert.deepEqual(evaluateDeliveryHealth({ ...base, alarms: [] }), { ok: true, reasons: [] });
+  });
+});
+
+describe('shouldSendAlert', () => {
+  it('throttles repeated identical alerts', () => {
+    const first = shouldSendAlert('no_registered_devices', new Date('2026-10-16T00:00:00Z'), null);
+    assert.equal(first.send, true);
+    const soon = shouldSendAlert('no_registered_devices', new Date('2026-10-16T00:05:00Z'), first.sentAt);
+    assert.equal(soon.send, false);
+    const later = shouldSendAlert('no_registered_devices', new Date('2026-10-16T01:00:00Z'), first.sentAt);
+    assert.equal(later.send, true);
   });
 });
 
