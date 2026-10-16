@@ -37,6 +37,31 @@ Everything runs on my private Tailscale network. I do not expose any port to the
 
 FCM depends on Google Play services. If a phone does not have them, this project cannot deliver alarms to that phone reliably.
 
+## Delivery health
+
+The backend watches alarm delivery. It reports the result. A quiet system is then known quiet, not assumed healthy.
+
+- `GET /api/health` returns a `delivery_health` object. The object has `ok` and `reasons`.
+- The reasons are `no_registered_devices`, `last_dispatch_failed`, and `alarm_due_without_report`.
+- The dashboard shows a banner when delivery is unverified.
+
+A dispatch is not proof of delivery. The system reports "dispatched", not "delivered".
+
+### Send alerts to another service
+
+You can forward delivery alerts to another service. Set `ALERT_WEBHOOK_URL` to the target URL. Set `ALERT_WEBHOOK_KIND` to one of these values:
+
+- `generic` (default). The body is `{"title": ..., "body": ...}`.
+- `discord`. The body is `{"content": ...}`.
+- `slack`. The body is `{"text": ...}`.
+- `healthchecks`. The backend sends a GET request. This is a heartbeat.
+
+The backend sends a message at most once every 30 minutes for the same problem.
+
+The backend also sends a best-effort push to each registered phone. A phone that is off or force-stopped does not get the push. The webhook covers that case.
+
+For backend liveness, use a dead-man's switch. A push from the backend cannot report that the backend is down.
+
 ## Status
 
 Personal project. It works for me. It is also my first Flutter app.
