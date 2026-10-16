@@ -10,7 +10,7 @@ import { GcalMirror, unconfiguredTransport, classifyGcalError, type GcalTranspor
 import { createGcalTransport } from './gcal-google.js';
 import { resolveGcalConfig } from './gcal-config.js';
 import { reconcile } from './gcal-reconcile.js';
-import { evaluateDeliveryHealth, shouldSendAlert, sendWebhookAlert, type DeliveryHealth, type WebhookKind } from './alerts.js';
+import { evaluateDeliveryHealth, shouldSendAlert, sendWebhookAlert, healthchecksUrl, type DeliveryHealth, type WebhookKind } from './alerts.js';
 
 dotenv.config();
 
@@ -1066,21 +1066,37 @@ if (!isTestRun) {
     try {
       sweepMissedAlarms();
       // Delivery-health monitor (spec §5.4): a dead token, a failed dispatch, or
-      // an alarm due soon with no report must surface instead of going quiet.
+      // an alarm now missed must surface instead of going quiet.
       const health = computeDeliveryHealth();
+      const webhookUrl = process.env.ALERT_WEBHOOK_URL ?? '';
+      const webhookKind = (process.env.ALERT_WEBHOOK_KIND as WebhookKind) ?? 'generic';
+
+      // Healthchecks is a dead-man's switch: it alerts when pings STOP. So ping
+      // on EVERY sweep, healthy or not, independent of the 30-minute throttle —
+      // and use /fail when unhealthy so a broken backend still raises the alert.
+      // Pinging only when unhealthy would reset Healthchecks' timer precisely
+      // when the backend is broken, suppressing the very alert it exists to
+      // raise (spec §5.4).
+      if (webhookKind === 'healthchecks' && webhookUrl) {
+        void sendWebhookAlert(healthchecksUrl(webhookUrl, health.ok), 'healthchecks', {
+          title: 'Remote Alarm healthcheck',
+          body: health.ok ? 'ok' : health.reasons.join(', ')
+        });
+      }
+
       if (!health.ok) {
         console.error('[alerts] delivery unhealthy:', health.reasons);
         const decision = shouldSendAlert(health.reasons[0], new Date(), lastAlertAt);
         if (decision.send) {
           lastAlertAt = decision.sentAt;
-          void sendWebhookAlert(
-            process.env.ALERT_WEBHOOK_URL ?? '',
-            (process.env.ALERT_WEBHOOK_KIND as WebhookKind) ?? 'generic',
-            {
+          // Message kinds (generic/discord/slack) get the throttled on-unhealthy
+          // POST; Healthchecks already got its liveness ping above.
+          if (webhookKind !== 'healthchecks') {
+            void sendWebhookAlert(webhookUrl, webhookKind, {
               title: 'Remote Alarm delivery unhealthy',
               body: health.reasons.join(', ')
-            }
-          );
+            });
+          }
           // Best-effort phone push, alongside the webhook. It cannot reach a
           // force-stopped phone, which is why the dashboard and webhook exist.
           void sendFcmNotification('Remote Alarm delivery unhealthy', health.reasons.join(', '));
