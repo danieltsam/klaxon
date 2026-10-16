@@ -5,6 +5,16 @@ import { DeviceRepo } from './db.js';
 
 let isFirebaseInitialized = false;
 
+/**
+ * Whether Firebase Admin is able to actually send. When false the process runs
+ * in DRY-RUN / MOCK mode: `sendFcmDataMessage` reports success while delivering
+ * nothing (spec §2). Delivery health must surface that, or the system reports
+ * healthy precisely while it cannot reach a phone.
+ */
+export function isFirebaseReady(): boolean {
+  return isFirebaseInitialized;
+}
+
 export function initFirebase() {
   if (admin.apps.length > 0) {
     isFirebaseInitialized = true;

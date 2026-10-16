@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluateDeliveryHealth, shouldSendAlert, MISSED_ALERT_WINDOW_MS } from '../src/alerts.js';
-import { app, missedSweepStarted } from '../src/server.js';
+import { app, missedSweepStarted, computeDeliveryHealth } from '../src/server.js';
+import { isFirebaseReady } from '../src/fcm.js';
+import { DeviceRepo } from '../src/db.js';
 
 const NOW = new Date('2026-10-16T12:00:00Z');
 const base = { deviceCount: 1, now: NOW };
@@ -95,6 +97,32 @@ describe('shouldSendAlert', () => {
     assert.equal(soon.send, false);
     const later = shouldSendAlert('no_registered_devices', new Date('2026-10-16T01:00:00Z'), first.sentAt);
     assert.equal(later.send, true);
+  });
+});
+
+describe('firebase readiness in delivery health', () => {
+  it('exports isFirebaseReady as a boolean', () => {
+    assert.equal(typeof isFirebaseReady(), 'boolean');
+  });
+
+  it('flags firebase_uninitialized when firebase is not ready and a device is registered', () => {
+    DeviceRepo.upsert('f2-not-ready-token');
+    const h = computeDeliveryHealth(new Date(), false);
+    assert.ok(h.reasons.includes('firebase_uninitialized'));
+  });
+
+  it('does not flag firebase_uninitialized when firebase is ready', () => {
+    DeviceRepo.upsert('f2-ready-token');
+    const h = computeDeliveryHealth(new Date(), true);
+    assert.equal(h.reasons.includes('firebase_uninitialized'), false);
+  });
+
+  it('reflects firebase readiness on /api/health', async () => {
+    DeviceRepo.upsert('f2-endpoint-token');
+    await app.ready();
+    const res = await app.inject({ method: 'GET', url: '/api/health' });
+    const reasons = res.json().delivery_health.reasons;
+    assert.equal(reasons.includes('firebase_uninitialized'), !isFirebaseReady());
   });
 });
 

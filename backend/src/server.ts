@@ -5,7 +5,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
 import { AlarmRepo, DeviceRepo, SettingsRepo, AlarmRecord, AppSettings, db } from './db.js';
-import { initFirebase, sendFcmDataMessage, sendFcmNotification, FcmPayload } from './fcm.js';
+import { initFirebase, isFirebaseReady, sendFcmDataMessage, sendFcmNotification, FcmPayload } from './fcm.js';
 import { GcalMirror, unconfiguredTransport, classifyGcalError, type GcalTransport } from './gcal.js';
 import { createGcalTransport } from './gcal-google.js';
 import { resolveGcalConfig } from './gcal-config.js';
@@ -261,11 +261,15 @@ export async function mirrorSafely(alarm: AlarmRecord): Promise<void> {
  * (to log/scream) and `/api/health` (to surface it). Due-aware, not a heartbeat:
  * a quiet interval with no alarms stays healthy (spec §5.4).
  */
-export function computeDeliveryHealth(now: Date = new Date()): DeliveryHealth {
+export function computeDeliveryHealth(
+  now: Date = new Date(),
+  firebaseReady: boolean = isFirebaseReady()
+): DeliveryHealth {
   return evaluateDeliveryHealth({
     deviceCount: DeviceRepo.getAllDevices().length,
     alarms: AlarmRepo.getAll('all'),
-    now
+    now,
+    firebaseReady
   });
 }
 
