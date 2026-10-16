@@ -1,9 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluateDeliveryHealth, shouldSendAlert } from '../src/alerts.js';
+import { evaluateDeliveryHealth, shouldSendAlert, MISSED_ALERT_WINDOW_MS } from '../src/alerts.js';
 import { app, missedSweepStarted } from '../src/server.js';
 
-const base = { deviceCount: 1, now: new Date('2026-10-16T00:00:00Z'), dueWithinMs: 900000 };
+const NOW = new Date('2026-10-16T12:00:00Z');
+const base = { deviceCount: 1, now: NOW };
+
+function alarm(over: Record<string, unknown>) {
+  return { id: 'a', target_time: '2026-10-16T12:00:00Z', ...over } as any;
+}
 
 describe('evaluateDeliveryHealth', () => {
   it('flags zero registered devices', () => {
@@ -12,18 +17,73 @@ describe('evaluateDeliveryHealth', () => {
     assert.deepEqual(h.reasons, ['no_registered_devices']);
   });
 
-  it('flags a failed last dispatch', () => {
-    const h = evaluateDeliveryHealth({ ...base, alarms: [{ id: 'a', status: 'pending', target_time: '2026-10-17T00:00:00Z', last_dispatch_failed: 1 } as any] });
-    assert.ok(h.reasons.includes('last_dispatch_failed'));
+  it('flags firebase_uninitialized when firebase is not ready and a device exists', () => {
+    const h = evaluateDeliveryHealth({ ...base, alarms: [], firebaseReady: false });
+    assert.deepEqual(h.reasons, ['firebase_uninitialized']);
   });
 
-  it('flags a due alarm the phone never reported on', () => {
-    const h = evaluateDeliveryHealth({ ...base, alarms: [{ id: 'a', status: 'pending', target_time: '2026-10-16T00:05:00Z', last_dispatch_failed: 0 } as any] });
-    assert.ok(h.reasons.includes('alarm_due_without_report'));
+  it('does not flag firebase_uninitialized when no device is registered', () => {
+    const h = evaluateDeliveryHealth({ ...base, deviceCount: 0, alarms: [], firebaseReady: false });
+    assert.deepEqual(h.reasons, ['no_registered_devices']);
+  });
+
+  it('flags dispatch_failed for an active alarm whose last dispatch failed', () => {
+    const h = evaluateDeliveryHealth({
+      ...base,
+      alarms: [alarm({ status: 'pending', last_dispatch_failed: 1 })]
+    });
+    assert.deepEqual(h.reasons, ['dispatch_failed']);
+  });
+
+  it('flags dispatch_failed for a snoozed alarm whose last dispatch failed', () => {
+    const h = evaluateDeliveryHealth({
+      ...base,
+      alarms: [alarm({ status: 'snoozed', last_dispatch_failed: 2 })]
+    });
+    assert.deepEqual(h.reasons, ['dispatch_failed']);
+  });
+
+  it('ignores a terminal alarm with a past dispatch failure', () => {
+    const oldMissed = new Date(NOW.getTime() - MISSED_ALERT_WINDOW_MS - 1000).toISOString();
+    const h = evaluateDeliveryHealth({
+      ...base,
+      alarms: [
+        alarm({ id: 'm', status: 'missed', last_dispatch_failed: 1, missed_at: oldMissed }),
+        alarm({ id: 'd', status: 'dismissed', last_dispatch_failed: 1 }),
+        alarm({ id: 'x', status: 'disabled', last_dispatch_failed: 1 })
+      ]
+    });
+    assert.equal(h.ok, true);
+    assert.deepEqual(h.reasons, []);
+  });
+
+  it('flags alarm_missed when a missed alarm is inside the window', () => {
+    const h = evaluateDeliveryHealth({
+      ...base,
+      alarms: [alarm({ status: 'missed', missed_at: '2026-10-16T06:00:00Z', last_dispatch_failed: 0 })]
+    });
+    assert.deepEqual(h.reasons, ['alarm_missed']);
+  });
+
+  it('does not flag alarm_missed for an old missed alarm', () => {
+    const oldMissed = new Date(NOW.getTime() - MISSED_ALERT_WINDOW_MS - 1000).toISOString();
+    const h = evaluateDeliveryHealth({
+      ...base,
+      alarms: [alarm({ status: 'missed', missed_at: oldMissed, last_dispatch_failed: 0 })]
+    });
+    assert.equal(h.ok, true);
+    assert.deepEqual(h.reasons, []);
   });
 
   it('stays healthy through a quiet interval with no alarms', () => {
     assert.deepEqual(evaluateDeliveryHealth({ ...base, alarms: [] }), { ok: true, reasons: [] });
+  });
+
+  it('recovers once an active alarm failure is cleared', () => {
+    const failing = alarm({ status: 'pending', last_dispatch_failed: 1 });
+    assert.deepEqual(evaluateDeliveryHealth({ ...base, alarms: [failing] }).reasons, ['dispatch_failed']);
+    const recovered = { ...failing, last_dispatch_failed: 0 };
+    assert.deepEqual(evaluateDeliveryHealth({ ...base, alarms: [recovered] }), { ok: true, reasons: [] });
   });
 });
 
