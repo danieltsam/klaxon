@@ -2188,12 +2188,16 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
       FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
         await AlarmService.handleAlarmPayload(message.data);
+        // A foreground receipt is a poke: apply it, then pull authoritative
+        // state so a dropped or stale poke converges (spec §5.3).
+        unawaited(_syncWithBackend(silent: true));
         _loadAllAlarms();
       });
 
       // Tapping a notification while the app is in background → navigate if an alarm is ringing
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
         await AlarmService.handleAlarmPayload(message.data);
+        unawaited(_syncWithBackend(silent: true));
         _loadAllAlarms();
         if (await Alarm.isRinging()) {
           _checkActiveRingingAlarm();
@@ -2204,6 +2208,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
       if (initialMessage != null) {
         await AlarmService.handleAlarmPayload(initialMessage.data);
+        unawaited(_syncWithBackend(silent: true));
         _loadAllAlarms();
         // Defer until first frame so the navigator is mounted
         WidgetsBinding.instance.addPostFrameCallback((_) async {

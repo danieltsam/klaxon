@@ -21,6 +21,10 @@ class AlarmService {
   /// Injection seam for tests; production reports through [BackendClient].
   static Future<bool> Function(List<String> ids)? missedReportSenderForTest;
 
+  /// Injection seam for tests; the app wires the real post-receipt refresher
+  /// (a pull of authoritative state) around this method's callers.
+  static Future<void> Function()? onPayloadHandledForTest;
+
   /// Uuids waiting for the next [flushMissedReports]. Test-only.
   static Set<String> get pendingMissedReportIds =>
       Set<String>.unmodifiable(_pendingMissedReports);
@@ -135,6 +139,19 @@ class AlarmService {
 
   /// Entry point for FCM payload processing
   static Future<void> handleAlarmPayload(Map<String, dynamic> data) async {
+    try {
+      await _applyAlarmPayload(data);
+    } finally {
+      // Fires on every branch — including an early return for a malformed
+      // payload — so a foreground receipt always converges state (spec §5.3).
+      final hook = onPayloadHandledForTest;
+      if (hook != null) {
+        await hook();
+      }
+    }
+  }
+
+  static Future<void> _applyAlarmPayload(Map<String, dynamic> data) async {
     try {
       final action = data['action'];
       final uuid = data['id'];
