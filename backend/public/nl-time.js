@@ -405,8 +405,40 @@
     }
 
     /**
+     * When no leading prefix parses, locate a complete time expression *inside*
+     * the input and treat the surrounding tokens as the label. A trailing span is
+     * preferred (the natural "label first" phrasing, e.g. `gym tomorrow 7am`),
+     * falling back to the longest span anywhere. Returns `null` when nothing
+     * parses. Mirrors `findTimeSpan` in clients/core/src/time.ts.
+     */
+    function findTimeSpan(raw, toks, now) {
+      // Prefer the longest trailing span: label first, time last. Iterating
+      // `start` upward returns the smallest start (longest suffix) that parses.
+      for (var start = 0; start < toks.length; start++) {
+        var trailing = tryParseExpression(toks.slice(start), now);
+        if (trailing) {
+          return { parsed: trailing, rest: raw.slice(0, start).join(" ") };
+        }
+      }
+      // Otherwise the longest span anywhere; the surrounding tokens form the label.
+      for (var len = toks.length; len >= 1; len--) {
+        for (var start2 = 0; start2 + len <= toks.length; start2++) {
+          var inner = tryParseExpression(toks.slice(start2, start2 + len), now);
+          if (inner) {
+            var label = raw.slice(0, start2).concat(raw.slice(start2 + len));
+            return { parsed: inner, rest: label.join(" ") };
+          }
+        }
+      }
+      return null;
+    }
+
+    /**
      * Longest leading prefix that parses as a single time expression, plus the
-     * unconsumed remainder. Returns `null` when no prefix parses.
+     * unconsumed remainder. When no prefix parses, falls back to the longest
+     * parseable span anywhere in the input (trailing spans preferred) so
+     * label-first phrasing like `uni meeting tomorrow at 8pm` still splits into a
+     * time and a label. Returns `null` only when no span parses at all.
      */
     function parseLeadingTime(input, now) {
       var nowDate = now ?? new Date();
@@ -422,7 +454,8 @@
           return { parsed: parsed, rest: raw.slice(end).join(" ") };
         }
       }
-      return null;
+      // No leading time prefix: fall back to a span anywhere in the input.
+      return findTimeSpan(raw, toks, nowDate);
     }
 
     // ── Display formatters (ported verbatim from clients/core/src/format.ts) ──

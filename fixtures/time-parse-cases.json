@@ -17,6 +17,7 @@
     },
     "notes": [
       "Grammar is matched as the longest leading prefix of a single expression, never a concatenation.",
+      "parseLeadingTime prefers the longest leading prefix; when none parses it falls back to the longest parseable span anywhere in the input (trailing spans preferred) and returns the surrounding text as the label, so label-first phrasing like 'gym tomorrow 7am' works.",
       "A bare or colon time without a meridiem is read as 24-hour; a meridiem implies a 1-12 hour (13pm and 0am are invalid).",
       "Passed times roll forward; a passed 'today' rolls to tomorrow; a weekday that has passed rolls to next week.",
       "The interpretation echo is formatLocal + formatRelative, e.g. 'Tue 22 Sep, 7:00am (in 13h 40m)'."
@@ -100,7 +101,13 @@
     { "name": "splits 'tomorrow 6pm Call mum'", "input": "tomorrow 6pm Call mum", "now": "2026-09-21T10:00:00", "expect": { "y": 2026, "mo": 9, "d": 22, "h": 18, "mi": 0, "s": 0 }, "rest": "Call mum" },
     { "name": "splits '8am 5 minute warning' (not a concatenation)", "input": "8am 5 minute warning", "now": "2026-09-21T10:00:00", "expect": { "y": 2026, "mo": 9, "d": 22, "h": 8, "mi": 0, "s": 0 }, "rest": "5 minute warning" },
     { "name": "strips the 'in' connector but preserves the label", "input": "in 25m Oven", "now": "2026-09-21T10:00:00", "expect": { "y": 2026, "mo": 9, "d": 21, "h": 10, "mi": 25, "s": 0 }, "rest": "Oven" },
-    { "name": "preserves the label's original casing", "input": "tomorrow 6pm Call Mum", "now": "2026-09-21T10:00:00", "expect": { "y": 2026, "mo": 9, "d": 22, "h": 18, "mi": 0, "s": 0 }, "rest": "Call Mum" }
+    { "name": "preserves the label's original casing", "input": "tomorrow 6pm Call Mum", "now": "2026-09-21T10:00:00", "expect": { "y": 2026, "mo": 9, "d": 22, "h": 18, "mi": 0, "s": 0 }, "rest": "Call Mum" },
+
+    { "name": "label-first: 'uni meeting tomorrow at 8pm'", "input": "uni meeting tomorrow at 8pm", "now": "2026-09-21T10:00:00", "expect": { "y": 2026, "mo": 9, "d": 22, "h": 20, "mi": 0, "s": 0 }, "rest": "uni meeting" },
+    { "name": "label-first: 'gym tomorrow 7am'", "input": "gym tomorrow 7am", "now": "2026-09-21T10:00:00", "expect": { "y": 2026, "mo": 9, "d": 22, "h": 7, "mi": 0, "s": 0 }, "rest": "gym" },
+    { "name": "label-first preserves the rest's casing", "input": "Uni Meeting tomorrow at 8pm", "now": "2026-09-21T10:00:00", "expect": { "y": 2026, "mo": 9, "d": 22, "h": 20, "mi": 0, "s": 0 }, "rest": "Uni Meeting" },
+    { "name": "label-first ignores a stray time in the label ('call at 5 tomorrow 7am')", "input": "call at 5 tomorrow 7am", "now": "2026-09-21T10:00:00", "expect": { "y": 2026, "mo": 9, "d": 22, "h": 7, "mi": 0, "s": 0 }, "rest": "call at 5" },
+    { "name": "time span in the middle ('uni meeting tomorrow 7am yoga')", "input": "uni meeting tomorrow 7am yoga", "now": "2026-09-21T10:00:00", "expect": { "y": 2026, "mo": 9, "d": 22, "h": 7, "mi": 0, "s": 0 }, "rest": "uni meeting yoga" }
   ],
 
   "leadingNull": ["Oven", ""],
