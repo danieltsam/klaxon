@@ -69,6 +69,24 @@ export function evaluateDeliveryHealth(input: {
 
 export type WebhookKind = 'generic' | 'discord' | 'slack' | 'healthchecks';
 
+/**
+ * Throttle alerts so a persistently unhealthy system does not spam the webhook.
+ * Sends when nothing was sent before, or when the cooldown has elapsed. The
+ * `reason` names the condition for callers; the sweep keeps one cooldown clock.
+ */
+export function shouldSendAlert(
+  reason: DeliveryHealthReason,
+  now: Date,
+  lastSentAt: Date | null,
+  cooldownMs = 30 * 60 * 1000
+): { send: boolean; sentAt: Date } {
+  void reason;
+  if (!lastSentAt || now.getTime() - lastSentAt.getTime() >= cooldownMs) {
+    return { send: true, sentAt: now };
+  }
+  return { send: false, sentAt: lastSentAt };
+}
+
 export interface WebhookRequest {
   method: 'POST' | 'GET';
   headers: Record<string, string>;
