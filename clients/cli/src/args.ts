@@ -99,9 +99,11 @@ export interface TimeLabelSplit {
 }
 
 /**
- * Split `input` into the longest leading prefix that parses as one time
- * expression, and the remainder (the label). Returns `null` when no prefix
- * parses. Never guesses.
+ * Split `input` into the time expression and the remainder (the label). The
+ * time is normally the longest leading prefix, but `parseLeadingTime` also
+ * matches a span anywhere in the input (a label-first phrase like
+ * `gym tomorrow 7am`), in which case the label leads. Returns `null` when no
+ * time parses, or when the matched span is interior (no single `when` string).
  */
 export function splitTimeAndLabel(input: string): TimeLabelSplit | null {
   const trimmed = input.trim();
@@ -111,9 +113,27 @@ export function splitTimeAndLabel(input: string): TimeLabelSplit | null {
   if (!result) return null;
 
   const all = trimmed.split(/\s+/).filter(Boolean);
-  const restTokens = result.rest.length > 0 ? result.rest.split(/\s+/).filter(Boolean) : [];
-  const whenTokens = all.slice(0, all.length - restTokens.length);
-  return { when: whenTokens.join(" "), label: result.rest.trim() };
+  const label = result.rest.trim();
+  const restTokens = label.length > 0 ? label.split(/\s+/).filter(Boolean) : [];
+
+  if (restTokens.length === 0) {
+    return { when: all.join(" "), label: "" };
+  }
+
+  // `rest` is the text surrounding the matched span: a leading time leaves the
+  // label trailing, a label-first phrase leaves it leading. Detect which end.
+  const labelTrails = restTokens.every(
+    (token, k) => all[all.length - restTokens.length + k] === token
+  );
+  if (labelTrails) {
+    return { when: all.slice(0, all.length - restTokens.length).join(" "), label };
+  }
+  const labelLeads = restTokens.every((token, k) => all[k] === token);
+  if (labelLeads) {
+    return { when: all.slice(restTokens.length).join(" "), label };
+  }
+  // An interior time span has no single contiguous `when` string.
+  return null;
 }
 
 // ── Flag value validation (fail before any request) ────────────────────────

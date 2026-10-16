@@ -7,7 +7,9 @@
  *
  * Grammar is matched as the LONGEST LEADING PREFIX of a single expression
  * (never a concatenation). `parseLeadingTime` exposes that prefix split for the
- * CLI's time/label split; `parseTime` requires the whole input to be consumed.
+ * CLI's time/label split, falling back to a span anywhere in the input when no
+ * prefix parses (so label-first phrasing works); `parseTime` requires the whole
+ * input to be consumed.
  *
  * The parser produces a LOCAL WALL-CLOCK `Date`. Conversion to UTC happens only
  * at the client boundary via `.toISOString()`.
@@ -419,8 +421,43 @@ export function parseTime(input: string, now?: Date): ParsedTime {
 }
 
 /**
+ * When no leading prefix parses, locate a complete time expression *inside* the
+ * input and treat the surrounding tokens as the label. A trailing span is
+ * preferred (the natural "label first" phrasing, e.g. `gym tomorrow 7am`),
+ * falling back to the longest span anywhere. Returns `null` when nothing parses.
+ */
+function findTimeSpan(
+  raw: string[],
+  toks: string[],
+  now: Date
+): { parsed: ParsedTime; rest: string } | null {
+  // Prefer the longest trailing span: label first, time last. Iterating `start`
+  // upward returns the smallest start (i.e. the longest suffix) that parses.
+  for (let start = 0; start < toks.length; start++) {
+    const parsed = tryParseExpression(toks.slice(start), now);
+    if (parsed) {
+      return { parsed, rest: raw.slice(0, start).join(" ") };
+    }
+  }
+  // Otherwise the longest span anywhere; the surrounding tokens form the label.
+  for (let len = toks.length; len >= 1; len--) {
+    for (let start = 0; start + len <= toks.length; start++) {
+      const parsed = tryParseExpression(toks.slice(start, start + len), now);
+      if (parsed) {
+        const label = raw.slice(0, start).concat(raw.slice(start + len));
+        return { parsed, rest: label.join(" ") };
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Longest leading prefix that parses as a single time expression, plus the
- * unconsumed remainder. Returns `null` when no prefix parses.
+ * unconsumed remainder. When no prefix parses, falls back to the longest
+ * parseable span anywhere in the input (trailing spans preferred) so label-first
+ * phrasing like `uni meeting tomorrow at 8pm` still splits into a time and a
+ * label. Returns `null` only when no span parses at all.
  */
 export function parseLeadingTime(
   input: string,
@@ -437,5 +474,6 @@ export function parseLeadingTime(
       return { parsed, rest: raw.slice(end).join(" ") };
     }
   }
-  return null;
+  // No leading time prefix: fall back to a span anywhere in the input.
+  return findTimeSpan(raw, toks, nowDate);
 }
