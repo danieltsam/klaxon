@@ -116,6 +116,17 @@ export interface WebhookRequest {
 }
 
 /**
+ * Build a Healthchecks ping URL. Healthchecks is a dead-man's switch: it raises
+ * an alert when pings STOP, so we ping on every sweep regardless of health and
+ * add `/fail` when unhealthy so a bad sweep still trips the check. A trailing
+ * slash on the base is dropped so the two parts join cleanly.
+ */
+export function healthchecksUrl(baseUrl: string, ok: boolean): string {
+  const base = baseUrl.replace(/\/+$/, '');
+  return ok ? base : `${base}/fail`;
+}
+
+/**
  * Shape an alert for a provider. Discord and Slack take a message JSON;
  * the generic kind POSTs `{ title, body }` as-is; Healthchecks is a heartbeat
  * ping (a GET with no body) — the alert fires when pings STOP, so the body is

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatWebhookAlert, sendWebhookAlert } from '../src/alerts.js';
+import { formatWebhookAlert, sendWebhookAlert, healthchecksUrl } from '../src/alerts.js';
 import { buildFcmNotification } from '../src/fcm.js';
 
 describe('formatWebhookAlert', () => {
@@ -18,6 +18,16 @@ describe('formatWebhookAlert', () => {
     const r = formatWebhookAlert('healthchecks', alert);
     assert.equal(r.method, 'GET');
     assert.equal(r.body, undefined);
+  });
+});
+
+describe('healthchecksUrl', () => {
+  it('pings the base URL when healthy', () => {
+    assert.equal(healthchecksUrl('https://hc-ping.com/abc', true), 'https://hc-ping.com/abc');
+  });
+
+  it('appends /fail when unhealthy', () => {
+    assert.equal(healthchecksUrl('https://hc-ping.com/abc', false), 'https://hc-ping.com/abc/fail');
   });
 });
 
