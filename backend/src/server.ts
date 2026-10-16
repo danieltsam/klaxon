@@ -5,7 +5,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
 import { AlarmRepo, DeviceRepo, SettingsRepo, AlarmRecord, AppSettings, db } from './db.js';
-import { initFirebase, sendFcmDataMessage, FcmPayload } from './fcm.js';
+import { initFirebase, sendFcmDataMessage, sendFcmNotification, FcmPayload } from './fcm.js';
 import { GcalMirror, unconfiguredTransport, classifyGcalError, type GcalTransport } from './gcal.js';
 import { createGcalTransport } from './gcal-google.js';
 import { resolveGcalConfig } from './gcal-config.js';
@@ -1077,6 +1077,9 @@ if (!isTestRun) {
               body: health.reasons.join(', ')
             }
           );
+          // Best-effort phone push, alongside the webhook. It cannot reach a
+          // force-stopped phone, which is why the dashboard and webhook exist.
+          void sendFcmNotification('Remote Alarm delivery unhealthy', health.reasons.join(', '));
         }
       }
     } catch (err) {

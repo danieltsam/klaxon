@@ -229,3 +229,61 @@ export async function sendFcmDataMessage(
 
   return { sent, failed };
 }
+
+/**
+ * Build a user-visible **notification** message. Unlike the data messages, this
+ * is displayed by Android with no app code and may legitimately use high
+ * priority. It is used only for the best-effort delivery-health alert.
+ */
+export function buildFcmNotification(
+  title: string,
+  body: string,
+  token: string
+): Record<string, unknown> {
+  return {
+    token,
+    notification: { title, body },
+    android: { priority: 'high' }
+  };
+}
+
+/**
+ * Best-effort alert to every registered device. This cannot reach a phone that
+ * is force-stopped or offline — which is exactly why the dashboard and webhook
+ * exist too. Never throws.
+ */
+export async function sendFcmNotification(
+  title: string,
+  body: string
+): Promise<{ sent: number; failed: number }> {
+  const tokens = DeviceRepo.getAllTokens();
+
+  if (tokens.length === 0) {
+    console.log(`[FCM] No registered devices to send notification "${title}"`);
+    return { sent: 0, failed: 0 };
+  }
+
+  if (!isFirebaseInitialized) {
+    console.warn('[FCM] (Mock Mode) Notification simulated for tokens:', tokens);
+    return { sent: tokens.length, failed: 0 };
+  }
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const token of tokens) {
+    try {
+      const message = buildFcmNotification(title, body, token) as unknown as admin.messaging.Message;
+      await withRetry(() => admin.messaging().send(message));
+      sent++;
+    } catch (err: any) {
+      failed++;
+      console.error(`[FCM] Error sending notification to token ${token.slice(0, 10)}...:`, err.message || err);
+      if (shouldPruneToken(err?.code)) {
+        DeviceRepo.remove(token);
+      }
+    }
+  }
+
+  return { sent, failed };
+}
