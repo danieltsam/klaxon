@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "artifact": "Categorised synthetic corpus of natural-language alarm inputs and their expected resolution. Measurement artifact only: no parser or application source was modified.",
   "canonicalParser": "clients/core/src/time.ts (parseTime / parseLeadingTime)",
-  "resolution": "Resolution = parseLeadingTime(input, now): `local` is the targetTime wall-clock, `repeatDays` are ISO weekdays (1=Mon..7=Sun, [] = one-time), `label` is the unconsumed remainder (rest). For an invalid case `local`/`repeatDays`/`label` are null.",
+  "resolution": "Resolution = parseLeadingTime(input, now): `local` is the targetTime wall-clock, `repeatDays` are ISO weekdays (1=Mon..7=Sun, [] = one-time), `label` is the unconsumed remainder (rest). A weekday-less interval keeps `repeatDays: []`; the server/create path derives `repeat_days` from the interval anchor (design §7). For an invalid case `local`/`repeatDays`/`label` are null and the runner asserts `parseTime` throws a `TimeParseError` whose `token` equals `rejectedToken`.",
   "nowConvention": "Local wall-clock ISO date-time WITHOUT a timezone offset, matching fixtures/time-parse-cases.json. Default now is Monday 21 Sep 2026 10:00 local; cases that need a Monday-is-today, forward-only, or January/December-rollover view vary it.",
   "statusLegend": {
     "supported": "Verified to pass against the current parser (machine-checked; machineVerified=true).",
@@ -17,15 +17,15 @@
   },
   "semantics": {
     "dayPeriods": "morning = 09:00, afternoon = 15:00, evening = 19:00, tonight = 21:00, noon = 12:00, midnight = 00:00; a passed period rolls forward (day periods, target).",
-    "intervals": "intervalWeeks encodes fortnightly recurrence (every 2 weeks / every other <day> / every 2nd <day>). With no clock, an interval anchors to now + interval preserving wall-clock; with a weekday it anchors to that weekday's next occurrence.",
-    "next/last/this-week": "next monday = the following Monday; next week = same wall-clock one week ahead; this weekend = the coming Saturday 00:00; last friday = the already-passed Friday (backwards; target).",
+    "intervals": "intervalWeeks encodes weekly recurrence (every 2 weeks / every other <day> / every 2nd <day>); intervalDays encodes day recurrence (every <n> days). With no clock, an interval anchors to now + interval preserving wall-clock; with a weekday it anchors to that weekday's next occurrence. A weekday-less interval reports repeatDays [] and is anchored server-side (design §7).",
     "absoluteDates": "Accepted once supported: '25 dec', '25/12' (day/month), '2026-12-31', 'jan 4th', 'december 25'. No year => the next occurrence (a passed date rolls to next year).",
-    "metadata": "Inline alarm metadata (target): tone words chime/digital; ramp 'Ns ramp' | no ramp=0 | quick ramp=15 | gentle ramp=30 | deep ramp=60; 'note: <text>' sets the description."
+    "metadata": "Inline alarm metadata (target): tone words chime/digital; ramp 'Ns ramp' | no ramp=0 | quick ramp=15 | gentle ramp=30 | deep ramp=60; 'note: <text>' sets the description.",
+    "next/this-week-month": "next monday = the following Monday; next week = same wall-clock one week ahead; next month = same wall-clock one calendar month ahead; this weekend = the coming Saturday 00:00. `last` is not a grammar token (dropped); a weekday after it resolves forward-only and the word stays in the label."
   },
   "summary": {
-    "total": 162,
+    "total": 164,
     "supported": 106,
-    "target": 56,
+    "target": 58,
     "traps": 17,
     "byCategory": {
       "durations": 25,
@@ -33,8 +33,8 @@
       "day-qualified": 14,
       "weekdays": 14,
       "weekday-sets": 30,
-      "absolute-dates": 13,
-      "intervals": 6,
+      "absolute-dates": 14,
+      "intervals": 7,
       "day-periods": 8,
       "label-placement": 10,
       "alarm-metadata": 12,
@@ -1207,6 +1207,30 @@
       }
     },
     {
+      "id": "day-next-month",
+      "category": "day-qualified",
+      "input": "next month",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 10,
+          "d": 21,
+          "h": 10,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "`next month` = same wall-clock one calendar month ahead.",
+      "note": "Neither token parses, so the whole input is unparseable.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
       "id": "day-this-weekend",
       "category": "day-qualified",
       "input": "this weekend",
@@ -1228,39 +1252,6 @@
       "note": "'weekend' (singular) is not recognised; nothing parses.",
       "actual_today": {
         "resolved": false
-      }
-    },
-    {
-      "id": "day-last-friday",
-      "category": "day-qualified",
-      "input": "last friday",
-      "now": "2026-09-21T10:00:00",
-      "expected": {
-        "local": {
-          "y": 2026,
-          "mo": 9,
-          "d": 18,
-          "h": 0,
-          "mi": 0,
-          "s": 0
-        },
-        "repeatDays": [],
-        "label": ""
-      },
-      "status": "target",
-      "semantics": "'last friday' = the Friday that already passed (backwards resolution).",
-      "note": "'friday' resolves forward to Fri 25 Sep and 'last' becomes the label.",
-      "actual_today": {
-        "local": {
-          "y": 2026,
-          "mo": 9,
-          "d": 25,
-          "h": 0,
-          "mi": 0,
-          "s": 0
-        },
-        "repeatDays": [],
-        "label": "last"
       }
     },
     {
@@ -2486,6 +2477,30 @@
       }
     },
     {
+      "id": "abs-03-04",
+      "category": "absolute-dates",
+      "input": "03/04",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2027,
+          "mo": 4,
+          "d": 3,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "Both fields <= 12: the dd/mm default applies (`03/04` = 3 Apr) and the ambiguity is surfaced as numeric_date. No year => next occurrence (3 Apr 2026 has passed), so 2027-04-03.",
+      "note": "Slash dates unsupported; nothing resolves.",
+      "actual_today": {
+        "resolved": false
+      }
+    },
+    {
       "id": "abs-iso-date",
       "category": "absolute-dates",
       "input": "2026-12-31",
@@ -2898,6 +2913,40 @@
         },
         "repeatDays": [],
         "label": "every 2nd"
+      }
+    },
+    {
+      "id": "int-every-3-days",
+      "category": "intervals",
+      "input": "every 3 days",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 24,
+          "h": 10,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "",
+        "intervalDays": 3
+      },
+      "status": "target",
+      "semantics": "No clock: anchored to now + interval (3 days) preserving wall-clock; the day-interval is stored in the general interval column (design §7).",
+      "note": "The interval is lost: `3` parses as the bare hour 03:00 tomorrow and the label becomes `every days`.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 22,
+          "h": 3,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "every days"
       }
     },
     {
@@ -3878,17 +3927,20 @@
         "local": {
           "y": 2026,
           "mo": 9,
-          "d": 21,
-          "h": 10,
+          "d": 22,
+          "h": 7,
           "mi": 0,
-          "s": 30
+          "s": 0
         },
         "repeatDays": [],
-        "label": "ramp 7am"
+        "label": "",
+        "alarm": {
+          "ramp_seconds": 30
+        }
       },
       "status": "target",
       "trap": true,
-      "note": "'30s' is consumed as a duration (now + 30s) instead of ramp_seconds, and 'ramp 7am' becomes the label.",
+      "note": "`30s ramp` is metadata (ramp_seconds 30) and `7am` is the clock, so the alarm is tomorrow 07:00 with ramp 30; the recorded duration reading (now + 30s) is the wrong one.",
       "actual_today": {
         "local": {
           "y": 2026,
