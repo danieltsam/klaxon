@@ -3,11 +3,8 @@
 <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-  <title>alarmcore // Remote Alarm dashboard</title>
+  <title>klaxon // Remote Alarm dashboard</title>
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <script data-purpose="tailwind-config">
     tailwind.config = {
       darkMode: 'class',
@@ -34,8 +31,8 @@
             }
           },
           fontFamily: {
-            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-            mono: ['JetBrains Mono', 'SF Mono', 'Monaco', 'monospace']
+            sans: ['Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif'],
+            mono: ['Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif']
           },
           boxShadow: {
             'fab': '0 8px 32px rgba(94, 106, 210, 0.35), 0 4px 12px rgba(0, 0, 0, 0.5)',
@@ -94,12 +91,10 @@
     <header class="flex h-16 items-center justify-between border-b border-app-border px-6 lg:px-10 bg-app-surface-2 shrink-0" data-purpose="top-header">
       <div class="flex items-center gap-8">
         <div class="flex items-center gap-2.5">
-          <div class="flex h-7 w-7 items-center justify-center rounded-md bg-app-surface-3 border border-app-border">
-            <svg class="h-3.5 w-3.5 text-app-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
-            </svg>
+          <div class="flex h-7 w-7 items-center justify-center rounded-md bg-app-accent">
+            <span class="text-sm font-bold text-white">A</span>
           </div>
-          <span class="text-sm font-semibold tracking-tight lowercase brand-name">alarmcore</span>
+          <span class="text-sm font-semibold tracking-tight lowercase brand-name">klaxon</span>
         </div>
 
         <nav class="hidden sm:flex items-center gap-1 rounded-lg bg-app-surface p-1 border border-app-border">
@@ -354,10 +349,10 @@
 
     <!-- Floating + new alarm pill -->
     <div class="fixed bottom-8 left-1/2 -translate-x-1/2 z-40">
-      <button onclick="openCreateModal()" class="flex items-center gap-2 pl-5 pr-4 py-2.5 rounded-full bg-app-accent hover:bg-app-accent-hover text-white text-xs font-medium shadow-fab hover:shadow-fab-hover transition-all" type="button" title="new alarm (n)">
+      <button onclick="openCreateModal()" id="btn-new-alarm" class="flex items-center gap-2 pl-5 pr-4 py-2.5 rounded-full bg-app-accent hover:bg-app-accent-hover text-white text-xs font-medium shadow-fab hover:shadow-fab-hover transition-all" type="button" title="new alarm">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
         <span>+ new alarm</span>
-        <kbd class="ml-1.5 hidden sm:inline-flex items-center justify-center rounded-sm border border-app-border bg-app-surface-2 px-1.5 py-0.5 text-[10px] font-mono text-app-main leading-none">n</kbd>
+        <kbd id="new-alarm-kbd" class="ml-1.5 hidden sm:inline-flex items-center justify-center rounded-sm border border-app-border bg-app-surface-2 px-1.5 py-0.5 text-[10px] font-mono text-app-main leading-none">⌘K</kbd>
       </button>
     </div>
   </div>
@@ -373,7 +368,7 @@
         <button onclick="closeCreateModal()" class="text-xs font-mono text-app-dim hover:text-app-main transition-colors lowercase" type="button">close</button>
       </div>
 
-      <form id="create-alarm-form" class="space-y-4" onsubmit="event.preventDefault();">
+      <form id="create-alarm-form" class="space-y-4" novalidate>
         <!-- nl-first face -->
         <div class="space-y-3">
           <div class="flex items-center gap-3">
@@ -550,28 +545,22 @@
   <div id="device-guide-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 hidden">
     <div class="bg-app-surface border border-app-border w-full max-w-lg rounded-xl p-6 space-y-5 shadow-2xl">
       <div class="flex items-center justify-between border-b border-app-border pb-4">
-        <h3 class="text-sm font-semibold text-app-main lowercase">connect android phone</h3>
+        <div class="flex items-center gap-2.5">
+          <div class="flex h-7 w-7 items-center justify-center rounded-md bg-app-accent">
+            <span class="text-sm font-bold text-white">A</span>
+          </div>
+          <span class="text-sm font-semibold tracking-tight lowercase">klaxon</span>
+        </div>
         <button onclick="closeDeviceGuideModal()" class="text-xs font-mono text-app-dim hover:text-app-main transition-colors lowercase" type="button">close</button>
       </div>
 
       <div class="space-y-4 text-xs text-app-muted">
+        <p class="text-sm font-medium text-app-main lowercase">connect android phone</p>
         <p>the dashboard sends alarms, but the android app must be connected to ring them.</p>
 
         <div class="rounded-lg border border-app-border bg-app-surface-2 p-4 space-y-3">
           <div class="flex items-center gap-2 text-sm font-medium text-app-main">
-            <span class="text-app-accent font-mono">01.</span> usb cable (adb reverse)
-          </div>
-          <p class="text-[11px]">run this in a terminal:</p>
-          <div class="flex items-center justify-between rounded-md bg-app-surface-3 border border-app-border px-3 py-2 font-mono text-[11px] text-app-main">
-            <code>adb reverse tcp:3000 tcp:3000</code>
-            <button onclick="copyTextFallback('adb reverse tcp:3000 tcp:3000', () => alert('copied adb command'))" class="text-app-dim hover:text-app-main transition-colors" type="button">copy</button>
-          </div>
-          <p class="text-[11px] text-app-dim">in the app, keep the server url as <span class="text-app-main font-mono">http://127.0.0.1:3000</span></p>
-        </div>
-
-        <div class="rounded-lg border border-app-border bg-app-surface-2 p-4 space-y-3">
-          <div class="flex items-center gap-2 text-sm font-medium text-app-main">
-            <span class="text-app-accent font-mono">02.</span> wi-fi / local network
+            <span class="text-app-accent font-mono">01.</span> wi-fi / local network
           </div>
           <p class="text-[11px]">connect the phone to the same network, then enter the backend url in the app:</p>
           <div class="flex items-center justify-between rounded-md bg-app-surface-3 border border-app-border px-3 py-2 font-mono text-[11px] text-app-main">
@@ -853,6 +842,11 @@
         // Drop stale selections
         selectedIds = new Set([...selectedIds].filter(id => allAlarms.some(a => a.id === id)));
 
+        // Auto-exit selection mode if nothing remains selected
+        if (selectionMode && selectedIds.size === 0) {
+          selectionMode = false;
+        }
+
         // Check ringing
         const ringing = allAlarms.find(a => a.status === 'ringing');
         const ringingBanner = document.getElementById('ringing-banner');
@@ -985,7 +979,7 @@
             ? `<button type="button" onclick="event.stopPropagation(); toggleAlarmSelection('${alarm.id}')" class="flex h-4 w-4 items-center justify-center rounded-sm border ${isSelected ? 'border-app-accent bg-app-accent' : 'border-app-border bg-transparent'} shrink-0">
                  <svg class="${isSelected ? 'block' : 'hidden'} h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
                </button>`
-            : `<span class="h-1.5 w-1.5 rounded-full ${dotColor} shrink-0"></span>`;
+            : `<span class="flex h-4 w-4 items-center justify-center shrink-0"><span class="h-1.5 w-1.5 rounded-full ${dotColor}"></span></span>`;
 
           const selectButton = selectionMode
             ? ''
@@ -1040,25 +1034,35 @@
     function setSelectionMode(active) {
       selectionMode = active;
       if (!active) selectedIds = new Set();
-      updateSelectionUI();
+      renderDashboard();
     }
 
     function enterSelectionMode(id) {
-      setSelectionMode(true);
-      selectedIds.add(id);
-      updateSelectionUI();
+      selectionMode = true;
+      selectedIds = new Set([id]);
+      renderDashboard();
     }
 
     function toggleAlarmSelection(id) {
       if (selectedIds.has(id)) selectedIds.delete(id);
       else selectedIds.add(id);
-      updateSelectionUI();
+
+      if (selectionMode && selectedIds.size === 0) {
+        setSelectionMode(false);
+      } else {
+        renderDashboard();
+      }
     }
 
     function selectAllFiltered() {
       const filtered = getFilteredAlarms();
       filtered.forEach(a => selectedIds.add(a.id));
-      updateSelectionUI();
+
+      if (selectionMode && selectedIds.size === 0) {
+        setSelectionMode(false);
+      } else {
+        renderDashboard();
+      }
     }
 
     function cancelSelection() {
@@ -1114,7 +1118,12 @@
       } else {
         filtered.forEach(a => selectedIds.add(a.id));
       }
-      updateSelectionUI();
+
+      if (selectionMode && selectedIds.size === 0) {
+        setSelectionMode(false);
+      } else {
+        renderDashboard();
+      }
     }
 
     async function duplicateSelected() {
@@ -1472,7 +1481,24 @@
         const tone = document.getElementById('new-alarm-tone').value;
         const ramp = parseInt(document.getElementById('new-alarm-ramp').value, 10);
 
+        if (!title) {
+          feedback.textContent = 'add a label';
+          return;
+        }
+        if (!time) {
+          feedback.textContent = 'pick a time';
+          return;
+        }
+        if (!date) {
+          feedback.textContent = 'pick a date';
+          return;
+        }
+
         const composed = new Date(`${date}T${time}:00`);
+        if (isNaN(composed.getTime())) {
+          feedback.textContent = 'pick a valid date and time';
+          return;
+        }
         if (composed.getTime() <= Date.now()) {
           feedback.textContent = 'pick a time in the future';
           return;
@@ -1711,12 +1737,26 @@
       }[m]));
     }
 
+    function formatShortcut() {
+      const isMac = navigator.platform?.toLowerCase().includes('mac') ||
+        (navigator.userAgentData && navigator.userAgentData.platform === 'macOS');
+      return isMac ? '⌘K' : 'Ctrl+K';
+    }
+
+    function updateShortcutLabels() {
+      const kbd = document.getElementById('new-alarm-kbd');
+      const btn = document.getElementById('btn-new-alarm');
+      const shortcut = formatShortcut();
+      if (kbd) kbd.textContent = shortcut;
+      if (btn) btn.title = `new alarm (${shortcut})`;
+    }
+
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
       const tag = e.target.tagName;
       const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
 
-      if (e.key === 'n' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.repeat && !typing) {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && !e.repeat && !typing) {
         e.preventDefault();
         openCreateModal();
       }
@@ -1733,6 +1773,7 @@
     });
 
     // Initial load & 4s polling
+    updateShortcutLabels();
     loadSettings();
     loadAlarms();
     loadDeviceTelemetry();
