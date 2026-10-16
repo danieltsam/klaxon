@@ -10,19 +10,19 @@ I prefer a more abrasive solution in alarms. A good alarm tone is pain-inducing,
 
 The problem is where I set them. I want the flexibility to set alarms from my laptop or desktop, not just from the phone (ideally using Raycast!). The less I touch my phone, the better.
 
-## Why I did not use something else
+## Why didn't I just use something else?
 
-I could not find an existing service that does this.
+I could not find an existing free service that does this as surprising as this sounds for such a basic tool...
 
 - Proper alarm functionality on apps like TickTick or Todoist are gated by a paywall.
 - notify.sh, and Pushover can send notifications, but they cannot set a real Android alarm that takes over the phone screen and continues ringing till I silence it.
-- [Galarm](https://www.galarmapp.com/) is close to what I want, but it is closed-source and requires an enterprise plan for API access. I cannot hook it into my own scripts.
+- [Galarm](https://www.galarmapp.com/) was the closest thing I found, but is closed-source and requires an enterprise plan for API access. I cannot hook it into my own scripts.
 
 ## What it does
 
 - Sets real alarms on an Android phone. They use the full screen and override silent mode.
 - Lets me set, change, snooze, and cancel alarms from my workstation.
-- Runs a web dashboard and exposes an API.
+- Runs a web dashboard and exposes an API to CRUD alarms.
 - I mostly use the API and write my own scripts, including a Raycast extension.
 
 ## How it works
@@ -35,4 +35,4 @@ Everything runs on my private Tailscale network. I don't have to expose any port
 
 ### Phones without Google Play services
 
-FCM depends on Google Play services. If a phone does not have them, this project cannot deliver alarms to that phone reliably.
+FCM depends on Google Play services. If a phone does not have them, this project cannot deliver alarms to that phone reliably. 
