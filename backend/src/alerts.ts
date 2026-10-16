@@ -66,3 +66,82 @@ export function evaluateDeliveryHealth(input: {
 
   return { ok: reasons.length === 0, reasons };
 }
+
+export type WebhookKind = 'generic' | 'discord' | 'slack' | 'healthchecks';
+
+export interface WebhookRequest {
+  method: 'POST' | 'GET';
+  headers: Record<string, string>;
+  body?: string;
+}
+
+/**
+ * Shape an alert for a provider. Discord and Slack take a message JSON;
+ * the generic kind POSTs `{ title, body }` as-is; Healthchecks is a heartbeat
+ * ping (a GET with no body) — the alert fires when pings STOP, so the body is
+ * meaningless to it.
+ */
+export function formatWebhookAlert(
+  kind: WebhookKind,
+  alert: { title: string; body: string }
+): WebhookRequest {
+  const text = `${alert.title}\n${alert.body}`;
+
+  switch (kind) {
+    case 'discord':
+      return {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ content: text })
+      };
+    case 'slack':
+      return {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text })
+      };
+    case 'healthchecks':
+      return { method: 'GET', headers: {} };
+    case 'generic':
+    default:
+      return {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(alert)
+      };
+  }
+}
+
+/**
+ * Send an alert to a webhook. A missing URL is a silent no-op (the feature is
+ * optional). The call is bounded by a 5s timeout and never throws: a failed
+ * webhook must not break the sweep.
+ */
+export async function sendWebhookAlert(
+  url: string,
+  kind: WebhookKind,
+  alert: { title: string; body: string }
+): Promise<boolean> {
+  if (!url) {
+    return false;
+  }
+
+  const request = formatWebhookAlert(kind, alert);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const res = await fetch(url, {
+      method: request.method,
+      headers: request.headers,
+      body: request.body,
+      signal: controller.signal
+    });
+    return res.ok;
+  } catch (err) {
+    console.error('[alerts] webhook failed:', err instanceof Error ? err.message : err);
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
