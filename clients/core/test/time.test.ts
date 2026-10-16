@@ -1,5 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import {
   parseTime,
@@ -9,6 +11,19 @@ import {
   TimeParseError,
 } from "../src/index.js";
 import type { Weekday } from "../src/index.js";
+
+/**
+ * The grammar is pinned once in `fixtures/time-parse-cases.json` and asserted by
+ * two implementations: this canonical TypeScript parser and the no-build
+ * browser port at `backend/public/nl-time.js`. The fixture is the contract —
+ * never edit it to make a test pass, and never let the two implementations
+ * diverge from it.
+ *
+ * `now` in the fixture is a LOCAL wall-clock ISO date-time written without a
+ * timezone offset. ECMAScript parses offset-less date-time forms as local time,
+ * so `new Date(case.now)` reproduces the old `at(...)` helper in whatever
+ * timezone the suite runs, keeping the cases portable.
+ */
 
 /** Local wall-clock constructor (month is 1-based here for readability). */
 function at(
@@ -24,7 +39,6 @@ function at(
 }
 
 const MON_10 = at(2026, 9, 21, 10, 0); // Monday 21 Sep 2026, 10:00 local
-const ALL: Weekday[] = [1, 2, 3, 4, 5, 6, 7];
 
 function assertLocal(
   date: Date,
@@ -43,208 +57,90 @@ function assertLocal(
   assert.equal(date.getSeconds(), s, `seconds of ${date.toISOString()}`);
 }
 
-interface ValidCase {
-  name: string;
-  input: string;
-  now: Date;
+interface ExpectFields {
   y: number;
   mo: number;
   d: number;
   h: number;
   mi: number;
-  s?: number;
-  days?: Weekday[];
+  s: number;
 }
 
-const VALID: ValidCase[] = [
-  // ── Duration ──────────────────────────────────────────────────────────
-  { name: "25m", input: "25m", now: MON_10, y: 2026, mo: 9, d: 21, h: 10, mi: 25 },
-  { name: "25 min", input: "25 min", now: MON_10, y: 2026, mo: 9, d: 21, h: 10, mi: 25 },
-  { name: "in 25m", input: "in 25m", now: MON_10, y: 2026, mo: 9, d: 21, h: 10, mi: 25 },
-  { name: "1h", input: "1h", now: MON_10, y: 2026, mo: 9, d: 21, h: 11, mi: 0 },
-  { name: "1h30m", input: "1h30m", now: MON_10, y: 2026, mo: 9, d: 21, h: 11, mi: 30 },
-  { name: "2h15m", input: "2h15m", now: MON_10, y: 2026, mo: 9, d: 21, h: 12, mi: 15 },
-  { name: "90s", input: "90s", now: MON_10, y: 2026, mo: 9, d: 21, h: 10, mi: 1, s: 30 },
-  {
-    name: "45 seconds",
-    input: "45 seconds",
-    now: MON_10,
-    y: 2026,
-    mo: 9,
-    d: 21,
-    h: 10,
-    mi: 0,
-    s: 45,
-  },
-  { name: "99m (valid large duration)", input: "99m", now: MON_10, y: 2026, mo: 9, d: 21, h: 11, mi: 39 },
-  {
-    name: "in 1h 30m (multi-token)",
-    input: "in 1h 30m",
-    now: MON_10,
-    y: 2026,
-    mo: 9,
-    d: 21,
-    h: 11,
-    mi: 30,
-  },
+interface ValidCase {
+  name: string;
+  input: string;
+  now: string;
+  expect: ExpectFields;
+  days: Weekday[];
+}
 
-  // ── Clock ─────────────────────────────────────────────────────────────
-  { name: "bare 7 (passed -> tomorrow 07:00)", input: "7", now: MON_10, y: 2026, mo: 9, d: 22, h: 7, mi: 0 },
-  {
-    name: "bare 7 (future -> today 07:00)",
-    input: "7",
-    now: at(2026, 9, 21, 6, 0),
-    y: 2026,
-    mo: 9,
-    d: 21,
-    h: 7,
-    mi: 0,
-  },
-  { name: "bare 19 is 24-hour", input: "19", now: MON_10, y: 2026, mo: 9, d: 21, h: 19, mi: 0 },
-  {
-    name: "7:30 without meridiem is 24-hour (future)",
-    input: "7:30",
-    now: at(2026, 9, 21, 6, 0),
-    y: 2026,
-    mo: 9,
-    d: 21,
-    h: 7,
-    mi: 30,
-  },
-  {
-    name: "7:30 without meridiem (passed -> tomorrow)",
-    input: "7:30",
-    now: MON_10,
-    y: 2026,
-    mo: 9,
-    d: 22,
-    h: 7,
-    mi: 30,
-  },
-  { name: "19:00", input: "19:00", now: MON_10, y: 2026, mo: 9, d: 21, h: 19, mi: 0 },
-  {
-    name: "07:00",
-    input: "07:00",
-    now: at(2026, 9, 21, 6, 0),
-    y: 2026,
-    mo: 9,
-    d: 21,
-    h: 7,
-    mi: 0,
-  },
-  { name: "7am", input: "7am", now: at(2026, 9, 21, 6, 0), y: 2026, mo: 9, d: 21, h: 7, mi: 0 },
-  {
-    name: "7:30am",
-    input: "7:30am",
-    now: at(2026, 9, 21, 6, 0),
-    y: 2026,
-    mo: 9,
-    d: 21,
-    h: 7,
-    mi: 30,
-  },
-  { name: "12am is midnight", input: "12am", now: at(2026, 9, 20, 23, 0), y: 2026, mo: 9, d: 21, h: 0, mi: 0 },
-  { name: "12pm is noon", input: "12pm", now: MON_10, y: 2026, mo: 9, d: 21, h: 12, mi: 0 },
-  { name: "bare 0 (passed -> tomorrow midnight)", input: "0", now: MON_10, y: 2026, mo: 9, d: 22, h: 0, mi: 0 },
-  { name: "23:59", input: "23:59", now: MON_10, y: 2026, mo: 9, d: 21, h: 23, mi: 59 },
-  {
-    name: "23:59 boundary rolls at exact equality",
-    input: "23:59",
-    now: at(2026, 9, 21, 23, 59),
-    y: 2026,
-    mo: 9,
-    d: 22,
-    h: 23,
-    mi: 59,
-  },
-  { name: "at 7am (connector stripped)", input: "at 7am", now: at(2026, 9, 21, 6, 0), y: 2026, mo: 9, d: 21, h: 7, mi: 0 },
-  { name: "7 pm (split meridiem)", input: "7 pm", now: MON_10, y: 2026, mo: 9, d: 21, h: 19, mi: 0 },
-  {
-    name: "7:30 pm (split meridiem)",
-    input: "7:30 pm",
-    now: MON_10,
-    y: 2026,
-    mo: 9,
-    d: 21,
-    h: 19,
-    mi: 30,
-  },
+interface InvalidCase {
+  input: string;
+  token: string;
+  now: string;
+}
 
-  // ── Day-qualified ─────────────────────────────────────────────────────
-  { name: "tomorrow", input: "tomorrow", now: MON_10, y: 2026, mo: 9, d: 22, h: 0, mi: 0 },
-  { name: "tmr", input: "tmr", now: MON_10, y: 2026, mo: 9, d: 22, h: 0, mi: 0 },
-  { name: "tomorrow 6pm", input: "tomorrow 6pm", now: MON_10, y: 2026, mo: 9, d: 22, h: 18, mi: 0 },
-  { name: "tomorrow at 7am", input: "tomorrow at 7am", now: MON_10, y: 2026, mo: 9, d: 22, h: 7, mi: 0 },
-  { name: "today 6pm (future)", input: "today 6pm", now: MON_10, y: 2026, mo: 9, d: 21, h: 18, mi: 0 },
-  { name: "today 9am (passed rolls +1)", input: "today 9am", now: MON_10, y: 2026, mo: 9, d: 22, h: 9, mi: 0 },
-  { name: "mon 8:30am (passed -> next Monday)", input: "mon 8:30am", now: MON_10, y: 2026, mo: 9, d: 28, h: 8, mi: 30 },
-  {
-    name: "monday 8:30am (today counts if not passed)",
-    input: "monday 8:30am",
-    now: at(2026, 9, 21, 8, 0),
-    y: 2026,
-    mo: 9,
-    d: 21,
-    h: 8,
-    mi: 30,
-  },
-  { name: "tue 8:30am", input: "tue 8:30am", now: MON_10, y: 2026, mo: 9, d: 22, h: 8, mi: 30 },
-  { name: "wed 7am", input: "wed 7am", now: MON_10, y: 2026, mo: 9, d: 23, h: 7, mi: 0 },
-  { name: "thu 7am", input: "thu 7am", now: MON_10, y: 2026, mo: 9, d: 24, h: 7, mi: 0 },
-  { name: "fri 7am", input: "fri 7am", now: MON_10, y: 2026, mo: 9, d: 25, h: 7, mi: 0 },
-  { name: "sat 7am", input: "sat 7am", now: MON_10, y: 2026, mo: 9, d: 26, h: 7, mi: 0 },
-  { name: "sun 7am", input: "sun 7am", now: MON_10, y: 2026, mo: 9, d: 27, h: 7, mi: 0 },
-  { name: "friday 7:30pm", input: "friday 7:30pm", now: MON_10, y: 2026, mo: 9, d: 25, h: 19, mi: 30 },
+interface LeadingCase {
+  name: string;
+  input: string;
+  now: string;
+  expect: ExpectFields;
+  rest: string;
+}
 
-  // ── Recurrence ────────────────────────────────────────────────────────
-  { name: "daily 7am (passed)", input: "daily 7am", now: MON_10, y: 2026, mo: 9, d: 22, h: 7, mi: 0, days: ALL },
-  {
-    name: "daily 7am (today)",
-    input: "daily 7am",
-    now: at(2026, 9, 21, 6, 0),
-    y: 2026,
-    mo: 9,
-    d: 21,
-    h: 7,
-    mi: 0,
-    days: ALL,
-  },
-  { name: "every day 7am", input: "every day 7am", now: MON_10, y: 2026, mo: 9, d: 22, h: 7, mi: 0, days: ALL },
-  { name: "weekdays 7am", input: "weekdays 7am", now: MON_10, y: 2026, mo: 9, d: 22, h: 7, mi: 0, days: [1, 2, 3, 4, 5] },
-  { name: "weekends 7am", input: "weekends 7am", now: MON_10, y: 2026, mo: 9, d: 26, h: 7, mi: 0, days: [6, 7] },
-  { name: "mon-fri 7am", input: "mon-fri 7am", now: MON_10, y: 2026, mo: 9, d: 22, h: 7, mi: 0, days: [1, 2, 3, 4, 5] },
-  { name: "mon,wed,fri 7am", input: "mon,wed,fri 7am", now: MON_10, y: 2026, mo: 9, d: 23, h: 7, mi: 0, days: [1, 3, 5] },
-  { name: "mon, wed, fri 7am (spaced list)", input: "mon, wed, fri 7am", now: MON_10, y: 2026, mo: 9, d: 23, h: 7, mi: 0, days: [1, 3, 5] },
-  { name: "every mon 7am (passed -> next)", input: "every mon 7am", now: MON_10, y: 2026, mo: 9, d: 28, h: 7, mi: 0, days: [1] },
-  {
-    name: "every mon 7am (today)",
-    input: "every mon 7am",
-    now: at(2026, 9, 21, 6, 0),
-    y: 2026,
-    mo: 9,
-    d: 21,
-    h: 7,
-    mi: 0,
-    days: [1],
-  },
-  { name: "every day at 10pm", input: "every day at 10pm", now: MON_10, y: 2026, mo: 9, d: 21, h: 22, mi: 0, days: ALL },
-  { name: "daily 6am", input: "daily 6am", now: MON_10, y: 2026, mo: 9, d: 22, h: 6, mi: 0, days: ALL },
-];
+interface InterpretationCase {
+  name: string;
+  input: string;
+  now: string;
+  interpretation: string;
+}
 
-describe("parseTime — grammar table", () => {
-  for (const testCase of VALID) {
+interface Fixture {
+  rule: { grammar: string[]; fields: Record<string, string>; notes: string[] };
+  cases: ValidCase[];
+  invalid: InvalidCase[];
+  leading: LeadingCase[];
+  leadingNull: string[];
+  interpretation: InterpretationCase[];
+}
+
+/**
+ * Walk upward from the working directory until `fixtures/time-parse-cases.json`
+ * is found, so the suite works whether it runs from `clients/core` or the repo
+ * root. A missing fixture is a hard failure, never a silent skip.
+ */
+function findFixture(startDir: string): string {
+  let dir = startDir;
+  for (;;) {
+    const candidate = join(dir, "fixtures", "time-parse-cases.json");
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) {
+      throw new Error(
+        `time-parse fixture not found: searched upward from ${startDir} for fixtures/time-parse-cases.json`
+      );
+    }
+    dir = parent;
+  }
+}
+
+const fixturePath = findFixture(process.cwd());
+const fixture = JSON.parse(readFileSync(fixturePath, "utf8")) as Fixture;
+
+describe("parseTime — grammar table (shared fixture)", () => {
+  for (const testCase of fixture.cases) {
     it(`parses "${testCase.name}"`, () => {
-      const parsed = parseTime(testCase.input, testCase.now);
+      const parsed = parseTime(testCase.input, new Date(testCase.now));
       assertLocal(
         parsed.targetTime,
-        testCase.y,
-        testCase.mo,
-        testCase.d,
-        testCase.h,
-        testCase.mi,
-        testCase.s ?? 0
+        testCase.expect.y,
+        testCase.expect.mo,
+        testCase.expect.d,
+        testCase.expect.h,
+        testCase.expect.mi,
+        testCase.expect.s
       );
-      assert.deepEqual(parsed.repeatDays, testCase.days ?? []);
+      assert.deepEqual(parsed.repeatDays, testCase.days);
     });
   }
 });
@@ -270,29 +166,11 @@ describe("parseTime — weekday mapping for all seven days", () => {
   }
 });
 
-interface InvalidCase {
-  input: string;
-  token: string;
-}
-
-const INVALID: InvalidCase[] = [
-  { input: "25:00", token: "25:00" },
-  { input: "13pm", token: "13pm" },
-  { input: "1x30m", token: "1x30m" },
-  { input: "-5m", token: "-5m" },
-  { input: "25", token: "25" },
-  { input: "24", token: "24" },
-  { input: "7:60", token: "7:60" },
-  { input: "0am", token: "0am" },
-  { input: "tomorrow 13pm", token: "13pm" },
-  { input: "banana", token: "banana" },
-];
-
-describe("parseTime — invalid input", () => {
-  for (const testCase of INVALID) {
+describe("parseTime — invalid input (shared fixture)", () => {
+  for (const testCase of fixture.invalid) {
     it(`rejects "${testCase.input}" naming the token`, () => {
       assert.throws(
-        () => parseTime(testCase.input, MON_10),
+        () => parseTime(testCase.input, new Date(testCase.now)),
         (err: unknown) => {
           assert.ok(err instanceof TimeParseError);
           assert.equal(err.token, testCase.token);
@@ -309,44 +187,28 @@ describe("parseTime — invalid input", () => {
   });
 });
 
-describe("parseLeadingTime — longest leading prefix split", () => {
-  it("splits '25m Oven'", () => {
-    const split = parseLeadingTime("25m Oven", MON_10);
-    assert.ok(split);
-    assertLocal(split.parsed.targetTime, 2026, 9, 21, 10, 25);
-    assert.equal(split.rest, "Oven");
-  });
-
-  it("splits 'tomorrow 6pm Call mum'", () => {
-    const split = parseLeadingTime("tomorrow 6pm Call mum", MON_10);
-    assert.ok(split);
-    assertLocal(split.parsed.targetTime, 2026, 9, 22, 18, 0);
-    assert.equal(split.rest, "Call mum");
-  });
-
-  it("splits '8am 5 minute warning' (not a concatenation)", () => {
-    const split = parseLeadingTime("8am 5 minute warning", MON_10);
-    assert.ok(split);
-    assertLocal(split.parsed.targetTime, 2026, 9, 22, 8, 0);
-    assert.equal(split.rest, "5 minute warning");
-  });
-
-  it("strips the 'in' connector but preserves the label", () => {
-    const split = parseLeadingTime("in 25m Oven", MON_10);
-    assert.ok(split);
-    assertLocal(split.parsed.targetTime, 2026, 9, 21, 10, 25);
-    assert.equal(split.rest, "Oven");
-  });
-
-  it("preserves the label's original casing", () => {
-    const split = parseLeadingTime("tomorrow 6pm Call Mum", MON_10);
-    assert.ok(split);
-    assert.equal(split.rest, "Call Mum");
-  });
+describe("parseLeadingTime — longest leading prefix split (shared fixture)", () => {
+  for (const testCase of fixture.leading) {
+    it(testCase.name, () => {
+      const split = parseLeadingTime(testCase.input, new Date(testCase.now));
+      assert.ok(split);
+      assertLocal(
+        split.parsed.targetTime,
+        testCase.expect.y,
+        testCase.expect.mo,
+        testCase.expect.d,
+        testCase.expect.h,
+        testCase.expect.mi,
+        testCase.expect.s
+      );
+      assert.equal(split.rest, testCase.rest);
+    });
+  }
 
   it("returns null when no prefix parses", () => {
-    assert.equal(parseLeadingTime("Oven", MON_10), null);
-    assert.equal(parseLeadingTime("", MON_10), null);
+    for (const input of fixture.leadingNull) {
+      assert.equal(parseLeadingTime(input, MON_10), null);
+    }
   });
 });
 
@@ -387,15 +249,16 @@ describe("parseTime — timezone round trip (spec §6.5)", () => {
   });
 });
 
-describe("parseTime — interpretation echo", () => {
-  it("echoes the absolute local time and the relative offset", () => {
-    const now = at(2026, 9, 21, 17, 20);
-    const expected = at(2026, 9, 22, 7, 0);
-    const parsed = parseTime("tomorrow 7am", now);
-    assert.equal(parsed.interpretation, "Tue 22 Sep, 7:00am (in 13h 40m)");
-    assert.equal(
-      parsed.interpretation,
-      `${formatLocal(expected)} (${formatRelative(now, expected)})`
-    );
-  });
+describe("parseTime — interpretation echo (shared fixture)", () => {
+  for (const testCase of fixture.interpretation) {
+    it(testCase.name, () => {
+      const now = new Date(testCase.now);
+      const parsed = parseTime(testCase.input, now);
+      assert.equal(parsed.interpretation, testCase.interpretation);
+      assert.equal(
+        parsed.interpretation,
+        `${formatLocal(parsed.targetTime)} (${formatRelative(now, parsed.targetTime)})`
+      );
+    });
+  }
 });
