@@ -40,6 +40,23 @@ class _DirectionalStrikePainter extends CustomPainter {
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+/// Injection seam for tests; production re-registers through [BackendClient].
+@visibleForTesting
+Future<void> Function(String token)? registerTokenForTest;
+
+/// Register (or re-register) this device's FCM token with the backend.
+///
+/// Called on cold start and on every [FirebaseMessaging.onTokenRefresh], so a
+/// rotated token is never left dead on the backend (the original outage).
+Future<void> registerToken(String token) async {
+  final override = registerTokenForTest;
+  if (override != null) {
+    await override(token);
+    return;
+  }
+  await BackendClient.registerDeviceToken(token);
+}
+
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
@@ -2156,6 +2173,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       final token = await messaging.getToken();
       if (mounted) {
         setState(() => _fcmToken = token);
+      }
+
+      // Re-register a rotated token without a cold start. This closes the
+      // cold-start-only hole that caused the original `NotRegistered` outage.
+      FirebaseMessaging.instance.onTokenRefresh.listen(registerToken);
+      if (_fcmToken != null) {
+        unawaited(registerToken(_fcmToken!));
       }
 
       if (token != null) {
