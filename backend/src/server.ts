@@ -10,6 +10,7 @@ import { GcalMirror, unconfiguredTransport, classifyGcalError, type GcalTranspor
 import { createGcalTransport } from './gcal-google.js';
 import { resolveGcalConfig } from './gcal-config.js';
 import { reconcile } from './gcal-reconcile.js';
+import { evaluateDeliveryHealth, type DeliveryHealth } from './alerts.js';
 
 dotenv.config();
 
@@ -248,9 +249,26 @@ export async function mirrorSafely(alarm: AlarmRecord): Promise<void> {
   }
 }
 
+/**
+ * Compute the current delivery health from live state. Used by both the sweep
+ * (to log/scream) and `/api/health` (to surface it). Due-aware, not a heartbeat:
+ * a quiet interval with no alarms stays healthy (spec §5.4).
+ */
+export function computeDeliveryHealth(now: Date = new Date()): DeliveryHealth {
+  return evaluateDeliveryHealth({
+    deviceCount: DeviceRepo.getAllDevices().length,
+    alarms: AlarmRepo.getAll('all'),
+    now
+  });
+}
+
 // 0. GET /api/health: Healthcheck and connectivity test
 app.get('/api/health', async (_request, reply) => {
-  return reply.send({ status: 'ok', timestamp: new Date().toISOString() });
+  return reply.send({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    delivery_health: computeDeliveryHealth()
+  });
 });
 
 // 1. GET /api/alarms: Return alarms filtered by view ('active' | 'history' | 'all')
@@ -1036,6 +1054,12 @@ if (!isTestRun) {
   setInterval(() => {
     try {
       sweepMissedAlarms();
+      // Delivery-health monitor (spec §5.4): a dead token, a failed dispatch, or
+      // an alarm due soon with no report must surface instead of going quiet.
+      const health = computeDeliveryHealth();
+      if (!health.ok) {
+        console.error('[alerts] delivery unhealthy:', health.reasons);
+      }
     } catch (err) {
       // sweepMissedAlarms catches per-alarm errors; this is the last line of
       // defence so a failure can never kill the timer.

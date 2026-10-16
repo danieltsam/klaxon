@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluateDeliveryHealth } from '../src/alerts.js';
+import { app, missedSweepStarted } from '../src/server.js';
 
 const base = { deviceCount: 1, now: new Date('2026-10-16T00:00:00Z'), dueWithinMs: 900000 };
 
@@ -23,5 +24,19 @@ describe('evaluateDeliveryHealth', () => {
 
   it('stays healthy through a quiet interval with no alarms', () => {
     assert.deepEqual(evaluateDeliveryHealth({ ...base, alarms: [] }), { ok: true, reasons: [] });
+  });
+});
+
+describe('GET /api/health delivery health', () => {
+  it('reports delivery health on /api/health', async () => {
+    await app.ready();
+    const res = await app.inject({ method: 'GET', url: '/api/health' });
+    const body = res.json();
+    assert.equal(typeof body.delivery_health.ok, 'boolean');
+    assert.ok(Array.isArray(body.delivery_health.reasons));
+  });
+
+  it('does not start the real sweep timer under test', () => {
+    assert.equal(missedSweepStarted, false);
   });
 });
