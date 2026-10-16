@@ -210,7 +210,7 @@ export async function sendFcmDataMessage(
   let failed = 0;
 
   for (const token of tokens) {
-    const message = buildFcmMessage(action, payload, token) as admin.messaging.Message;
+    const message = buildFcmMessage(action, payload, token) as unknown as admin.messaging.Message;
 
     try {
       await withRetry(() => admin.messaging().send(message));
