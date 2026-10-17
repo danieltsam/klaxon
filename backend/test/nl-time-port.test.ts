@@ -234,3 +234,14 @@ describe('nl-time.js — interpretation echo (shared fixture)', () => {
     });
   }
 });
+
+describe('nl-time.js — bare-integer clock guard', () => {
+  it('allows a lone integer as the whole expression', () => {
+    const parsed = NLTime.parseTime('7', new Date('2026-09-21T10:00:00'));
+    assertLocal(parsed.targetTime, { y: 2026, mo: 9, d: 22, h: 7, mi: 0, s: 0 });
+  });
+  it('never selects a bare integer inside a phrase', () => {
+    assert.equal(NLTime.parseLeadingTime('foo 5 bar', new Date('2026-09-21T10:00:00')), null);
+    assert.equal(NLTime.parseLeadingTime('call at 5', new Date('2026-09-21T10:00:00')), null);
+  });
+});

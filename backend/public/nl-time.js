@@ -203,18 +203,18 @@
       return null;
     }
 
-    function makeClock(hour, minute, meridiem, next) {
+    function makeClock(hour, minute, meridiem, next, bare) {
       if (!Number.isInteger(minute) || minute < 0 || minute > 59) return null;
       if (meridiem) {
         // A meridiem implies a 1–12 hour; `13pm` / `0am` are invalid.
         if (hour < 1 || hour > 12) return null;
         var hours = hour % 12;
         if (meridiem === "pm") hours += 12;
-        return { hours: hours, minutes: minute, next: next };
+        return { hours: hours, minutes: minute, next: next, bare: bare };
       }
       // Bare / colon times without a meridiem are read as 24-hour.
       if (hour < 0 || hour > 23) return null;
-      return { hours: hour, minutes: minute, next: next };
+      return { hours: hour, minutes: minute, next: next, bare: bare };
     }
 
     /** Parse a clock token (possibly spread over two tokens, e.g. `7 am`). */
@@ -225,7 +225,7 @@
       // 7am / 12pm / 13pm (invalid)
       var match = /^(\d{1,2})(am|pm)$/.exec(first);
       if (match) {
-        return makeClock(parseInt(match[1], 10), 0, match[2], i + 1);
+        return makeClock(parseInt(match[1], 10), 0, match[2], i + 1, false);
       }
 
       // 7:30am / 07:00 / 19:00 / 7:30
@@ -237,16 +237,16 @@
           meridiem = toks[next];
           next++;
         }
-        return makeClock(parseInt(match[1], 10), parseInt(match[2], 10), meridiem, next);
+        return makeClock(parseInt(match[1], 10), parseInt(match[2], 10), meridiem, next, false);
       }
 
       // Bare hour: `7` -> 07:00, `19` -> 19:00, optionally followed by am/pm.
       match = /^(\d{1,2})$/.exec(first);
       if (match) {
         if (i + 1 < toks.length && (toks[i + 1] === "am" || toks[i + 1] === "pm")) {
-          return makeClock(parseInt(match[1], 10), 0, toks[i + 1], i + 2);
+          return makeClock(parseInt(match[1], 10), 0, toks[i + 1], i + 2, false);
         }
-        return makeClock(parseInt(match[1], 10), 0, undefined, i + 1);
+        return makeClock(parseInt(match[1], 10), 0, undefined, i + 1, true);
       }
 
       return null;
@@ -322,8 +322,12 @@
     /**
      * Try to parse a sequence of tokens as exactly one complete time expression.
      * Returns `null` if the tokens are not a single valid expression.
+     *
+     * `allowBareIntegerClock` is true only when `toks` is the entire input: a
+     * bare-integer clock (`7`) is otherwise a trap, silently swallowing a number
+     * that belongs to the label (spec §5.4/§11 #6).
      */
-    function tryParseExpression(toks, now) {
+    function tryParseExpression(toks, now, allowBareIntegerClock) {
       var ctx = { now: now };
       var i = 0;
 
@@ -370,7 +374,7 @@
       }
 
       var clock = parseClock(toks, i);
-      if (clock && clock.next === toks.length) {
+      if (clock && clock.next === toks.length && (!clock.bare || allowBareIntegerClock)) {
         var targetTime2 = buildClockTime(ctx, qualifier, repeatDays, clock.hours, clock.minutes);
         return finalize(targetTime2, repeatDays, ctx.now);
       }
@@ -392,12 +396,12 @@
       var toks = raw.map(function (t) {
         return t.toLowerCase();
       });
-      var parsed = tryParseExpression(toks, nowDate);
+      var parsed = tryParseExpression(toks, nowDate, true);
       if (parsed) return parsed;
 
       // Name the offending (first unconsumed) token when a valid prefix exists.
       for (var end = toks.length - 1; end >= 1; end--) {
-        if (tryParseExpression(toks.slice(0, end), nowDate)) {
+        if (tryParseExpression(toks.slice(0, end), nowDate, false)) {
           throw new TimeParseError('Could not parse time expression: "' + raw[end] + '".', raw[end]);
         }
       }
@@ -416,7 +420,7 @@
       // Prefer the longest trailing span: label first, time last. Iterating
       // `start` upward returns the smallest start (longest suffix) that parses.
       for (var start = 0; start < toks.length; start++) {
-        var trailing = tryParseExpression(toks.slice(start), now);
+        var trailing = tryParseExpression(toks.slice(start), now, false);
         if (trailing) {
           return { parsed: trailing, rest: raw.slice(0, start).join(" ") };
         }
@@ -424,7 +428,7 @@
       // Otherwise the longest span anywhere; the surrounding tokens form the label.
       for (var len = toks.length; len >= 1; len--) {
         for (var start2 = 0; start2 + len <= toks.length; start2++) {
-          var inner = tryParseExpression(toks.slice(start2, start2 + len), now);
+          var inner = tryParseExpression(toks.slice(start2, start2 + len), now, false);
           if (inner) {
             var label = raw.slice(0, start2).concat(raw.slice(start2 + len));
             return { parsed: inner, rest: label.join(" ") };
@@ -450,7 +454,9 @@
         return t.toLowerCase();
       });
       for (var end = toks.length; end >= 1; end--) {
-        var parsed = tryParseExpression(toks.slice(0, end), nowDate);
+        // Only the whole input may carry a bare-integer clock; shorter prefixes
+        // are slices, where a bare integer would swallow part of the label.
+        var parsed = tryParseExpression(toks.slice(0, end), nowDate, end === toks.length);
         if (parsed) {
           return { parsed: parsed, rest: raw.slice(end).join(" ") };
         }
