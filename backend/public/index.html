@@ -1078,7 +1078,6 @@
 
     function updateSelectionUI() {
       const header = document.getElementById('selection-header');
-      const note = document.getElementById('selection-note');
       const bulkBar = document.getElementById('bulk-action-bar');
       const selectAllCheckbox = document.getElementById('select-all-checkbox');
       const selectAllCheck = document.getElementById('select-all-check');
@@ -1089,7 +1088,6 @@
       if (selectionMode) {
         header.classList.remove('hidden');
         header.classList.add('flex');
-        note.classList.add('hidden');
         bulkBar.classList.remove('hidden');
         bulkBar.classList.add('flex');
 
