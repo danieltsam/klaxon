@@ -93,7 +93,7 @@ interface NLTimeApi {
 }
 
 /** Updated by each task as it flips `target` ids into `fixtures/nl-corpus-asserted.json`. */
-const EXPECTED_REMAINING_TARGETS = 21;
+const EXPECTED_REMAINING_TARGETS = 14;
 
 /**
  * Walk upward from the working directory until `relativePath` is found, so the
@@ -157,16 +157,17 @@ function assertLocal(date: Date, expected: LocalFields): void {
 /**
  * Map the port's structured output onto the corpus's flat expectation keys.
  * `[...parsed.repeatDays]` re-homes the vm-realm array onto the host Array
- * prototype so `deepEqual` compares values, not realms.
+ * prototype so `deepEqual` compares values, not realms; the spread of
+ * `parsed.interval` does the same for that object.
  */
 function assertExpected(parsed: ParsedTime, rest: string, expected: Expected): void {
   assertLocal(parsed.targetTime, expected.local!);
   assert.deepEqual([...parsed.repeatDays], expected.repeatDays);
   assert.equal(rest, expected.label);
   if (expected.intervalWeeks !== undefined) {
-    assert.deepEqual(parsed.interval, { count: expected.intervalWeeks, unit: 'weeks' });
+    assert.deepEqual({ ...parsed.interval }, { count: expected.intervalWeeks, unit: 'weeks' });
   } else if (expected.intervalDays !== undefined) {
-    assert.deepEqual(parsed.interval, { count: expected.intervalDays, unit: 'days' });
+    assert.deepEqual({ ...parsed.interval }, { count: expected.intervalDays, unit: 'days' });
   } else {
     assert.equal(parsed.interval, undefined);
   }

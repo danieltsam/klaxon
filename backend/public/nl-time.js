@@ -206,6 +206,41 @@
       return { days: days, next: j };
     }
 
+    /**
+     * Read an interval beginning at `i`, i.e. the tokens just after `every` (spec
+     * §5.3): `<n> weeks|week` → a week interval; `<n> days|day` → a day interval;
+     * `other <weekday>` / `<n>nd <weekday>` → that weekday, every 2 weeks. A number
+     * with a unit is an interval and is **never** a clock; a named day is a weekday
+     * set. `day` (all days) and a bare `<weekday-group>` are deliberately left to
+     * the caller's existing fallback, so only the interval forms are returned here.
+     * Mirrors `parseInterval` in clients/core/src/time.ts.
+     */
+    function parseInterval(toks, i) {
+      var countMatch = /^(\d+)$/.exec(toks[i]);
+      var unit = toks[i + 1];
+      if (countMatch) {
+        var count = parseInt(countMatch[1], 10);
+        if (unit === "week" || unit === "weeks") {
+          return { interval: { count: count, unit: "weeks" }, repeatDays: [], next: i + 2 };
+        }
+        if (unit === "day" || unit === "days") {
+          return { interval: { count: count, unit: "days" }, repeatDays: [], next: i + 2 };
+        }
+      }
+
+      // `every other <weekday>` / `every <n>nd <weekday>`: a weekday set every 2 weeks.
+      var weekday = WEEKDAY_NAMES[toks[i + 1]];
+      if (weekday && (toks[i] === "other" || /^\d+nd$/.test(toks[i]))) {
+        return {
+          interval: { count: 2, unit: "weeks" },
+          repeatDays: [weekday],
+          next: i + 2,
+        };
+      }
+
+      return null;
+    }
+
     function matchRecurrencePrefix(toks, i) {
       var first = toks[i];
       if (first === "daily") return { repeatDays: ALL_DAYS, next: i + 1 };
@@ -213,6 +248,8 @@
       if (first === "weekends") return { repeatDays: WEEKENDS, next: i + 1 };
 
       if (first === "every") {
+        var interval = parseInterval(toks, i + 1);
+        if (interval) return interval;
         var after = toks[i + 1];
         if (after === "day") return { repeatDays: ALL_DAYS, next: i + 2 };
         var group = readWeekdayGroup(toks, i + 1);
@@ -596,12 +633,25 @@
       return buildAbsolute(ctx, hours, minutes, ALL_DAYS);
     }
 
-    function finalize(targetTime, repeatDays, now) {
-      return {
+    /**
+     * Anchor a weekday-less interval with no clock (spec §6.6): `now + interval`,
+     * preserving the wall-clock time (day/week arithmetic on the calendar, never a
+     * fixed millisecond span). Mirrors `anchorInterval` in clients/core/src/time.ts.
+     */
+    function anchorInterval(ctx, interval) {
+      var target = new Date(ctx.now.getTime());
+      target.setDate(target.getDate() + interval.count * (interval.unit === "weeks" ? 7 : 1));
+      return target;
+    }
+
+    function finalize(targetTime, repeatDays, now, interval) {
+      var parsed = {
         targetTime: targetTime,
         repeatDays: repeatDays,
         interpretation: formatInterpretation(targetTime, now),
       };
+      if (interval) parsed.interval = interval;
+      return parsed;
     }
 
     /**
@@ -625,10 +675,12 @@
 
       var repeatDays = [];
       var qualifier = null;
+      var interval;
 
       var recurrence = matchRecurrencePrefix(toks, i);
       if (recurrence) {
         repeatDays = recurrence.repeatDays;
+        interval = recurrence.interval;
         i = recurrence.next;
       } else {
         var nextThis = matchNextThis(toks, i);
@@ -647,7 +699,20 @@
       skipConnectors();
 
       if (i >= toks.length) {
-        // No clock: a bare day qualifier means midnight; recurrence needs a time.
+        // No clock: a bare day qualifier means midnight; recurrence needs a time —
+        // except an interval, which anchors to now + interval (weekday-less) or to
+        // the weekday's next occurrence at midnight (spec §6.6).
+        if (interval) {
+          if (repeatDays.length > 0) {
+            return finalize(
+              buildClockTime(ctx, qualifier, repeatDays, 0, 0),
+              repeatDays,
+              ctx.now,
+              interval
+            );
+          }
+          return finalize(anchorInterval(ctx, interval), [], ctx.now, interval);
+        }
         if (repeatDays.length > 0) return null;
         if (qualifier) {
           return finalize(buildClockTime(ctx, qualifier, [], 0, 0), [], ctx.now);
@@ -656,8 +721,9 @@
       }
 
       // Absolute-date anchor (spec §6.4), standalone or joined to a clock in
-      // either order (spec §5.4). A lone date resolves to 00:00 on that day.
-      if (!qualifier && repeatDays.length === 0) {
+      // either order (spec §5.4). A lone date resolves to 00:00 on that day. Not an
+      // interval anchor: an interval must not be silently dropped here.
+      if (!qualifier && repeatDays.length === 0 && interval === undefined) {
         // Date → clock/period: `dec 25 7am`, `2026-12-31 9am`, `dec 25 noon`.
         var date = parseAbsoluteDate(toks, i);
         if (date) {
@@ -703,8 +769,10 @@
         }
       }
 
-      // Duration form: only ever standalone (no day/recurrence qualifier).
-      if (!qualifier && repeatDays.length === 0) {
+      // Duration form: only ever standalone (no day/recurrence qualifier). The
+      // `interval === undefined` guard keeps an interval from being hijacked by the
+      // day/week offset branch below, which would silently drop it (§5.3/§6.6).
+      if (!qualifier && repeatDays.length === 0 && interval === undefined) {
         var duration = parseDuration(toks, i);
         if (duration) {
           var targetTime = new Date(ctx.now.getTime() + duration.ms);
@@ -723,7 +791,7 @@
       var clock = parseClock(toks, i);
       if (clock && clock.next === toks.length && (!clock.bare || allowBareIntegerClock)) {
         var targetTime2 = buildClockTime(ctx, qualifier, repeatDays, clock.hours, clock.minutes);
-        return finalize(targetTime2, repeatDays, ctx.now);
+        return finalize(targetTime2, repeatDays, ctx.now, interval);
       }
 
       // Day period as a clock (spec §6.2): `afternoon`, `this morning`,
@@ -731,7 +799,7 @@
       var period = parseDayPeriod(toks, i);
       if (period && period.next === toks.length) {
         var periodTime = buildClockTime(ctx, qualifier, repeatDays, period.hours, period.minutes);
-        return finalize(periodTime, repeatDays, ctx.now);
+        return finalize(periodTime, repeatDays, ctx.now, interval);
       }
 
       return null;
