@@ -44,6 +44,11 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 @visibleForTesting
 Future<void> Function(String token)? registerTokenForTest;
 
+/// Injection seam for tests; production deletes remotely through
+/// [BackendClient.deleteRemoteAlarm].
+@visibleForTesting
+Future<void> Function(String uuid)? deleteRemoteAlarmForTest;
+
 /// Register (or re-register) this device's FCM token with the backend.
 ///
 /// Called on cold start and on every [FirebaseMessaging.onTokenRefresh], so a
@@ -976,15 +981,18 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     await _loadAllAlarms();
   }
 
-  Future<void> _deleteAlarmItem(_AlarmItem item) async {
+  Future<void> _deleteAlarmItem(_AlarmItem item, {bool announce = true}) async {
     await HapticService.playPreset(PresetHapticStyle.heavyLatch);
     await Alarm.stop(item.id);
     if (item.uuid != null && !item.uuid!.startsWith('local_')) {
-      await BackendClient.deleteRemoteAlarm(item.uuid!);
+      final deleteRemote = deleteRemoteAlarmForTest ?? BackendClient.deleteRemoteAlarm;
+      await deleteRemote(item.uuid!);
     }
     await IdMapper.removeMapping(item.id);
-    _showToast('alarm deleted');
-    _loadAllAlarms();
+    if (announce) {
+      _showToast('alarm deleted');
+      _loadAllAlarms();
+    }
   }
 
   // ── Bulk multi-select ────────────────────────────────────────────────
@@ -1024,15 +1032,20 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     if (ids.isEmpty) return;
     await HapticService.playPreset();
     final itemsToDelete = _allAlarms.where((a) => ids.contains(a.id)).toList();
-    for (final item in itemsToDelete) {
-      await _deleteAlarmItem(item);
-    }
+    // Issue every removal at once. Awaiting them one-by-one serialised the
+    // whole selection behind each alarm's network round-trip, which is the
+    // "stare at the screen between each delete" the owner reported. The whole
+    // batch is awaited as one, then the list refreshes once.
+    await Future.wait(
+      itemsToDelete.map((item) => _deleteAlarmItem(item, announce: false)),
+    );
     if (!mounted) return;
     setState(() {
       _isMultiSelectMode = false;
       _selectedAlarmIds.clear();
     });
     _showToast('${itemsToDelete.length} alarm${itemsToDelete.length == 1 ? '' : 's'} deleted');
+    _loadAllAlarms();
   }
 
   Future<void> _bulkDuplicateSelected() async {
