@@ -235,6 +235,29 @@ class AlarmService {
     }
   }
 
+  /// Retires every local id other than [canonicalId] that still owns [uuid].
+  ///
+  /// A server alarm must map to exactly one local id: its canonical
+  /// `IdMapper.uuidToInt(uuid)`. An optimistically-armed local alarm can still
+  /// hold the uuid under a provisional `local_*` id when the backend's CREATE
+  /// echo arrives (the create response and the push race for the same alarm).
+  /// Dropping that stale owner here makes the CREATE idempotent — there is no
+  /// second local alarm left for a later reconcile to prune, which is the
+  /// duplicate row the user saw appear and vanish after tapping "arm alarm".
+  static Future<void> _retireSupersededOwners(
+    String uuid,
+    int canonicalId,
+  ) async {
+    for (final otherId in await IdMapper.getAllKnownIds()) {
+      if (otherId == canonicalId) continue;
+      if (await IdMapper.getUuid(otherId) != uuid) continue;
+      await Alarm.stop(otherId);
+      await IdMapper.removeMapping(otherId);
+      // ignore: avoid_print
+      print('[AlarmService] Retired superseded local id $otherId for uuid $uuid (canonical $canonicalId)');
+    }
+  }
+
   static Future<void> _applyAlarmPayload(Map<String, dynamic> data) async {
     try {
       final action = data['action'];
@@ -329,6 +352,10 @@ class AlarmService {
         }
 
         final desc = data['description']?.toString();
+        // Idempotency keyed on the canonical uuid->int id: if the uuid is
+        // already owned by a provisional local id, retire it before inserting
+        // the canonical alarm so one user action never yields two local alarms.
+        await _retireSupersededOwners(uuid.toString(), intId);
         // Ensure mapping is preserved
         await IdMapper.saveMapping(
           intId,
@@ -660,6 +687,82 @@ class AlarmService {
 
     await Alarm.set(alarmSettings: alarmSettings);
     return alarmSettings;
+  }
+
+  /// Re-keys an optimistically-armed local alarm onto the backend's canonical
+  /// id once the server assigns it a uuid.
+  ///
+  /// The phone arms before the network answers, so the alarm starts life under
+  /// an id hashed from a throwaway `local_*` uuid. Every other path (the FCM
+  /// CREATE echo, `syncWithBackend`, the canonical prune) addresses a server
+  /// alarm by `uuidToInt(uuid)`. Simply re-pointing the provisional id's
+  /// mapping at the server uuid, as the Arm flow used to, left that id
+  /// non-canonical: the echo inserted a second local alarm under the canonical
+  /// id and the next reconcile pruned the phantom — the duplicate the owner saw
+  /// appear and vanish.
+  ///
+  /// Moving the armed settings to the canonical id here means the echo finds
+  /// the alarm already scheduled and stays idempotent. Safe whether the push
+  /// beats the create response or not.
+  static Future<void> adoptRemoteId({
+    required int localIntId,
+    required String remoteUuid,
+    required String label,
+    String? description,
+    required DateTime targetTime,
+    List<int>? repeatDays,
+    int intervalWeeks = 1,
+    String? anchorDateIso,
+    String? soundTone,
+    int rampSeconds = 30,
+  }) async {
+    final canonicalId = IdMapper.uuidToInt(remoteUuid);
+    if (canonicalId == localIntId) {
+      await IdMapper.saveMapping(
+        localIntId,
+        remoteUuid,
+        label: label,
+        description: description,
+        targetTime: targetTime,
+        soundTone: soundTone,
+        rampSeconds: rampSeconds,
+        repeatDays: repeatDays,
+      );
+      return;
+    }
+
+    // Snapshot what the optimistic arm left behind before retiring it.
+    final scheduled = await Alarm.getAlarm(localIntId);
+    final snoozed = await IdMapper.isSnoozed(localIntId);
+    final enabled = await IdMapper.isEnabled(localIntId);
+
+    await Alarm.stop(localIntId);
+    await IdMapper.removeMapping(localIntId);
+
+    // The FCM CREATE echo can beat the create response. If it already claimed
+    // the canonical id for this uuid it owns the alarm; leave its copy intact.
+    if (await IdMapper.getUuid(canonicalId) == remoteUuid) return;
+
+    await IdMapper.saveMapping(
+      canonicalId,
+      remoteUuid,
+      label: label,
+      description: description,
+      targetTime: targetTime,
+      soundTone: soundTone,
+      rampSeconds: rampSeconds,
+      repeatDays: repeatDays,
+    );
+    await IdMapper.setSnoozed(canonicalId, snoozed);
+    await IdMapper.setIntervalWeeks(canonicalId, intervalWeeks);
+    await IdMapper.setAnchorDate(canonicalId, anchorDateIso);
+    await IdMapper.setEnabled(canonicalId, enabled);
+
+    // Preserve the exact armed settings (time, audio, volume ramp) under the
+    // canonical id; nothing is armed for a disabled/unscheduled alarm.
+    if (scheduled != null) {
+      await Alarm.set(alarmSettings: scheduled.copyWith(id: canonicalId));
+    }
   }
 
   /// Reports `ringing` to the backend for [intId], but only when the platform

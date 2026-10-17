@@ -1080,18 +1080,24 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           anchorDate: item.anchorDate,
           soundTone: item.soundTone,
           rampSeconds: item.rampSeconds,
-        ).then((remoteId) {
+        ).then((remoteId) async {
           if (remoteId != null && remoteId != newUuid) {
-            IdMapper.saveMapping(
-              intId,
-              remoteId,
+            // Same canonical re-key as the Arm flow: without it the duplicated
+            // alarm is echoed back under the canonical id and the provisional
+            // copy is pruned a moment later, showing a duplicate.
+            await AlarmService.adoptRemoteId(
+              localIntId: intId,
+              remoteUuid: remoteId,
               label: newTitle,
               description: item.description,
               targetTime: item.dateTime,
+              repeatDays: item.repeatDays.isNotEmpty ? item.repeatDays : null,
+              intervalWeeks: item.intervalWeeks,
+              anchorDateIso: item.anchorDate,
               soundTone: item.soundTone,
               rampSeconds: item.rampSeconds,
-              repeatDays: item.repeatDays,
             );
+            _loadAllAlarms();
           }
         });
       }
@@ -3587,19 +3593,24 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             anchorDate: recurrenceAnchor,
                             soundTone: selectedTone,
                             rampSeconds: selectedRampSeconds,
-                          ).then((remoteId) {
+                          ).then((remoteId) async {
                             if (remoteId != null && remoteId != localFallbackUuid) {
-                              // Update mapping: same local intId, new backend uuid
-                              IdMapper.saveMapping(
-                                intId,
-                                remoteId,
+                              // Re-key the armed alarm to the backend's canonical
+                              // id so the FCM CREATE echo (and the reconcile) find
+                              // it already armed instead of inserting a duplicate.
+                              await AlarmService.adoptRemoteId(
+                                localIntId: intId,
+                                remoteUuid: remoteId,
                                 label: title,
                                 description: desc,
                                 targetTime: finalTarget,
+                                repeatDays: selectedDays.isNotEmpty ? selectedDays : null,
+                                intervalWeeks: selectedIntervalWeeks,
+                                anchorDateIso: recurrenceAnchor,
                                 soundTone: selectedTone,
                                 rampSeconds: selectedRampSeconds,
-                                repeatDays: selectedDays,
                               );
+                              _loadAllAlarms();
                             }
                           });
                         },
