@@ -66,7 +66,7 @@ interface AssertedManifest {
 }
 
 /** Updated by each task as it flips `target` ids into `fixtures/nl-corpus-asserted.json`. */
-const EXPECTED_REMAINING_TARGETS = 14;
+const EXPECTED_REMAINING_TARGETS = 1;
 
 /**
  * Walk upward from the working directory until `relativePath` is found, so the
