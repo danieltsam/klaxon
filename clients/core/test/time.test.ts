@@ -282,3 +282,33 @@ describe("bare-integer clock guard", () => {
     assert.equal(parseLeadingTime("call at 5", MON_10), null);
   });
 });
+
+describe("metadata pre-pass (spec §5.1/§8)", () => {
+  it("never parses a time token that follows note:", () => {
+    const split = parseLeadingTime("tomorrow 7am note: call at 6pm", MON_10);
+    assert.ok(split);
+    // The `6pm` is note text, not the clock: the alarm stays at 07:00.
+    assertLocal(split.parsed.targetTime, 2026, 9, 22, 7, 0);
+    assert.equal(split.rest, "");
+    assert.deepEqual(split.parsed.alarm, { description: "call at 6pm" });
+
+    const parsed = parseTime("tomorrow 7am note: call at 6pm", MON_10);
+    assertLocal(parsed.targetTime, 2026, 9, 22, 7, 0);
+    assert.deepEqual(parsed.alarm, { description: "call at 6pm" });
+  });
+
+  it("keeps note: text verbatim (original casing)", () => {
+    const parsed = parseTime("tomorrow 7am note: Call Mom at 6PM", MON_10);
+    assert.deepEqual(parsed.alarm, { description: "Call Mom at 6PM" });
+  });
+
+  it("extracts a metadata keyword used as label text", () => {
+    const split = parseLeadingTime("chime practice tomorrow 7am", MON_10);
+    assert.ok(split);
+    assertLocal(split.parsed.targetTime, 2026, 9, 22, 7, 0);
+    assert.equal(split.rest, "practice");
+    assert.deepEqual(split.parsed.alarm, { sound_tone: "chime" });
+    // No time at all: extraction wins and nothing crashes.
+    assert.equal(parseLeadingTime("chime practice", MON_10), null);
+  });
+});

@@ -71,6 +71,13 @@ interface ParsedTime {
   targetTime: Date;
   repeatDays: number[];
   interpretation: string;
+  alarm?: AlarmMetadata;
+}
+
+interface AlarmMetadata {
+  sound_tone?: string;
+  ramp_seconds?: number;
+  description?: string;
 }
 
 interface NLTimeApi {
@@ -243,5 +250,48 @@ describe('nl-time.js — bare-integer clock guard', () => {
   it('never selects a bare integer inside a phrase', () => {
     assert.equal(NLTime.parseLeadingTime('foo 5 bar', new Date('2026-09-21T10:00:00')), null);
     assert.equal(NLTime.parseLeadingTime('call at 5', new Date('2026-09-21T10:00:00')), null);
+  });
+});
+
+describe('nl-time.js — metadata pre-pass (spec §5.1/§8)', () => {
+  it('never parses a time token that follows note:', () => {
+    const split = NLTime.parseLeadingTime(
+      'tomorrow 7am note: call at 6pm',
+      new Date('2026-09-21T10:00:00')
+    );
+    assert.ok(split);
+    // The `6pm` is note text, not the clock: the alarm stays at 07:00.
+    assertLocal(split.parsed.targetTime, { y: 2026, mo: 9, d: 22, h: 7, mi: 0, s: 0 });
+    assert.equal(split.rest, '');
+    // `{ ...parsed.alarm }` re-homes the vm-realm object onto the host prototype.
+    assert.deepEqual({ ...split.parsed.alarm }, { description: 'call at 6pm' });
+
+    const parsed = NLTime.parseTime(
+      'tomorrow 7am note: call at 6pm',
+      new Date('2026-09-21T10:00:00')
+    );
+    assertLocal(parsed.targetTime, { y: 2026, mo: 9, d: 22, h: 7, mi: 0, s: 0 });
+    assert.deepEqual({ ...parsed.alarm }, { description: 'call at 6pm' });
+  });
+
+  it('keeps note: text verbatim (original casing)', () => {
+    const parsed = NLTime.parseTime(
+      'tomorrow 7am note: Call Mom at 6PM',
+      new Date('2026-09-21T10:00:00')
+    );
+    assert.deepEqual({ ...parsed.alarm }, { description: 'Call Mom at 6PM' });
+  });
+
+  it('extracts a metadata keyword used as label text', () => {
+    const split = NLTime.parseLeadingTime(
+      'chime practice tomorrow 7am',
+      new Date('2026-09-21T10:00:00')
+    );
+    assert.ok(split);
+    assertLocal(split.parsed.targetTime, { y: 2026, mo: 9, d: 22, h: 7, mi: 0, s: 0 });
+    assert.equal(split.rest, 'practice');
+    assert.deepEqual({ ...split.parsed.alarm }, { sound_tone: 'chime' });
+    // No time at all: extraction wins and nothing crashes.
+    assert.equal(NLTime.parseLeadingTime('chime practice', new Date('2026-09-21T10:00:00')), null);
   });
 });
