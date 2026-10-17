@@ -270,6 +270,33 @@
       return { ms: ((hours * 60 + minutes) * 60 + seconds) * 1000 };
     }
 
+    /**
+     * Read a whole-day offset beginning at `i`: `<n> days|day`, `<n> weeks|week`,
+     * `<n>d`, `<n>w`, concatenated (`1w 2d`, `1w2d`), optionally led by the `in`
+     * connector and optionally followed by `from now`. Returns the total whole
+     * days (`weeks*7 + days`) and the index just past the offset, or `null`.
+     *
+     * Day/week units are deliberately kept out of `parseDuration`: an offset
+     * lands on a wall-clock day, not a fixed millisecond span (spec §6.6), so the
+     * caller resolves it with `setDate(getDate() + days)` rather than ms
+     * arithmetic. Mirrors `parseDayWeekOffset` in clients/core/src/time.ts.
+     */
+    function parseDayWeekOffset(toks, i) {
+      var j = i;
+      if (toks[j] === "in") j++;
+      var joined = toks.slice(j).join("");
+      var match = /^(?:(\d+)(?:w|week|weeks))?(?:(\d+)(?:d|day|days))?(?:fromnow)?$/.exec(
+        joined
+      );
+      if (!match) return null;
+      var w = match[1];
+      var d = match[2];
+      if (w === undefined && d === undefined) return null;
+      var weeks = w ? parseInt(w, 10) : 0;
+      var days = d ? parseInt(d, 10) : 0;
+      return { days: weeks * 7 + days, next: toks.length };
+    }
+
     function buildAbsolute(ctx, hours, minutes, targetDays) {
       // Today counts if the time has not passed; otherwise the next matching day.
       for (var offset = 0; offset <= 7; offset++) {
@@ -370,6 +397,14 @@
         if (duration) {
           var targetTime = new Date(ctx.now.getTime() + duration.ms);
           return finalize(targetTime, [], ctx.now);
+        }
+
+        // Day/week offset form: also standalone, and resolved on the wall clock.
+        var offset = parseDayWeekOffset(toks, i);
+        if (offset) {
+          var offsetTime = new Date(ctx.now.getTime());
+          offsetTime.setDate(offsetTime.getDate() + offset.days);
+          return finalize(offsetTime, [], ctx.now);
         }
       }
 

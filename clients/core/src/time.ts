@@ -286,6 +286,32 @@ function parseDuration(toks: string[], i: number): Duration | null {
   return { ms: ((hours * 60 + minutes) * 60 + seconds) * 1000 };
 }
 
+/**
+ * Read a whole-day offset beginning at `i`: `<n> days|day`, `<n> weeks|week`,
+ * `<n>d`, `<n>w`, concatenated (`1w 2d`, `1w2d`), optionally led by the `in`
+ * connector and optionally followed by `from now`. Returns the total whole days
+ * (`weeks*7 + days`) and the index just past the offset, or `null`.
+ *
+ * Day/week units are deliberately kept out of `parseDuration`: an offset lands
+ * on a wall-clock day, not a fixed millisecond span (spec §6.6), so the caller
+ * resolves it with `setDate(getDate() + days)` rather than ms arithmetic.
+ */
+function parseDayWeekOffset(
+  toks: string[],
+  i: number
+): { days: number; next: number } | null {
+  let j = i;
+  if (toks[j] === "in") j++;
+  const joined = toks.slice(j).join("");
+  const match = /^(?:(\d+)(?:w|week|weeks))?(?:(\d+)(?:d|day|days))?(?:fromnow)?$/.exec(joined);
+  if (!match) return null;
+  const [, w, d] = match;
+  if (w === undefined && d === undefined) return null;
+  const weeks = w ? parseInt(w, 10) : 0;
+  const days = d ? parseInt(d, 10) : 0;
+  return { days: weeks * 7 + days, next: toks.length };
+}
+
 interface BuildContext {
   now: Date;
 }
@@ -408,6 +434,14 @@ function tryParseExpression(
     const duration = parseDuration(toks, i);
     if (duration) {
       const targetTime = new Date(ctx.now.getTime() + duration.ms);
+      return finalize(targetTime, [], ctx.now);
+    }
+
+    // Day/week offset form: also standalone, and resolved on the wall clock.
+    const offset = parseDayWeekOffset(toks, i);
+    if (offset) {
+      const targetTime = new Date(ctx.now.getTime());
+      targetTime.setDate(targetTime.getDate() + offset.days);
       return finalize(targetTime, [], ctx.now);
     }
   }
