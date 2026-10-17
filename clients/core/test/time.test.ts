@@ -312,3 +312,94 @@ describe("metadata pre-pass (spec §5.1/§8)", () => {
     assert.equal(parseLeadingTime("chime practice", MON_10), null);
   });
 });
+
+/**
+ * Regression locks from the final whole-branch review. Each case pinned here
+ * closed a silent mis-parse or a contract violation; the same behaviour is also
+ * pinned end-to-end by the added `fixtures/nl-corpus.json` cases, so both
+ * implementations stay in lockstep.
+ */
+describe("final-review regression locks", () => {
+  const SAT = at(2026, 9, 26, 10, 0); // Saturday: this week's Friday has passed
+
+  it("keeps the bare-integer guard in the clock -> date branch", () => {
+    const meeting = parseLeadingTime("meeting 5 10/31", MON_10);
+    assert.ok(meeting);
+    assertLocal(meeting.parsed.targetTime, 2026, 10, 31, 0, 0);
+    assert.equal(meeting.rest, "meeting 5");
+
+    const buy = parseLeadingTime("buy 2 10/31", MON_10);
+    assert.ok(buy);
+    assertLocal(buy.parsed.targetTime, 2026, 10, 31, 0, 0);
+    assert.equal(buy.rest, "buy 2");
+
+    const foo = parseLeadingTime("foo 5 dec 25", MON_10);
+    assert.ok(foo);
+    assertLocal(foo.parsed.targetTime, 2026, 12, 25, 0, 0);
+    assert.equal(foo.rest, "foo 5");
+  });
+
+  it("still accepts a bare integer as the whole clock -> date expression", () => {
+    const split = parseLeadingTime("2 10/31", MON_10);
+    assert.ok(split);
+    assertLocal(split.parsed.targetTime, 2026, 10, 31, 2, 0);
+    assert.equal(split.rest, "");
+  });
+
+  it("fails loudly on an unreadable `every` instead of a bare weekday", () => {
+    // `parseLeadingTime` must not silently resolve the stranded `monday`.
+    assert.equal(parseLeadingTime("every 3rd monday", MON_10), null);
+    assert.throws(
+      () => parseTime("every 3rd monday", MON_10),
+      (err: unknown) => {
+        assert.ok(err instanceof TimeParseError);
+        assert.equal(err.token, "every");
+        return true;
+      }
+    );
+  });
+
+  it("refuses `this weekend` once the current week's Saturday has gone", () => {
+    const sunday = at(2026, 9, 27, 10, 0);
+    for (const now of [SAT, sunday]) {
+      assert.throws(
+        () => parseTime("this weekend", now),
+        (err: unknown) => {
+          assert.ok(err instanceof TimeParseError);
+          assert.equal(err.reason, "already_passed");
+          assert.equal(err.token, "this weekend");
+          return true;
+        }
+      );
+    }
+  });
+
+  it("resolves a passed `this <weekday>` via a valid trailing time", () => {
+    const split = parseLeadingTime("this friday gym tomorrow 7am", SAT);
+    assert.ok(split);
+    assertLocal(split.parsed.targetTime, 2026, 9, 27, 7, 0);
+    assert.equal(split.rest, "this friday gym");
+  });
+
+  it("still throws already_passed for a confident bare `this <weekday>`", () => {
+    assert.throws(
+      () => parseLeadingTime("this friday", SAT),
+      (err: unknown) => {
+        assert.ok(err instanceof TimeParseError);
+        assert.equal(err.reason, "already_passed");
+        assert.equal(err.token, "this friday");
+        return true;
+      }
+    );
+  });
+
+  it("honours an explicit past ISO year and anchors a date + period", () => {
+    const past = parseLeadingTime("2020-01-01", MON_10);
+    assert.ok(past);
+    assertLocal(past.parsed.targetTime, 2020, 1, 1, 0, 0);
+
+    const period = parseLeadingTime("dec 25 noon", MON_10);
+    assert.ok(period);
+    assertLocal(period.parsed.targetTime, 2026, 12, 25, 12, 0);
+  });
+});

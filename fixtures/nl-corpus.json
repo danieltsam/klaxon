@@ -23,23 +23,23 @@
     "next/this-week-month": "next <weekday> = that weekday in the next ISO week; this <weekday> = that weekday in the current ISO week (Monday-start, mon=1..sun=7), and a hard already_passed refusal when that instant has gone; next week = same wall-clock one week ahead; next month = same wall-clock one calendar month ahead; this weekend = the coming Saturday 00:00. `last` is not a grammar token (dropped); a weekday after it resolves forward-only and the word stays in the label."
   },
   "summary": {
-    "total": 169,
-    "supported": 106,
+    "total": 179,
+    "supported": 116,
     "target": 63,
-    "traps": 17,
+    "traps": 21,
     "byCategory": {
       "durations": 25,
       "clocks": 18,
-      "day-qualified": 14,
-      "weekdays": 19,
+      "day-qualified": 16,
+      "weekdays": 20,
       "weekday-sets": 30,
-      "absolute-dates": 14,
+      "absolute-dates": 16,
       "intervals": 7,
       "day-periods": 8,
       "label-placement": 10,
       "alarm-metadata": 12,
-      "traps": 6,
-      "invalid": 6
+      "traps": 10,
+      "invalid": 7
     }
   },
   "cases": [
@@ -4203,6 +4203,208 @@
         "reason": "unparseable"
       },
       "status": "supported",
+      "machineVerified": true
+    },
+    {
+      "id": "trap-bare-int-date-meeting",
+      "category": "traps",
+      "input": "meeting 5 10/31",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 10,
+          "d": 31,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "meeting 5"
+      },
+      "status": "supported",
+      "trap": true,
+      "note": "The bare '5' is not a clock inside the phrase: the clock->date branch now applies the same bare-integer guard as the date->clock branch, so the date resolves at 00:00 and 'meeting 5' stays in the label.",
+      "machineVerified": true
+    },
+    {
+      "id": "trap-bare-int-date-buy",
+      "category": "traps",
+      "input": "buy 2 10/31",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 10,
+          "d": 31,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "buy 2"
+      },
+      "status": "supported",
+      "trap": true,
+      "note": "Same bare-integer guard as trap-bare-int-date-meeting.",
+      "machineVerified": true
+    },
+    {
+      "id": "trap-bare-int-date-foo",
+      "category": "traps",
+      "input": "foo 5 dec 25",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 12,
+          "d": 25,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "foo 5"
+      },
+      "status": "supported",
+      "trap": true,
+      "note": "A bare integer before a named date is not a clock inside a phrase.",
+      "machineVerified": true
+    },
+    {
+      "id": "trap-bare-int-date-whole",
+      "category": "traps",
+      "input": "2 10/31",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 10,
+          "d": 31,
+          "h": 2,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "trap": true,
+      "note": "The two clock/date branches agree: a bare integer is a clock when it is the whole expression, so `2 10/31` is 02:00 on 31 Oct.",
+      "machineVerified": true
+    },
+    {
+      "id": "inv-every-3rd-monday",
+      "category": "invalid",
+      "input": "every 3rd monday",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": null,
+        "repeatDays": null,
+        "label": null,
+        "invalid": true,
+        "rejectedToken": "every",
+        "reason": "unparseable"
+      },
+      "status": "supported",
+      "note": "Ordinal-of-month is not expressible and an interval of 3 is not storable, so an unreadable `every <ordinal>` fails loudly rather than falling through to a one-time bare weekday.",
+      "machineVerified": true
+    },
+    {
+      "id": "day-this-weekend-saturday-passed",
+      "category": "day-qualified",
+      "input": "this weekend",
+      "now": "2026-09-26T10:00:00",
+      "expected": {
+        "local": null,
+        "repeatDays": null,
+        "label": null,
+        "invalid": true,
+        "rejectedToken": "this weekend",
+        "reason": "already_passed"
+      },
+      "status": "supported",
+      "note": "Saturday 10:00: the current ISO week's Saturday 00:00 has passed, so `this weekend` is a hard already_passed refusal, never a past instant.",
+      "machineVerified": true
+    },
+    {
+      "id": "day-this-weekend-sunday-passed",
+      "category": "day-qualified",
+      "input": "this weekend",
+      "now": "2026-09-27T10:00:00",
+      "expected": {
+        "local": null,
+        "repeatDays": null,
+        "label": null,
+        "invalid": true,
+        "rejectedToken": "this weekend",
+        "reason": "already_passed"
+      },
+      "status": "supported",
+      "note": "Sunday 10:00: that week's Saturday (yesterday) has passed, so `this weekend` refuses rather than silently skipping to next weekend.",
+      "machineVerified": true
+    },
+    {
+      "id": "wd-this-friday-gym-trailing",
+      "category": "weekdays",
+      "input": "this friday gym tomorrow 7am",
+      "now": "2026-09-26T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 27,
+          "h": 7,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "this friday gym"
+      },
+      "status": "supported",
+      "note": "A passed `this friday` inside a longer phrase no longer aborts the search: the speculative prefixes swallow already_passed and the valid trailing `tomorrow 7am` wins.",
+      "machineVerified": true
+    },
+    {
+      "id": "abs-iso-past-year",
+      "category": "absolute-dates",
+      "input": "2020-01-01",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2020,
+          "mo": 1,
+          "d": 1,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "An explicit ISO year is honoured verbatim, including a past year: `2020-01-01` resolves to 2020, never rolling forward.",
+      "machineVerified": true
+    },
+    {
+      "id": "abs-date-period",
+      "category": "absolute-dates",
+      "input": "dec 25 noon",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 12,
+          "d": 25,
+          "h": 12,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "supported",
+      "note": "`<date> <period>`: the day period anchors to the date (spec 6.2/6.4).",
       "machineVerified": true
     }
   ]

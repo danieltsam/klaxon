@@ -161,4 +161,15 @@ describe("nl-corpus — tracked coverage", () => {
     ).length;
     assert.equal(remaining, EXPECTED_REMAINING_TARGETS);
   });
+
+  // The count test above guarantees every target is asserted, but not that an
+  // asserted id names a real case: a bogus id would be a silent no-op. Guard it.
+  it("names only real target cases in the asserted manifest", () => {
+    const targetIds = new Set(
+      corpus.cases.filter((c) => c.status === "target").map((c) => c.id)
+    );
+    for (const id of assertedTargetIds) {
+      assert.ok(targetIds.has(id), `asserted manifest id "${id}" is not a target case`);
+    }
+  });
 });
