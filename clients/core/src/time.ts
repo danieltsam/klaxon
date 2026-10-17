@@ -17,7 +17,24 @@
 
 import { TimeParseError } from "./errors.js";
 import { formatInterpretation } from "./format.js";
-import type { Weekday } from "./types.js";
+import type { SoundTone, Weekday } from "./types.js";
+
+/**
+ * Inline alarm metadata carried by the time expression itself (spec §9), e.g.
+ * `chime 30s ramp tomorrow 7am note: gym`. Every field is optional and absent
+ * means "unspecified" — never a default.
+ */
+export type AlarmMetadata = {
+  sound_tone?: SoundTone;
+  ramp_seconds?: number;
+  description?: string;
+};
+
+/** A recurrence interval, e.g. `every 2 weeks` -> `{ count: 2, unit: "weeks" }`. */
+export interface IntervalSpec {
+  count: number;
+  unit: "days" | "weeks";
+}
 
 export interface ParsedTime {
   /** Local wall-clock instant. */
@@ -26,6 +43,10 @@ export interface ParsedTime {
   repeatDays: Weekday[];
   /** Human-readable echo, e.g. "Tue 22 Sep, 7:00am (in 13h 40m)". */
   interpretation: string;
+  /** Inline metadata; absent when the input named none. */
+  alarm?: AlarmMetadata;
+  /** Recurrence interval; absent for a one-time or plain-weekday expression. */
+  interval?: IntervalSpec;
 }
 
 const ALL_DAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 7];
