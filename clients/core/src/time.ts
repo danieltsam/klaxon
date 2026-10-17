@@ -76,6 +76,40 @@ const WEEKDAY_NAMES: Record<string, Weekday> = {
 
 const CONNECTORS = new Set(["at", "in"]);
 
+/** Month name (short and full) -> 1-based calendar month (spec §6.4). */
+const MONTH_NAMES: Record<string, number> = {
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
+  may: 5,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  september: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12,
+};
+
+/** A calendar day with an optional explicit year (spec §6.4). */
+interface AbsoluteDate {
+  month: number;
+  day: number;
+  year?: number;
+}
+
 type DayQualifier =
   | { kind: "today" }
   | { kind: "tomorrow" }
@@ -312,6 +346,121 @@ function parseDayWeekOffset(
   return { days: weeks * 7 + days, next: toks.length };
 }
 
+/**
+ * Read a day-of-month, tolerating an English ordinal suffix (`4th` -> `4`).
+ * Returns `null` for anything that is not a 1–31 number.
+ */
+function parseDayNumber(token: string): number | null {
+  const stripped = token.replace(/(st|nd|rd|th)$/, "");
+  if (!/^\d{1,2}$/.test(stripped)) return null;
+  const day = parseInt(stripped, 10);
+  if (day < 1 || day > 31) return null;
+  return day;
+}
+
+/**
+ * Read a `<d>/<m>` numeric date (spec §6.5). The reading is day/month when
+ * unambiguous: a first field over 12 must be the day, a second field over 12
+ * makes the first the month. When both fields are ≤ 12 the default is
+ * **day/month** (`03/04` = 3 Apr).
+ */
+function parseNumericDate(token: string): { month: number; day: number } | null {
+  const match = /^(\d{1,2})\/(\d{1,2})$/.exec(token);
+  if (!match) return null;
+  const a = parseInt(match[1], 10);
+  const b = parseInt(match[2], 10);
+  if (a < 1 || a > 31 || b < 1 || b > 31) return null;
+
+  let month: number;
+  let day: number;
+  if (a > 12) {
+    day = a;
+    month = b;
+  } else if (b > 12) {
+    month = a;
+    day = b;
+  } else {
+    day = a;
+    month = b;
+  }
+  if (month < 1 || month > 12) return null;
+  return { month, day };
+}
+
+/**
+ * Read an absolute date beginning at `i` (spec §6.4): `<month> <day>` (`dec 25`,
+ * `december 25`), `<day> <month>` (`25 dec`, `25th december`), `<month>
+ * <ordinal>` (`jan 4th`), `<d>/<m>` numeric (`25/12`), or ISO (`2026-12-31`).
+ * Returns the date and the index just past it, or `null`.
+ */
+function parseAbsoluteDate(
+  toks: string[],
+  i: number
+): { date: AbsoluteDate; next: number } | null {
+  const first = toks[i];
+  if (first === undefined) return null;
+
+  // ISO `YYYY-MM-DD`.
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(first);
+  if (iso) {
+    const year = parseInt(iso[1], 10);
+    const month = parseInt(iso[2], 10);
+    const day = parseInt(iso[3], 10);
+    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+    return { date: { month, day, year }, next: i + 1 };
+  }
+
+  // `<d>/<m>` numeric.
+  const numeric = parseNumericDate(first);
+  if (numeric) {
+    return { date: { month: numeric.month, day: numeric.day }, next: i + 1 };
+  }
+
+  const second = toks[i + 1];
+  const firstMonth = MONTH_NAMES[first];
+  if (firstMonth !== undefined) {
+    // `<month> <day>` / `<month> <ordinal>`.
+    if (second === undefined) return null;
+    const day = parseDayNumber(second);
+    if (day === null) return null;
+    return { date: { month: firstMonth, day }, next: i + 2 };
+  }
+
+  // `<day> <month>` / `<ordinal> <month>`.
+  const day = parseDayNumber(first);
+  const secondMonth = second !== undefined ? MONTH_NAMES[second] : undefined;
+  if (day !== null && secondMonth !== undefined) {
+    return { date: { month: secondMonth, day }, next: i + 2 };
+  }
+
+  return null;
+}
+
+/**
+ * Resolve a calendar date at `hours:minutes` to a local wall-clock instant
+ * (spec §6.4). An explicit year is honoured verbatim, including a **past** year
+ * (the §9 futurity check is a later concern). With no year the next occurrence
+ * is used: a resolved instant at or before `now` rolls to the next year.
+ */
+function resolveAbsoluteDate(
+  now: Date,
+  date: AbsoluteDate,
+  hours: number,
+  minutes: number
+): Date {
+  const candidate = new Date(now.getTime());
+  candidate.setHours(hours, minutes, 0, 0);
+  if (date.year !== undefined) {
+    candidate.setFullYear(date.year, date.month - 1, date.day);
+    return candidate;
+  }
+  candidate.setMonth(date.month - 1, date.day);
+  if (candidate.getTime() <= now.getTime()) {
+    candidate.setFullYear(candidate.getFullYear() + 1);
+  }
+  return candidate;
+}
+
 interface BuildContext {
   now: Date;
 }
@@ -427,6 +576,45 @@ function tryParseExpression(
       return finalize(buildClockTime(ctx, qualifier, [], 0, 0), [], ctx.now);
     }
     return null;
+  }
+
+  // Absolute-date anchor (spec §6.4), standalone or joined to a clock in
+  // either order (spec §5.4). A lone date resolves to 00:00 on that day.
+  if (!qualifier && repeatDays.length === 0) {
+    // Date → clock: `dec 25 7am`, `2026-12-31 9am`.
+    const date = parseAbsoluteDate(toks, i);
+    if (date) {
+      let j = date.next;
+      while (j < toks.length && CONNECTORS.has(toks[j])) j++;
+      if (j === toks.length) {
+        return finalize(resolveAbsoluteDate(ctx.now, date.date, 0, 0), [], ctx.now);
+      }
+      const clock = parseClock(toks, j);
+      if (clock && clock.next === toks.length && (!clock.bare || allowBareIntegerClock)) {
+        return finalize(
+          resolveAbsoluteDate(ctx.now, date.date, clock.hours, clock.minutes),
+          [],
+          ctx.now
+        );
+      }
+    }
+
+    // Clock → date: `5pm 10/31`.
+    const clock = parseClock(toks, i);
+    if (clock) {
+      let j = clock.next;
+      while (j < toks.length && CONNECTORS.has(toks[j])) j++;
+      if (j < toks.length) {
+        const trailingDate = parseAbsoluteDate(toks, j);
+        if (trailingDate && trailingDate.next === toks.length) {
+          return finalize(
+            resolveAbsoluteDate(ctx.now, trailingDate.date, clock.hours, clock.minutes),
+            [],
+            ctx.now
+          );
+        }
+      }
+    }
   }
 
   // Duration form: only ever standalone (no day/recurrence qualifier).
