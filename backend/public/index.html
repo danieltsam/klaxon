@@ -166,6 +166,19 @@
           </button>
         </div>
 
+        <!-- Delivery Health Banner -->
+        <div id="delivery-health-banner" class="hidden p-4 border-l-4 border-amber-500 bg-amber-950/20 text-xs flex items-start sm:items-center justify-between gap-3">
+          <div class="flex items-start sm:items-center gap-3">
+            <svg class="h-4 w-4 text-amber-400 shrink-0 mt-0.5 sm:mt-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+            <div>
+              <span class="text-amber-200 font-medium">alarm delivery is unverified:</span>
+              <span id="delivery-health-reasons" class="text-zinc-400 ml-1"></span>
+            </div>
+          </div>
+        </div>
+
         <!-- VIEW: DASHBOARD -->
         <div id="view-dashboard" class="space-y-10">
 
@@ -1773,14 +1786,49 @@
       }
     });
 
+    async function loadDeliveryHealth() {
+      try {
+        const res = await fetch('/api/health');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = await res.json();
+        const el = document.getElementById('delivery-health-banner');
+        const reasonsEl = document.getElementById('delivery-health-reasons');
+        const dh = body && body.delivery_health;
+        if (!el || !reasonsEl || !dh || typeof dh.ok !== 'boolean') return;
+
+        if (dh.ok) {
+          el.classList.add('hidden');
+          reasonsEl.textContent = '';
+        } else {
+          const reasonMap = {
+            no_registered_devices: 'no phone is registered',
+            firebase_uninitialized: 'the push service is not configured',
+            dispatch_failed: 'the last alarm push failed',
+            alarm_missed: 'an alarm was missed recently'
+          };
+          const reasons = (dh.reasons || [])
+            .map(code => reasonMap[code] || code)
+            .filter(Boolean);
+          reasonsEl.textContent = reasons.length
+            ? reasons.join('; ')
+            : 'delivery health check returned a warning';
+          el.classList.remove('hidden');
+        }
+      } catch (err) {
+        console.error('Delivery health error:', err);
+      }
+    }
+
     // Initial load & 4s polling
     updateShortcutLabels();
     loadSettings();
     loadAlarms();
     loadDeviceTelemetry();
+    loadDeliveryHealth();
     setInterval(() => {
       loadAlarms();
       loadDeviceTelemetry();
+      loadDeliveryHealth();
     }, 4000);
   </script>
 </body>
