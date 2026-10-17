@@ -103,6 +103,19 @@
       december: 12,
     };
 
+    /**
+     * Day-period word -> its fixed clock anchor (spec §6.2). A period is a clock:
+     * it resolves to this time and, like any passed clock, rolls forward a day.
+     */
+    var DAY_PERIODS = {
+      morning: { hours: 9, minutes: 0 },
+      afternoon: { hours: 15, minutes: 0 },
+      evening: { hours: 19, minutes: 0 },
+      tonight: { hours: 21, minutes: 0 },
+      noon: { hours: 12, minutes: 0 },
+      midnight: { hours: 0, minutes: 0 },
+    };
+
     /** ISO weekday: 1 = Monday … 7 = Sunday. */
     function isoWeekday(date) {
       var day = date.getDay();
@@ -277,6 +290,20 @@
       }
 
       return null;
+    }
+
+    /**
+     * Read a day period beginning at `i` (spec §6.2), optionally prefixed `this`
+     * (`this morning`). Returns it as a `Clock` — never `bare`, so it is never
+     * mistaken for the bare-integer trap — or `null` when no period is present.
+     * Mirrors `parseDayPeriod` in clients/core/src/time.ts.
+     */
+    function parseDayPeriod(toks, i) {
+      var j = i;
+      if (toks[j] === "this") j++;
+      var period = DAY_PERIODS[toks[j]];
+      if (!period) return null;
+      return { hours: period.hours, minutes: period.minutes, next: j + 1, bare: false };
     }
 
     /** Parse one or more duration components consuming the rest of the tokens. */
@@ -528,7 +555,7 @@
       // Absolute-date anchor (spec §6.4), standalone or joined to a clock in
       // either order (spec §5.4). A lone date resolves to 00:00 on that day.
       if (!qualifier && repeatDays.length === 0) {
-        // Date → clock: `dec 25 7am`, `2026-12-31 9am`.
+        // Date → clock/period: `dec 25 7am`, `2026-12-31 9am`, `dec 25 noon`.
         var date = parseAbsoluteDate(toks, i);
         if (date) {
           var dj = date.next;
@@ -536,7 +563,7 @@
           if (dj === toks.length) {
             return finalize(resolveAbsoluteDate(ctx.now, date.date, 0, 0), [], ctx.now);
           }
-          var dateClock = parseClock(toks, dj);
+          var dateClock = parseClock(toks, dj) ?? parseDayPeriod(toks, dj);
           if (
             dateClock &&
             dateClock.next === toks.length &&
@@ -594,6 +621,14 @@
       if (clock && clock.next === toks.length && (!clock.bare || allowBareIntegerClock)) {
         var targetTime2 = buildClockTime(ctx, qualifier, repeatDays, clock.hours, clock.minutes);
         return finalize(targetTime2, repeatDays, ctx.now);
+      }
+
+      // Day period as a clock (spec §6.2): `afternoon`, `this morning`,
+      // `tomorrow noon`. Never `bare`, so it always passes the trap guard above.
+      var period = parseDayPeriod(toks, i);
+      if (period && period.next === toks.length) {
+        var periodTime = buildClockTime(ctx, qualifier, repeatDays, period.hours, period.minutes);
+        return finalize(periodTime, repeatDays, ctx.now);
       }
 
       return null;
