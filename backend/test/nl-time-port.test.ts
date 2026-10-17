@@ -76,7 +76,11 @@ interface ParsedTime {
 interface NLTimeApi {
   parseTime(input: string, now?: Date): ParsedTime;
   parseLeadingTime(input: string, now?: Date): { parsed: ParsedTime; rest: string } | null;
-  TimeParseError: new (message?: string, token?: string) => Error & { token?: string };
+  TimeParseError: new (
+    message?: string,
+    token?: string,
+    reason?: string
+  ) => Error & { token?: string; reason?: string };
 }
 
 /**
@@ -179,6 +183,7 @@ describe('nl-time.js — invalid input (shared fixture)', () => {
         (err: unknown) => {
           assert.ok(err instanceof NLTime.TimeParseError);
           assert.equal((err as { token?: string }).token, testCase.token);
+          assert.equal((err as { reason?: string }).reason, 'unparseable');
           assert.match(
             (err as Error).message,
             new RegExp(testCase.token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
@@ -192,6 +197,15 @@ describe('nl-time.js — invalid input (shared fixture)', () => {
   it('rejects empty input', () => {
     assert.throws(() => NLTime.parseTime('', new Date('2026-09-21T10:00:00')), NLTime.TimeParseError);
     assert.throws(() => NLTime.parseTime('   ', new Date('2026-09-21T10:00:00')), NLTime.TimeParseError);
+  });
+});
+
+describe('nl-time.js — TimeParseError refusal reason', () => {
+  it('carries an already_passed refusal reason', () => {
+    const err = new NLTime.TimeParseError('Already passed.', 'this friday', 'already_passed');
+    assert.equal(err.token, 'this friday');
+    assert.equal(err.reason, 'already_passed');
+    assert.equal(new NLTime.TimeParseError('x', 'y').reason, 'unparseable');
   });
 });
 
