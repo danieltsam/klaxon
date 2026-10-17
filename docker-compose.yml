@@ -21,5 +21,10 @@ services:
       - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET:-}
       - GOOGLE_OAUTH_TOKEN_PATH=/app/data/google-oauth-token.json
       - GCAL_TIMEZONE=${GCAL_TIMEZONE:-}
+      # Delivery-health alert channel. Values come from the gitignored root
+      # .env. An empty URL disables the webhook, which is a supported no-op.
+      # ALERT_WEBHOOK_KIND is one of: generic | discord | slack | healthchecks.
+      - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL:-}
+      - ALERT_WEBHOOK_KIND=${ALERT_WEBHOOK_KIND:-generic}
     volumes:
       - ./data:/app/data

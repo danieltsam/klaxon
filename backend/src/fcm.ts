@@ -5,6 +5,16 @@ import { DeviceRepo } from './db.js';
 
 let isFirebaseInitialized = false;
 
+/**
+ * Whether Firebase Admin is able to actually send. When false the process runs
+ * in DRY-RUN / MOCK mode: `sendFcmDataMessage` reports success while delivering
+ * nothing (spec §2). Delivery health must surface that, or the system reports
+ * healthy precisely while it cannot reach a phone.
+ */
+export function isFirebaseReady(): boolean {
+  return isFirebaseInitialized;
+}
+
 export function initFirebase() {
   if (admin.apps.length > 0) {
     isFirebaseInitialized = true;
@@ -67,17 +77,18 @@ export interface FcmPayload {
   [key: string]: any;
 }
 
-export async function sendFcmDataMessage(
-  action: 'CREATE' | 'CANCEL' | 'DISMISS' | 'DISABLE',
-  payload: FcmPayload
-): Promise<{ sent: number; failed: number }> {
-  const tokens = DeviceRepo.getAllTokens();
+export type FcmAction = 'CREATE' | 'CANCEL' | 'DISMISS' | 'DISABLE';
 
-  if (tokens.length === 0) {
-    console.log(`[FCM] No registered devices to send ${action} message for alarm ${payload.id}`);
-    return { sent: 0, failed: 0 };
-  }
+/** Freshness window for an FCM message: 1 hour. Safety still comes from local-first arming. */
+export const FCM_TTL_MS = 60 * 60 * 1000;
 
+/** FCM's hard limit for a data payload. A message over this is rejected by FCM. */
+export const FCM_MAX_PAYLOAD_BYTES = 4096;
+
+/**
+ * Build the string-valued data map FCM transports. FCM data values must be strings.
+ */
+export function buildFcmData(action: FcmAction, payload: FcmPayload): Record<string, string> {
   const dataPayload: Record<string, string> = {
     action,
     id: payload.id
@@ -104,6 +115,100 @@ export async function sendFcmDataMessage(
   dataPayload.recurrence_interval_weeks = String(payload.recurrence_interval_weeks ?? 1);
   dataPayload.recurrence_anchor_date = payload.recurrence_anchor_date ?? '';
 
+  return dataPayload;
+}
+
+/**
+ * Guard the payload before send so an oversized message fails loudly instead of
+ * being silently dropped at FCM's 4096-byte wall.
+ */
+export function validateFcmPayload(payload: FcmPayload): { ok: true } | { ok: false; error: string } {
+  const bytes = Buffer.byteLength(JSON.stringify(buildFcmData('CREATE', payload)), 'utf8');
+  if (bytes > FCM_MAX_PAYLOAD_BYTES) {
+    return { ok: false, error: `FCM payload exceeds 4096 bytes (got ${bytes})` };
+  }
+  return { ok: true };
+}
+
+/**
+ * Build a complete per-token FCM message: high priority, a moderate TTL (freshness,
+ * not safety), and a per-alarm collapse key so a superseded schedule is replaced.
+ */
+export function buildFcmMessage(
+  action: FcmAction,
+  payload: FcmPayload,
+  token: string
+): Record<string, unknown> {
+  return {
+    token,
+    android: {
+      priority: 'high',
+      ttl: FCM_TTL_MS,
+      collapseKey: `alarm:${payload.id}`
+    },
+    data: buildFcmData(action, payload)
+  };
+}
+
+/**
+ * A token is dead only when FCM says it is not registered. A payload error
+ * (`messaging/invalid-argument`) must NOT prune a healthy token.
+ */
+export function shouldPruneToken(code: string | undefined): boolean {
+  return code === 'messaging/registration-token-not-registered';
+}
+
+export interface RetryOptions {
+  attempts?: number;
+  baseDelayMs?: number;
+  isRetryable?: (e: unknown) => boolean;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * Retry a transient operation with exponential backoff. A non-retryable error
+ * (by default, a dead-token prune code) is rethrown immediately.
+ */
+export async function withRetry<T>(fn: () => Promise<T>, opts: RetryOptions = {}): Promise<T> {
+  const attempts = opts.attempts ?? 3;
+  const baseDelayMs = opts.baseDelayMs ?? 500;
+  const isRetryable = opts.isRetryable ?? ((e: unknown) => !shouldPruneToken((e as { code?: string } | undefined)?.code));
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isRetryable(err) || attempt === attempts - 1) {
+        throw err;
+      }
+      await sleep(baseDelayMs * 2 ** attempt);
+    }
+  }
+
+  // Unreachable: the loop either returns or throws.
+  throw new Error('withRetry: no attempts were made');
+}
+
+export async function sendFcmDataMessage(
+  action: FcmAction,
+  payload: FcmPayload
+): Promise<{ sent: number; failed: number }> {
+  const tokens = DeviceRepo.getAllTokens();
+
+  if (tokens.length === 0) {
+    console.log(`[FCM] No registered devices to send ${action} message for alarm ${payload.id}`);
+    return { sent: 0, failed: 0 };
+  }
+
+  const validation = validateFcmPayload(payload);
+  if (!validation.ok) {
+    console.error(`[FCM] Refusing to send ${action} for alarm ${payload.id}: ${validation.error}`);
+    return { sent: 0, failed: tokens.length };
+  }
+
+  const dataPayload = buildFcmData(action, payload);
+
   console.log(`[FCM] Dispatching ${action} data payload to ${tokens.length} device(s):`, dataPayload);
 
   if (!isFirebaseInitialized) {
@@ -115,27 +220,76 @@ export async function sendFcmDataMessage(
   let failed = 0;
 
   for (const token of tokens) {
-    const message: admin.messaging.Message = {
-      token,
-      android: {
-        priority: 'high'
-      },
-      data: dataPayload
-    };
+    const message = buildFcmMessage(action, payload, token) as unknown as admin.messaging.Message;
 
     try {
-      await admin.messaging().send(message);
+      await withRetry(() => admin.messaging().send(message));
       sent++;
       console.log(`[FCM] Successfully delivered ${action} to token ${token.slice(0, 10)}...`);
     } catch (err: any) {
       failed++;
       console.error(`[FCM] Error sending message to token ${token.slice(0, 10)}...:`, err.message || err);
-      // Prune invalid or unregistered tokens
-      if (
-        err.code === 'messaging/registration-token-not-registered' ||
-        err.code === 'messaging/invalid-argument'
-      ) {
-        console.log(`[FCM] Pruning invalid token from DB: ${token.slice(0, 10)}...`);
+      // Prune only a genuinely dead token; a payload error must not delete a healthy one.
+      if (shouldPruneToken(err?.code)) {
+        console.log(`[FCM] Pruning dead token from DB: ${token.slice(0, 10)}...`);
+        DeviceRepo.remove(token);
+      }
+    }
+  }
+
+  return { sent, failed };
+}
+
+/**
+ * Build a user-visible **notification** message. Unlike the data messages, this
+ * is displayed by Android with no app code and may legitimately use high
+ * priority. It is used only for the best-effort delivery-health alert.
+ */
+export function buildFcmNotification(
+  title: string,
+  body: string,
+  token: string
+): Record<string, unknown> {
+  return {
+    token,
+    notification: { title, body },
+    android: { priority: 'high' }
+  };
+}
+
+/**
+ * Best-effort alert to every registered device. This cannot reach a phone that
+ * is force-stopped or offline — which is exactly why the dashboard and webhook
+ * exist too. Never throws.
+ */
+export async function sendFcmNotification(
+  title: string,
+  body: string
+): Promise<{ sent: number; failed: number }> {
+  const tokens = DeviceRepo.getAllTokens();
+
+  if (tokens.length === 0) {
+    console.log(`[FCM] No registered devices to send notification "${title}"`);
+    return { sent: 0, failed: 0 };
+  }
+
+  if (!isFirebaseInitialized) {
+    console.warn('[FCM] (Mock Mode) Notification simulated for tokens:', tokens);
+    return { sent: tokens.length, failed: 0 };
+  }
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const token of tokens) {
+    try {
+      const message = buildFcmNotification(title, body, token) as unknown as admin.messaging.Message;
+      await withRetry(() => admin.messaging().send(message));
+      sent++;
+    } catch (err: any) {
+      failed++;
+      console.error(`[FCM] Error sending notification to token ${token.slice(0, 10)}...:`, err.message || err);
+      if (shouldPruneToken(err?.code)) {
         DeviceRepo.remove(token);
       }
     }

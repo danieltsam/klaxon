@@ -40,6 +40,23 @@ class _DirectionalStrikePainter extends CustomPainter {
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+/// Injection seam for tests; production re-registers through [BackendClient].
+@visibleForTesting
+Future<void> Function(String token)? registerTokenForTest;
+
+/// Register (or re-register) this device's FCM token with the backend.
+///
+/// Called on cold start and on every [FirebaseMessaging.onTokenRefresh], so a
+/// rotated token is never left dead on the backend (the original outage).
+Future<void> registerToken(String token) async {
+  final override = registerTokenForTest;
+  if (override != null) {
+    await override(token);
+    return;
+  }
+  await BackendClient.registerDeviceToken(token);
+}
+
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
@@ -2158,18 +2175,29 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         setState(() => _fcmToken = token);
       }
 
+      // Re-register a rotated token without a cold start. This closes the
+      // cold-start-only hole that caused the original `NotRegistered` outage.
+      FirebaseMessaging.instance.onTokenRefresh.listen(registerToken);
+      if (_fcmToken != null) {
+        unawaited(registerToken(_fcmToken!));
+      }
+
       if (token != null) {
         _reportBatteryTelemetry();
       }
 
       FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
         await AlarmService.handleAlarmPayload(message.data);
+        // A foreground receipt is a poke: apply it, then pull authoritative
+        // state so a dropped or stale poke converges (spec §5.3).
+        unawaited(_syncWithBackend(silent: true));
         _loadAllAlarms();
       });
 
       // Tapping a notification while the app is in background → navigate if an alarm is ringing
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
         await AlarmService.handleAlarmPayload(message.data);
+        unawaited(_syncWithBackend(silent: true));
         _loadAllAlarms();
         if (await Alarm.isRinging()) {
           _checkActiveRingingAlarm();
@@ -2180,6 +2208,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
       if (initialMessage != null) {
         await AlarmService.handleAlarmPayload(initialMessage.data);
+        unawaited(_syncWithBackend(silent: true));
         _loadAllAlarms();
         // Defer until first frame so the navigator is mounted
         WidgetsBinding.instance.addPostFrameCallback((_) async {

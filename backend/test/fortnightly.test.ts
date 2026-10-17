@@ -9,6 +9,17 @@ describe('Fortnightly Recurrence (recurrence_interval_weeks)', () => {
   const testToken = 'test_fortnightly_device_token';
   const createdIds: string[] = [];
 
+  // A recurring target comfortably in the future. A past target is deliberately
+  // rolled forward by the create path (rollTargetTimeToFuture), which would move
+  // both the stored target_time and the auto-derived anchor off the requested
+  // date. Deriving from "now" keeps this fixture date-independent.
+  const futureFortnightlyTarget = (() => {
+    const d = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000);
+    d.setUTCHours(7, 0, 0, 0);
+    return d.toISOString();
+  })();
+  const futureFortnightlyAnchor = futureFortnightlyTarget.slice(0, 10);
+
   before(async () => {
     await app.ready();
     DeviceRepo.upsert(testToken);
@@ -27,7 +38,7 @@ describe('Fortnightly Recurrence (recurrence_interval_weeks)', () => {
       method: 'POST',
       url: '/api/alarms',
       payload: {
-        target_time: '2026-10-07T07:00:00Z',
+        target_time: futureFortnightlyTarget,
         label: 'Fortnightly Auto-Anchor',
         recurrence_interval_weeks: 2,
         repeat_days: [3]
@@ -37,11 +48,11 @@ describe('Fortnightly Recurrence (recurrence_interval_weeks)', () => {
     const data = JSON.parse(response.body);
     createdIds.push(data.id);
     assert.strictEqual(data.recurrence_interval_weeks, 2);
-    assert.strictEqual(data.recurrence_anchor_date, '2026-10-07');
+    assert.strictEqual(data.recurrence_anchor_date, futureFortnightlyAnchor);
 
     const record = AlarmRepo.getById(data.id);
     assert.strictEqual(record?.recurrence_interval_weeks, 2);
-    assert.strictEqual(record?.recurrence_anchor_date, '2026-10-07');
+    assert.strictEqual(record?.recurrence_anchor_date, futureFortnightlyAnchor);
   });
 
   it('POST /api/alarms with recurrence_interval_weeks: 2 and an explicit anchor persists it', async () => {
@@ -109,7 +120,7 @@ describe('Fortnightly Recurrence (recurrence_interval_weeks)', () => {
         method: 'POST',
         url: '/api/alarms',
         payload: {
-          target_time: '2026-10-07T07:00:00Z',
+          target_time: futureFortnightlyTarget,
           label: 'Fortnightly FCM',
           recurrence_interval_weeks: 2,
           repeat_days: [3]
@@ -123,7 +134,7 @@ describe('Fortnightly Recurrence (recurrence_interval_weeks)', () => {
 
     assert.ok(capturedPayload, 'FCM dispatch payload should have been logged');
     assert.strictEqual(capturedPayload.recurrence_interval_weeks, '2');
-    assert.strictEqual(capturedPayload.recurrence_anchor_date, '2026-10-07');
+    assert.strictEqual(capturedPayload.recurrence_anchor_date, futureFortnightlyAnchor);
   });
 
   it('PATCH /api/alarms/:id can change recurrence_interval_weeks from 1 to 2', async () => {
@@ -160,7 +171,7 @@ describe('Fortnightly Recurrence (recurrence_interval_weeks)', () => {
       method: 'POST',
       url: '/api/alarms',
       payload: {
-        target_time: '2026-10-07T07:00:00Z',
+        target_time: futureFortnightlyTarget,
         label: 'Fortnightly Get',
         recurrence_interval_weeks: 2,
         repeat_days: [3]
@@ -178,7 +189,7 @@ describe('Fortnightly Recurrence (recurrence_interval_weeks)', () => {
     const found = alarms.find((a: any) => a.id === created.id);
     assert.ok(found, 'Created fortnightly alarm should appear in active view');
     assert.strictEqual(found.recurrence_interval_weeks, 2);
-    assert.strictEqual(found.recurrence_anchor_date, '2026-10-07');
+    assert.strictEqual(found.recurrence_anchor_date, futureFortnightlyAnchor);
   });
 
   describe('gcal RRULE emission', () => {

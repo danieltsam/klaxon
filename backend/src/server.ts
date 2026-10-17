@@ -5,11 +5,12 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
 import { AlarmRepo, DeviceRepo, SettingsRepo, AlarmRecord, AppSettings, db } from './db.js';
-import { initFirebase, sendFcmDataMessage, FcmPayload } from './fcm.js';
+import { initFirebase, isFirebaseReady, sendFcmDataMessage, sendFcmNotification, FcmPayload } from './fcm.js';
 import { GcalMirror, unconfiguredTransport, classifyGcalError, type GcalTransport } from './gcal.js';
 import { createGcalTransport } from './gcal-google.js';
 import { resolveGcalConfig } from './gcal-config.js';
 import { reconcile } from './gcal-reconcile.js';
+import { evaluateDeliveryHealth, shouldSendAlert, sendWebhookAlert, healthchecksUrl, type DeliveryHealth, type WebhookKind } from './alerts.js';
 
 dotenv.config();
 
@@ -130,6 +131,13 @@ const isTestRun =
 export let missedSweepStarted = false;
 
 /**
+ * When the last delivery-health alert was sent, so repeated sweep ticks during
+ * a persistent outage are throttled (spec §5.4). Module-level by design: it
+ * must survive across timer ticks.
+ */
+let lastAlertAt: Date | null = null;
+
+/**
  * Derive the miss reason from the last persisted dispatch outcome (spec §7).
  *
  * `sent > 0` is NOT proof of delivery — mock-mode FCM reports `sent =
@@ -248,9 +256,30 @@ export async function mirrorSafely(alarm: AlarmRecord): Promise<void> {
   }
 }
 
+/**
+ * Compute the current delivery health from live state. Used by both the sweep
+ * (to log/scream) and `/api/health` (to surface it). Due-aware, not a heartbeat:
+ * a quiet interval with no alarms stays healthy (spec §5.4).
+ */
+export function computeDeliveryHealth(
+  now: Date = new Date(),
+  firebaseReady: boolean = isFirebaseReady()
+): DeliveryHealth {
+  return evaluateDeliveryHealth({
+    deviceCount: DeviceRepo.getAllDevices().length,
+    alarms: AlarmRepo.getAll('all'),
+    now,
+    firebaseReady
+  });
+}
+
 // 0. GET /api/health: Healthcheck and connectivity test
 app.get('/api/health', async (_request, reply) => {
-  return reply.send({ status: 'ok', timestamp: new Date().toISOString() });
+  return reply.send({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    delivery_health: computeDeliveryHealth()
+  });
 });
 
 // 1. GET /api/alarms: Return alarms filtered by view ('active' | 'history' | 'all')
@@ -1036,6 +1065,43 @@ if (!isTestRun) {
   setInterval(() => {
     try {
       sweepMissedAlarms();
+      // Delivery-health monitor (spec §5.4): a dead token, a failed dispatch, or
+      // an alarm now missed must surface instead of going quiet.
+      const health = computeDeliveryHealth();
+      const webhookUrl = process.env.ALERT_WEBHOOK_URL ?? '';
+      const webhookKind = (process.env.ALERT_WEBHOOK_KIND as WebhookKind) ?? 'generic';
+
+      // Healthchecks is a dead-man's switch: it alerts when pings STOP. So ping
+      // on EVERY sweep, healthy or not, independent of the 30-minute throttle —
+      // and use /fail when unhealthy so a broken backend still raises the alert.
+      // Pinging only when unhealthy would reset Healthchecks' timer precisely
+      // when the backend is broken, suppressing the very alert it exists to
+      // raise (spec §5.4).
+      if (webhookKind === 'healthchecks' && webhookUrl) {
+        void sendWebhookAlert(healthchecksUrl(webhookUrl, health.ok), 'healthchecks', {
+          title: 'Remote Alarm healthcheck',
+          body: health.ok ? 'ok' : health.reasons.join(', ')
+        });
+      }
+
+      if (!health.ok) {
+        console.error('[alerts] delivery unhealthy:', health.reasons);
+        const decision = shouldSendAlert(health.reasons[0], new Date(), lastAlertAt);
+        if (decision.send) {
+          lastAlertAt = decision.sentAt;
+          // Message kinds (generic/discord/slack) get the throttled on-unhealthy
+          // POST; Healthchecks already got its liveness ping above.
+          if (webhookKind !== 'healthchecks') {
+            void sendWebhookAlert(webhookUrl, webhookKind, {
+              title: 'Remote Alarm delivery unhealthy',
+              body: health.reasons.join(', ')
+            });
+          }
+          // Best-effort phone push, alongside the webhook. It cannot reach a
+          // force-stopped phone, which is why the dashboard and webhook exist.
+          void sendFcmNotification('Remote Alarm delivery unhealthy', health.reasons.join(', '));
+        }
+      }
     } catch (err) {
       // sweepMissedAlarms catches per-alarm errors; this is the last line of
       // defence so a failure can never kill the timer.

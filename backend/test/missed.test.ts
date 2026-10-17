@@ -346,7 +346,16 @@ describe('Missed alarms: sweep, reason, report, calendar', () => {
 
   describe('test hermeticity (spec §6.1, §13.3)', () => {
     it('does not start the sweep timer under NODE_ENV=test', () => {
-      assert.strictEqual(process.env.NODE_ENV, 'test');
+      // Two supported invocations reach this file: `npm test` sets
+      // NODE_ENV=test, while a bare `tsx --test test/` leaves it undefined but
+      // still runs inside Node's test runner, which sets NODE_TEST_CONTEXT in
+      // the worker. Both are test runs, so assert the precondition that is
+      // actually true in both rather than only NODE_ENV=test. The behavioural
+      // assertion below is unchanged.
+      assert.ok(
+        process.env.NODE_ENV === 'test' || process.env.NODE_TEST_CONTEXT !== undefined,
+        'expected to be running under the Node test runner'
+      );
       assert.strictEqual(
         missedSweepStarted,
         false,

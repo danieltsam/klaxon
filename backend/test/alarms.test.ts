@@ -107,7 +107,16 @@ describe('Fastify Alarm API & Persistence Test Suite', () => {
     });
 
     it('POST /api/alarms should create alarm, truncate seconds, and store repeat_days', async () => {
-      const targetTimeWithSeconds = '2026-10-15T07:30:45.123Z';
+      // Derive the fixture from "now" so the target is always in the future.
+      // A past target on a recurring alarm is deliberately rolled forward by
+      // the create path, which would move it off the requested instant and make
+      // the seconds-truncation assertion flaky.
+      const requested = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
+      requested.setUTCHours(7, 30, 45, 123);
+      const targetTimeWithSeconds = requested.toISOString();
+      const expectedTargetTime = new Date(requested.getTime());
+      expectedTargetTime.setUTCSeconds(0, 0);
+
       const response = await app.inject({
         method: 'POST',
         url: '/api/alarms',
@@ -132,7 +141,7 @@ describe('Fastify Alarm API & Persistence Test Suite', () => {
       const parsed = new Date(data.target_time);
       assert.strictEqual(parsed.getSeconds(), 0);
       assert.strictEqual(parsed.getMilliseconds(), 0);
-      assert.strictEqual(data.target_time, '2026-10-15T07:30:00.000Z');
+      assert.strictEqual(data.target_time, expectedTargetTime.toISOString());
     });
   });
 

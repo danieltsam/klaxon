@@ -36,3 +36,28 @@ Everything runs on my private Tailscale network. I don't have to expose any port
 ### Phones without Google Play services
 
 FCM depends on Google Play services. If a phone does not have them, this project cannot deliver alarms to that phone reliably. 
+
+## Delivery health
+
+The backend watches alarm delivery. It reports the result. A quiet system is then known quiet, not assumed healthy.
+
+- `GET /api/health` returns a `delivery_health` object, with `ok` and `reasons`.
+- The reasons are `no_registered_devices`, `firebase_uninitialized`, `dispatch_failed`, and `alarm_missed`.
+- The dashboard shows a banner when delivery is unverified.
+
+A dispatch is not proof of delivery. The system reports "dispatched", not "delivered".
+
+### Send alerts to another service
+
+Set `ALERT_WEBHOOK_URL` to the target URL. Set `ALERT_WEBHOOK_KIND` to one of these values:
+
+- `generic` (default). The body is `{"title": ..., "body": ...}`.
+- `discord`. The body is `{"content": ...}`.
+- `slack`. The body is `{"text": ...}`.
+- `healthchecks`. The backend sends a GET request on every sweep. This is a heartbeat.
+
+The backend sends a message at most once every 30 minutes for the same problem.
+
+The backend also sends a best-effort push to each registered phone. A phone that is off or force-stopped does not get the push. The webhook covers that case.
+
+For backend liveness, use a dead-man's switch. A push from the backend cannot report that the backend is down.
