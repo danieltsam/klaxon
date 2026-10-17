@@ -174,6 +174,7 @@ describe("parseTime — invalid input (shared fixture)", () => {
         (err: unknown) => {
           assert.ok(err instanceof TimeParseError);
           assert.equal(err.token, testCase.token);
+          assert.equal(err.reason, "unparseable");
           assert.match(err.message, new RegExp(testCase.token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
           return true;
         }
@@ -184,6 +185,15 @@ describe("parseTime — invalid input (shared fixture)", () => {
   it("rejects empty input", () => {
     assert.throws(() => parseTime("", MON_10), TimeParseError);
     assert.throws(() => parseTime("   ", MON_10), TimeParseError);
+  });
+});
+
+describe("TimeParseError — refusal reason", () => {
+  it("carries an already_passed refusal reason", () => {
+    const err = new TimeParseError("Already passed.", "this friday", "already_passed");
+    assert.equal(err.token, "this friday");
+    assert.equal(err.reason, "already_passed");
+    assert.equal(new TimeParseError("x", "y").reason, "unparseable");
   });
 });
 

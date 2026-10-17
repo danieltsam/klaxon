@@ -41,10 +41,11 @@
 
     /** Invalid natural-language time input. Carries the offending token in `token`. */
     class TimeParseError extends Error {
-      constructor(message, token) {
+      constructor(message, token, reason) {
         super(message);
         this.name = "TimeParseError";
         this.token = token;
+        this.reason = reason === undefined ? "unparseable" : reason;
       }
     }
 
