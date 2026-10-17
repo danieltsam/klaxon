@@ -243,6 +243,49 @@
       return null;
     }
 
+    /**
+     * Read a `this` / `next` qualifier beginning at `i` (spec §6.3): `this
+     * <weekday>`, `next <weekday>`, `this weekend`, `next week`, `next month`.
+     * `last` is deliberately **not** a token (owner decision 3): `last friday` is
+     * just the forward-only weekday `friday` with `last` left in the label.
+     *
+     * `this-weekday` records the matched phrase in `token` so a passed resolution
+     * can name it in the `already_passed` refusal. Mirrors `matchNextThis` in
+     * clients/core/src/time.ts.
+     */
+    function matchNextThis(toks, i) {
+      var first = toks[i];
+      if (first === "this") {
+        var second = toks[i + 1];
+        var weekday = WEEKDAY_NAMES[second];
+        if (weekday) {
+          return {
+            qualifier: { kind: "this-weekday", weekday: weekday, token: first + " " + second },
+            next: i + 2,
+          };
+        }
+        if (second === "weekend") {
+          return { qualifier: { kind: "this-weekend" }, next: i + 2 };
+        }
+        return null;
+      }
+      if (first === "next") {
+        var second2 = toks[i + 1];
+        var weekday2 = WEEKDAY_NAMES[second2];
+        if (weekday2) {
+          return { qualifier: { kind: "next-weekday", weekday: weekday2 }, next: i + 2 };
+        }
+        if (second2 === "week") {
+          return { qualifier: { kind: "next-week" }, next: i + 2 };
+        }
+        if (second2 === "month") {
+          return { qualifier: { kind: "next-month" }, next: i + 2 };
+        }
+        return null;
+      }
+      return null;
+    }
+
     function makeClock(hour, minute, meridiem, next, bare) {
       if (!Number.isInteger(minute) || minute < 0 || minute > 59) return null;
       if (meridiem) {
@@ -493,6 +536,60 @@
       if (qualifier && qualifier.kind === "weekday") {
         return buildAbsolute(ctx, hours, minutes, [qualifier.weekday]);
       }
+      if (qualifier && qualifier.kind === "this-weekday") {
+        // That weekday in the current Monday-start ISO week. A resolved instant
+        // at or before `now` (equality included) is a hard refusal — never
+        // rolled forward (spec §6.3/§10).
+        var thisDay = new Date(ctx.now.getTime());
+        thisDay.setDate(
+          thisDay.getDate() - (isoWeekday(thisDay) - 1) + (qualifier.weekday - 1)
+        );
+        thisDay.setHours(hours, minutes, 0, 0);
+        if (thisDay.getTime() <= ctx.now.getTime()) {
+          throw new TimeParseError(
+            '"' + qualifier.token + '" has already passed.',
+            qualifier.token,
+            "already_passed"
+          );
+        }
+        return thisDay;
+      }
+      if (qualifier && qualifier.kind === "next-weekday") {
+        // That weekday in the next ISO week — always ahead of `now`.
+        var nextDay = new Date(ctx.now.getTime());
+        nextDay.setDate(
+          nextDay.getDate() - (isoWeekday(nextDay) - 1) + 7 + (qualifier.weekday - 1)
+        );
+        nextDay.setHours(hours, minutes, 0, 0);
+        return nextDay;
+      }
+      if (qualifier && qualifier.kind === "this-weekend") {
+        // The coming Saturday: the nearest Saturday on or after today (today
+        // counts when it is itself Saturday), so it anchors deterministically.
+        var weekend = new Date(ctx.now.getTime());
+        var delta = (6 - isoWeekday(weekend) + 7) % 7;
+        weekend.setDate(weekend.getDate() + delta);
+        weekend.setHours(hours, minutes, 0, 0);
+        return weekend;
+      }
+      if (qualifier && qualifier.kind === "next-week") {
+        // Same wall-clock time, one week ahead.
+        var nextWeek = new Date(ctx.now.getTime());
+        nextWeek.setDate(nextWeek.getDate() + 7);
+        return nextWeek;
+      }
+      if (qualifier && qualifier.kind === "next-month") {
+        // Same wall-clock time, one calendar month ahead. Clamp a month-end
+        // overflow (e.g. 31 Jan -> 3 Mar) back to the last day of the intended
+        // month.
+        var nextMonth = new Date(ctx.now.getTime());
+        var targetDay = nextMonth.getDate();
+        nextMonth.setMonth(nextMonth.getMonth() + 1);
+        if (nextMonth.getDate() !== targetDay) {
+          nextMonth.setDate(0);
+        }
+        return nextMonth;
+      }
       if (repeatDays.length > 0) {
         return buildAbsolute(ctx, hours, minutes, repeatDays);
       }
@@ -534,10 +631,16 @@
         repeatDays = recurrence.repeatDays;
         i = recurrence.next;
       } else {
-        var day = matchDayQualifier(toks, i);
-        if (day) {
-          qualifier = day.qualifier;
-          i = day.next;
+        var nextThis = matchNextThis(toks, i);
+        if (nextThis) {
+          qualifier = nextThis.qualifier;
+          i = nextThis.next;
+        } else {
+          var day = matchDayQualifier(toks, i);
+          if (day) {
+            qualifier = day.qualifier;
+            i = day.next;
+          }
         }
       }
 

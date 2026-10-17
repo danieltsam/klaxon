@@ -126,7 +126,12 @@ interface AbsoluteDate {
 type DayQualifier =
   | { kind: "today" }
   | { kind: "tomorrow" }
-  | { kind: "weekday"; weekday: Weekday };
+  | { kind: "weekday"; weekday: Weekday }
+  | { kind: "this-weekday"; weekday: Weekday; token: string }
+  | { kind: "next-weekday"; weekday: Weekday }
+  | { kind: "this-weekend" }
+  | { kind: "next-week" }
+  | { kind: "next-month" };
 
 interface Clock {
   hours: number;
@@ -258,6 +263,51 @@ function matchDayQualifier(toks: string[], i: number): { qualifier: DayQualifier
   const weekday = WEEKDAY_NAMES[first];
   if (weekday) {
     return { qualifier: { kind: "weekday", weekday }, next: i + 1 };
+  }
+  return null;
+}
+
+/**
+ * Read a `this` / `next` qualifier beginning at `i` (spec §6.3): `this
+ * <weekday>`, `next <weekday>`, `this weekend`, `next week`, `next month`.
+ * `last` is deliberately **not** a token (owner decision 3): `last friday` is
+ * just the forward-only weekday `friday` with `last` left in the label.
+ *
+ * `this-weekday` records the matched phrase in `token` so a passed resolution
+ * can name it in the `already_passed` refusal.
+ */
+function matchNextThis(
+  toks: string[],
+  i: number
+): { qualifier: DayQualifier; next: number } | null {
+  const first = toks[i];
+  if (first === "this") {
+    const second = toks[i + 1];
+    const weekday = WEEKDAY_NAMES[second];
+    if (weekday) {
+      return {
+        qualifier: { kind: "this-weekday", weekday, token: `${first} ${second}` },
+        next: i + 2,
+      };
+    }
+    if (second === "weekend") {
+      return { qualifier: { kind: "this-weekend" }, next: i + 2 };
+    }
+    return null;
+  }
+  if (first === "next") {
+    const second = toks[i + 1];
+    const weekday = WEEKDAY_NAMES[second];
+    if (weekday) {
+      return { qualifier: { kind: "next-weekday", weekday }, next: i + 2 };
+    }
+    if (second === "week") {
+      return { qualifier: { kind: "next-week" }, next: i + 2 };
+    }
+    if (second === "month") {
+      return { qualifier: { kind: "next-month" }, next: i + 2 };
+    }
+    return null;
   }
   return null;
 }
@@ -537,6 +587,57 @@ function buildClockTime(
   if (qualifier?.kind === "weekday") {
     return buildAbsolute(ctx, hours, minutes, [qualifier.weekday]);
   }
+  if (qualifier?.kind === "this-weekday") {
+    // That weekday in the current Monday-start ISO week. A resolved instant at
+    // or before `now` (equality included) is a hard refusal — never rolled
+    // forward (spec §6.3/§10).
+    const candidate = new Date(ctx.now.getTime());
+    candidate.setDate(candidate.getDate() - (isoWeekday(candidate) - 1) + (qualifier.weekday - 1));
+    candidate.setHours(hours, minutes, 0, 0);
+    if (candidate.getTime() <= ctx.now.getTime()) {
+      throw new TimeParseError(
+        `"${qualifier.token}" has already passed.`,
+        qualifier.token,
+        "already_passed"
+      );
+    }
+    return candidate;
+  }
+  if (qualifier?.kind === "next-weekday") {
+    // That weekday in the next ISO week — always ahead of `now`.
+    const candidate = new Date(ctx.now.getTime());
+    candidate.setDate(
+      candidate.getDate() - (isoWeekday(candidate) - 1) + 7 + (qualifier.weekday - 1)
+    );
+    candidate.setHours(hours, minutes, 0, 0);
+    return candidate;
+  }
+  if (qualifier?.kind === "this-weekend") {
+    // The coming Saturday: the nearest Saturday on or after today (today counts
+    // when it is itself Saturday), so it anchors deterministically.
+    const candidate = new Date(ctx.now.getTime());
+    const delta = (6 - isoWeekday(candidate) + 7) % 7;
+    candidate.setDate(candidate.getDate() + delta);
+    candidate.setHours(hours, minutes, 0, 0);
+    return candidate;
+  }
+  if (qualifier?.kind === "next-week") {
+    // Same wall-clock time, one week ahead.
+    const candidate = new Date(ctx.now.getTime());
+    candidate.setDate(candidate.getDate() + 7);
+    return candidate;
+  }
+  if (qualifier?.kind === "next-month") {
+    // Same wall-clock time, one calendar month ahead. Clamp a month-end overflow
+    // (e.g. 31 Jan -> 3 Mar) back to the last day of the intended month.
+    const candidate = new Date(ctx.now.getTime());
+    const targetDay = candidate.getDate();
+    candidate.setMonth(candidate.getMonth() + 1);
+    if (candidate.getDate() !== targetDay) {
+      candidate.setDate(0);
+    }
+    return candidate;
+  }
   if (repeatDays.length > 0) {
     return buildAbsolute(ctx, hours, minutes, repeatDays);
   }
@@ -586,10 +687,16 @@ function tryParseExpression(
     repeatDays = recurrence.repeatDays;
     i = recurrence.next;
   } else {
-    const day = matchDayQualifier(toks, i);
-    if (day) {
-      qualifier = day.qualifier;
-      i = day.next;
+    const nextThis = matchNextThis(toks, i);
+    if (nextThis) {
+      qualifier = nextThis.qualifier;
+      i = nextThis.next;
+    } else {
+      const day = matchDayQualifier(toks, i);
+      if (day) {
+        qualifier = day.qualifier;
+        i = day.next;
+      }
     }
   }
 
