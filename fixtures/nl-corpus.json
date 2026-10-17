@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "artifact": "Categorised synthetic corpus of natural-language alarm inputs and their expected resolution. Measurement artifact only: no parser or application source was modified.",
   "canonicalParser": "clients/core/src/time.ts (parseTime / parseLeadingTime)",
-  "resolution": "Resolution = parseLeadingTime(input, now): `local` is the targetTime wall-clock, `repeatDays` are ISO weekdays (1=Mon..7=Sun, [] = one-time), `label` is the unconsumed remainder (rest). A weekday-less interval keeps `repeatDays: []`; the server/create path derives `repeat_days` from the interval anchor (design §7). For an invalid case `local`/`repeatDays`/`label` are null and the runner asserts `parseTime` throws a `TimeParseError` whose `token` equals `rejectedToken`.",
+  "resolution": "Resolution = parseLeadingTime(input, now): `local` is the targetTime wall-clock, `repeatDays` are ISO weekdays (1=Mon..7=Sun, [] = one-time), `label` is the unconsumed remainder (rest). A weekday-less interval keeps `repeatDays: []`; the server/create path derives `repeat_days` from the interval anchor (design §7). For an invalid case `local`/`repeatDays`/`label` are null and the runner asserts `parseTime` throws a `TimeParseError` whose `token` equals `rejectedToken` and whose `reason` equals `reason` (\"unparseable\" | \"already_passed\").",
   "nowConvention": "Local wall-clock ISO date-time WITHOUT a timezone offset, matching fixtures/time-parse-cases.json. Default now is Monday 21 Sep 2026 10:00 local; cases that need a Monday-is-today, forward-only, or January/December-rollover view vary it.",
   "statusLegend": {
     "supported": "Verified to pass against the current parser (machine-checked; machineVerified=true).",
@@ -20,18 +20,18 @@
     "intervals": "intervalWeeks encodes weekly recurrence (every 2 weeks / every other <day> / every 2nd <day>); intervalDays encodes day recurrence (every <n> days). With no clock, an interval anchors to now + interval preserving wall-clock; with a weekday it anchors to that weekday's next occurrence. A weekday-less interval reports repeatDays [] and is anchored server-side (design §7).",
     "absoluteDates": "Accepted once supported: '25 dec', '25/12' (day/month), '2026-12-31', 'jan 4th', 'december 25'. No year => the next occurrence (a passed date rolls to next year).",
     "metadata": "Inline alarm metadata (target): tone words chime/digital; ramp 'Ns ramp' | no ramp=0 | quick ramp=15 | gentle ramp=30 | deep ramp=60; 'note: <text>' sets the description.",
-    "next/this-week-month": "next monday = the following Monday; next week = same wall-clock one week ahead; next month = same wall-clock one calendar month ahead; this weekend = the coming Saturday 00:00. `last` is not a grammar token (dropped); a weekday after it resolves forward-only and the word stays in the label."
+    "next/this-week-month": "next <weekday> = that weekday in the next ISO week; this <weekday> = that weekday in the current ISO week (Monday-start, mon=1..sun=7), and a hard already_passed refusal when that instant has gone; next week = same wall-clock one week ahead; next month = same wall-clock one calendar month ahead; this weekend = the coming Saturday 00:00. `last` is not a grammar token (dropped); a weekday after it resolves forward-only and the word stays in the label."
   },
   "summary": {
-    "total": 164,
+    "total": 169,
     "supported": 106,
-    "target": 58,
+    "target": 63,
     "traps": 17,
     "byCategory": {
       "durations": 25,
       "clocks": 18,
       "day-qualified": 14,
-      "weekdays": 14,
+      "weekdays": 19,
       "weekday-sets": 30,
       "absolute-dates": 14,
       "intervals": 7,
@@ -1603,6 +1603,159 @@
       "status": "supported",
       "note": "A bare weekday is a one-off day qualifier at midnight, rolled forward.",
       "machineVerified": true
+    },
+    {
+      "id": "wd-this-friday-future",
+      "category": "weekdays",
+      "input": "this friday",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 25,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "`this <weekday>` = that weekday in the current ISO week (Monday-start, mon=1..sun=7). Monday 21 Sep is in the week Mon 21 – Sun 27; that week's Friday (25 Sep) is still ahead.",
+      "note": "Today 'this' is not a token: it becomes the label and 'friday' resolves forward-only (coincidentally the same day here).",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 25,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "this"
+      }
+    },
+    {
+      "id": "wd-this-friday-passed",
+      "category": "weekdays",
+      "input": "this friday",
+      "now": "2026-09-26T10:00:00",
+      "expected": {
+        "local": null,
+        "repeatDays": null,
+        "label": null,
+        "invalid": true,
+        "rejectedToken": "this friday",
+        "reason": "already_passed"
+      },
+      "status": "target",
+      "semantics": "Saturday 26 Sep is in the week Mon 21 – Sun 27; that week's Friday (25 Sep) has passed, so `this friday` is a hard already_passed refusal, never a roll-forward.",
+      "note": "Today 'this' is not a token: it becomes the label and 'friday' silently rolls forward to the wrong day (2 Oct) instead of refusing.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 10,
+          "d": 2,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "this"
+      }
+    },
+    {
+      "id": "wd-this-friday-today-ahead",
+      "category": "weekdays",
+      "input": "this friday 7pm",
+      "now": "2026-09-25T08:00:00",
+      "expected": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 25,
+          "h": 19,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": ""
+      },
+      "status": "target",
+      "semantics": "Same-day `this <weekday>` is valid while the resolved time is still ahead: now is Friday 08:00 and 19:00 has not passed.",
+      "note": "Today 'this' is not a token: it becomes the label and 'friday 7pm' resolves forward-only (today 19:00 here).",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 25,
+          "h": 19,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "this"
+      }
+    },
+    {
+      "id": "wd-this-friday-today-passed",
+      "category": "weekdays",
+      "input": "this friday 7pm",
+      "now": "2026-09-25T20:00:00",
+      "expected": {
+        "local": null,
+        "repeatDays": null,
+        "label": null,
+        "invalid": true,
+        "rejectedToken": "this friday",
+        "reason": "already_passed"
+      },
+      "status": "target",
+      "semantics": "Same-day `this <weekday>` whose resolved time has gone: now is Friday 20:00 and 19:00 has passed, so it is a hard already_passed refusal.",
+      "note": "Today 'this' is not a token: it becomes the label and 'friday 7pm' silently rolls forward to the wrong day (2 Oct) instead of refusing.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 10,
+          "d": 2,
+          "h": 19,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "this"
+      }
+    },
+    {
+      "id": "wd-this-monday-passed",
+      "category": "weekdays",
+      "input": "this monday",
+      "now": "2026-09-21T10:00:00",
+      "expected": {
+        "local": null,
+        "repeatDays": null,
+        "label": null,
+        "invalid": true,
+        "rejectedToken": "this monday",
+        "reason": "already_passed"
+      },
+      "status": "target",
+      "semantics": "Today is Monday 21 Sep; `this monday` is today at midnight, which has passed, so it is a hard already_passed refusal.",
+      "note": "Today 'this' is not a token: it becomes the label and 'monday' silently rolls forward to the next Monday (28 Sep) instead of refusing.",
+      "actual_today": {
+        "local": {
+          "y": 2026,
+          "mo": 9,
+          "d": 28,
+          "h": 0,
+          "mi": 0,
+          "s": 0
+        },
+        "repeatDays": [],
+        "label": "this"
+      }
     },
     {
       "id": "set-daily-7am",
@@ -3964,7 +4117,8 @@
         "repeatDays": null,
         "label": null,
         "invalid": true,
-        "rejectedToken": "25"
+        "rejectedToken": "25",
+        "reason": "unparseable"
       },
       "status": "supported",
       "note": "25 is out of range for a bare hour and no other form matches.",
@@ -3980,7 +4134,8 @@
         "repeatDays": null,
         "label": null,
         "invalid": true,
-        "rejectedToken": "24"
+        "rejectedToken": "24",
+        "reason": "unparseable"
       },
       "status": "supported",
       "machineVerified": true
@@ -3995,7 +4150,8 @@
         "repeatDays": null,
         "label": null,
         "invalid": true,
-        "rejectedToken": "13pm"
+        "rejectedToken": "13pm",
+        "reason": "unparseable"
       },
       "status": "supported",
       "note": "A meridiem implies a 1-12 hour.",
@@ -4011,7 +4167,8 @@
         "repeatDays": null,
         "label": null,
         "invalid": true,
-        "rejectedToken": "0am"
+        "rejectedToken": "0am",
+        "reason": "unparseable"
       },
       "status": "supported",
       "machineVerified": true
@@ -4026,7 +4183,8 @@
         "repeatDays": null,
         "label": null,
         "invalid": true,
-        "rejectedToken": "7:60"
+        "rejectedToken": "7:60",
+        "reason": "unparseable"
       },
       "status": "supported",
       "machineVerified": true
@@ -4041,7 +4199,8 @@
         "repeatDays": null,
         "label": null,
         "invalid": true,
-        "rejectedToken": "banana"
+        "rejectedToken": "banana",
+        "reason": "unparseable"
       },
       "status": "supported",
       "machineVerified": true

@@ -1,13 +1,13 @@
 # Remote Alarm — Natural-Language Alarm Grammar Expansion Design
 
 > **Date:** 2026-10-17
-> **Status:** Decided design — the owner decisions and settled calls are encoded below (§7, §12.2,
-> §15, §17). Next: written-spec review, then an implementation plan.
+> **Status:** Decided design — the owner decisions and settled calls are encoded below (§6.3, §7,
+> §10, §12.2, §15, §17). Next: written-spec review, then an implementation plan.
 > **Scope:** The `clients/core` time parser, its browser port, the two shared fixtures, the
 > web dashboard create modal, and a backend schema change for day-intervals (decided, §7).
 > No CLI or Raycast behaviour change is required beyond consuming new optional fields; mobile
 > gains day-interval handling in `getNextOccurrence` (§7).
-> **Contract:** `fixtures/nl-corpus.json` — 164 cases. This document is the *why* and *how*;
+> **Contract:** `fixtures/nl-corpus.json` — 169 cases. This document is the *why* and *how*;
 > the corpus is the *what*. Where the two disagree, the corpus wins and this document is wrong.
 > **Guiding principle:** a silent mis-parse is the enemy. An alarm that resolves to a
 > plausible-but-wrong time is worse than one that refuses to resolve, because the owner
@@ -27,8 +27,8 @@ deliberate: durations, clocks, `today`/`tomorrow`/weekdays, and weekday sets. It
 **longest leading prefix** of a single expression, with a fallback that finds the longest parseable
 **span** anywhere in the input (trailing spans preferred) when no prefix parses.
 
-That grammar has been measured, not assumed. `fixtures/nl-corpus.json` is a 164-case corpus of real
-phrasings and their expected resolution. **106 cases pass today; 58 fail.** The 58 failures are the
+That grammar has been measured, not assumed. `fixtures/nl-corpus.json` is a 169-case corpus of real
+phrasings and their expected resolution. **106 cases pass today; 63 fail.** The 63 failures are the
 expansion. Each failing case records the parser's *real current output* (`actual_today`), and it is
 that output — not a hypothetical — that shows how the current parser goes wrong:
 
@@ -46,12 +46,12 @@ Every one of these is a *silent* mis-parse: the parser returns a valid-looking t
 created, and it rings at the wrong moment (or does not repeat) with no warning. That is the failure
 mode this design exists to eliminate.
 
-**Intended outcome.** A competent builder can extend the grammar so that all 164 corpus cases
+**Intended outcome.** A competent builder can extend the grammar so that all 169 corpus cases
 resolve as the corpus says, and every input the parser cannot resolve confidently **fails loudly**
 rather than returning a plausible-but-wrong time. The parser continues to produce a *local
 wall-clock* `Date`; timezone handling is unchanged (§2).
 
-**Success criterion.** The corpus is the test. 106 supported cases stay green, 58 target cases go
+**Success criterion.** The corpus is the test. 106 supported cases stay green, 63 target cases go
 green, and the 17 flagged traps never silently mis-parse — they either resolve exactly as specified
 or refuse.
 
@@ -127,9 +127,9 @@ has `local`/`repeatDays`/`label` null.
 | Status | Count | Meaning |
 |---|---|---|
 | `supported` | 106 | Verified green today (`machineVerified: true`). **Must stay green.** |
-| `target` | 58 | Should resolve this way after expansion; fails today. `actual_today` is the live output. |
+| `target` | 63 | Should resolve this way after expansion; fails today. `actual_today` is the live output. |
 | `traps` | 17 | Flagged `trap: true`. The acceptance list for "never silently mis-parse" (§11). |
-| **total** | **164** | |
+| **total** | **169** | |
 
 By category (from the corpus `summary`):
 
@@ -138,7 +138,7 @@ By category (from the corpus `summary`):
 | durations | 25 | day-periods | 8 |
 | clocks | 18 | label-placement | 10 |
 | day-qualified | 14 | alarm-metadata | 12 |
-| weekdays | 14 | traps | 6 |
+| weekdays | 19 | traps | 6 |
 | weekday-sets | 30 | invalid | 6 |
 | absolute-dates | 14 | | |
 | intervals | 7 | | |
@@ -190,15 +190,16 @@ Surface forms, case-insensitively matched (the label keeps original case, §6.7)
 | `today` | today; a passed clock rolls to +1 day |
 | `tomorrow` / `tmr` | +1 day |
 | `<weekday>` | next occurrence, **forward-only** (§6.1) |
-| `next <weekday>` | next occurrence (forward-only; equivalent to bare under §6.1) |
+| `next <weekday>` | that weekday in the **next** ISO week (§6.3) |
+| `this <weekday>` | that weekday in the **current** ISO week; an **`already_passed` refusal** when gone (§6.3) |
 | `this weekend` | coming Saturday 00:00 |
 | `next week` | same wall-clock +7 days |
 | `next month` | same wall-clock +1 calendar month |
 
 `last` is **not** a grammar token (owner decision 3): `last friday` is parsed as the weekday `friday`
 (forward-only) with `last` left in the label, and `last week` / `last month` are not recognized.
-`this <weekday>` is likewise not a token — only `this weekend` and `this <period>` (§6.2) take `this`.
-`next month` is pinned by the corpus (`day-next-month`).
+`this` is a token for `this weekend`, `this <period>` (§6.2), and `this <weekday>` (§6.3). `next
+month` is pinned by the corpus (`day-next-month`).
 
 **Recurrence / weekday sets**
 
@@ -294,7 +295,8 @@ stripped between components.
 
 A bare weekday always resolves to the **next** occurrence strictly in the future. `mon 8:30am` on a
 Monday at 10:00 is *next* Monday; on a Monday at 08:00 it is *today*. A bare weekday with no clock is
-midnight of that day. This is unchanged behaviour and is the default for every weekday form.
+midnight of that day. This is unchanged behaviour and is the default for the **bare** weekday form;
+`this <weekday>` and `next <weekday>` are ISO-week anchored instead (§6.3).
 
 ### 6.2 Day periods
 
@@ -313,8 +315,38 @@ A period is a clock. A passed period rolls forward to the next day, exactly like
 
 ### 6.3 `next` / `this`
 
-- `next <weekday>` — next occurrence (forward-only; identical to the bare weekday under §6.1).
+The three weekday forms are a deliberate, unambiguous three-way contrast. All of them use the app's
+weekday numbering **`mon = 1 … sun = 7`** and a **Monday-start ISO week** (the week runs Mon → Sun):
+
+| Form | Week it anchors to | Passed → |
+|---|---|---|
+| `<weekday>` (bare) | forward-only: the next occurrence strictly in the future (§6.1) | rolls to the next week |
+| `this <weekday>` | the **current** ISO week (Mon–Sun containing `now`) | **`already_passed` refusal** (§10) |
+| `next <weekday>` | the **next** ISO week | n/a — always ahead |
+
+- **bare `<weekday>`** — unchanged (§6.1): the next occurrence strictly in the future. It may be
+  *today* (when the resolved time has not passed) or the same weekday next week (when it has). It
+  never refuses and never lands in the past.
+- **`this <weekday>`** — that weekday **within the current ISO week** (Monday-start). With no clock
+  the resolved instant is that weekday's midnight; with a clock it is that weekday at the clock time.
+  Same-day is valid while the resolved time is still ahead. **If that instant has already passed —
+  including exact equality, matching the passed-clock rule — the parse is a hard `already_passed`
+  refusal (§10), not a roll-forward.** `this friday` from Mon 21 Sep 2026 10:00 → Fri 25 Sep 00:00
+  (still ahead); from Sat 26 Sep 2026 10:00 → refusal, because that week's Friday (25 Sep) has gone;
+  `this friday 7pm` on Fri 25 Sep at 08:00 → 19:00 (ahead, valid), but at 20:00 → refusal.
+- **`next <weekday>`** — that weekday in the **next** ISO week (the week after the current one):
+  `next monday` from Mon 21 Sep → Mon 28 Sep, pinned by `day-next-monday`.
+
+Because bare and `this` coincide whenever the day is still ahead, the distinction only shows once the
+day has passed: bare rolls forward, `this` refuses. `next` is always a full week beyond the current
+week's occurrence. This three-way split is pinned by the corpus (`wd-this-friday-future`,
+`wd-this-friday-passed`, `wd-this-friday-today-ahead`, `wd-this-friday-today-passed`,
+`wd-this-monday-passed`).
+
+Other `next` / `this` forms (unchanged):
+
 - `this weekend` — coming Saturday 00:00.
+- `this <period>` — the bare day period (§6.2).
 - `next week` — the same wall-clock time +7 days (`next week` from Mon 21 Sep 10:00 → Mon 28 Sep
   10:00); pinned by `day-next-week`.
 - `next month` — the same wall-clock time +1 calendar month (Mon 21 Sep 10:00 → Wed 21 Oct 10:00);
@@ -322,8 +354,8 @@ A period is a clock. A passed period rolls forward to the next day, exactly like
 
 `last` is **dropped from the grammar** (owner decision 3): there is no `last <weekday>`, `last week`,
 or `last month`. `last friday` is therefore just the weekday `friday` (forward-only) with `last` left
-in the label, and the old backwards-resolution case is removed from the corpus. `this <weekday>` is
-not a token either — only `this weekend` and `this <period>` (§6.2) take `this`.
+in the label, and the old backwards-resolution case is removed from the corpus. `this` is a token for
+`this <weekday>`, `this weekend`, and `this <period>` — see the token table (§5.2).
 
 ### 6.4 Absolute dates
 
@@ -505,19 +537,45 @@ throw and name the token (`inv-25` / `inv-24`), and there is no `bare_integer` a
 
 ## 10. Error & Rejection Behaviour
 
-- **Unresolvable input throws `TimeParseError`**, naming the offending token (existing behaviour,
-  `time.ts:407-420`). The dashboard renders `could not parse "<token>"` (`index.html:1525`).
+Every refusal is a thrown `TimeParseError` carrying **both** the offending token and a **reason** (the
+refusal kind), so a caller can distinguish "I don't understand this" from "I understood it and it is
+in the past":
+
+```ts
+type RefusalReason = "unparseable" | "already_passed";
+
+class TimeParseError extends Error {
+  token?: string;          // the offending token / phrase, where applicable
+  reason: RefusalReason;   // defaults to "unparseable"
+}
+```
+
+- **`unparseable`** (default) — no grammar form matches. `.token` names the first token that could not
+  be consumed (existing behaviour, `time.ts:407-420`). The dashboard renders `could not parse
+  "<token>"` (`index.html:1525`).
+- **`already_passed`** — a *recognized* `this <weekday>` (§6.3) whose resolved instant is in the past
+  (including exact equality, matching the passed-clock rule). `.token` names the `this <weekday>`
+  phrase (e.g. `this friday`). This is a **hard error**: never a roll-forward, never an offered
+  ambiguity. The owner's words: *"if it's already passed, just throw an error stating it's already
+  passed."*
+
+Other rules:
+
 - **Never return a plausible-but-wrong time.** If the parser cannot confidently resolve an
   expression, it must throw rather than emit a time. This is the acceptance criterion the 17 traps
   test (§11).
 - **A lone integer outside 0–23 is a hard rejection** (`inv-24`, `inv-25`), never an offered
   ambiguity (§9).
-- **Refusal exposes the reason** (settled call 7). `TimeParseError` carries the offending token in
-  `.token`; the create API surfaces it (e.g. `{ error, rejectedToken }`) so a caller can learn *why*
-  the input failed, not just that it did. The `inv-*` corpus cases assert exactly this via
-  `parseTime` (§12.2).
 - **Empty input** throws (`time.ts:399-401`), unchanged.
 - Error messages name the *token*, not the whole input, so the user can see which word failed.
+
+**How the corpus asserts it (§12.2).** Every `invalid: true` corpus case carries
+`expected.rejectedToken` and `expected.reason`; the runner calls `parseTime(input, now)` and asserts it
+throws a `TimeParseError` with `error.token === expected.rejectedToken` **and**
+`error.reason === expected.reason`. The existing `inv-*` cases carry `reason: "unparseable"`; the new
+`this <weekday>` refusal cases (`wd-this-friday-passed`, `wd-this-friday-today-passed`,
+`wd-this-monday-passed`) carry `reason: "already_passed"`. The create API surfaces both fields (e.g.
+`{ error, rejectedToken, reason }`) so a caller learns *why* the input failed, not just that it did.
 
 ---
 
@@ -555,7 +613,7 @@ Two fixtures, one grammar, two implementations.
 | Fixture | Role |
 |---|---|
 | `fixtures/time-parse-cases.json` | The **existing** lockstep pin. The TS suite (`time.test.ts`) and the browser port both assert its `cases` / `invalid` / `leading` / `leadingNull` / `interpretation`. Extended with new grammar cases. |
-| `fixtures/nl-corpus.json` | The **expansion contract** — 164 cases, the acceptance list. Gains a machine-checked runner (§12.2). |
+| `fixtures/nl-corpus.json` | The **expansion contract** — 169 cases, the acceptance list. Gains a machine-checked runner (§12.2). |
 
 Two implementations must not drift:
 
@@ -577,10 +635,12 @@ fields are part of the contract, and a case that silently drops them is a false 
 against **both** implementations. After expansion, `target` cases become ordinary passing tests and
 the `trap` flag becomes a named regression set.
 
-**Invalid cases (`inv-*`) use a different entry point.** `parseLeadingTime` returns `null` rather
-than throwing when nothing parses, so the runner calls `parseTime(input, new Date(now))` for the
-`inv-*` cases and asserts it throws a `TimeParseError` whose `.token` equals `expected.rejectedToken`
-(settled call 7 — this is the null-vs-throw resolution). Every other case calls `parseLeadingTime`.
+**Invalid cases (`invalid: true`) use a different entry point.** `parseLeadingTime` returns `null`
+rather than throwing when nothing parses, so for every `invalid: true` case (the `inv-*` cases and the
+`already_passed` `this <weekday>` cases) the runner calls `parseTime(input, new Date(now))` and asserts
+it throws a `TimeParseError` whose `.token` equals `expected.rejectedToken` **and** whose `.reason`
+equals `expected.reason` (`"unparseable"` | `"already_passed"`, §10) — this is the null-vs-throw
+resolution and the reason assertion. Every other case calls `parseLeadingTime`.
 
 The corpus is the contract: **never edit a case's `expected` to make a test pass.** If a case is
 wrong, that is a corpus defect to raise, not to paper over.
@@ -593,11 +653,11 @@ wrong, that is a corpus defect to raise, not to paper over.
 |---|---|
 | `clients/core/src/time.ts` | Grammar stages, resolution, metadata pre-pass, interval output, split-anchor fallback |
 | `clients/core/src/types.ts` | Extend `ParsedTime` (optional `alarm`, `interval`, `ambiguities`) |
-| `clients/core/src/errors.ts` | `TimeParseError` already carries `.token` (unchanged) — the reason exposed by a refusal |
+| `clients/core/src/errors.ts` | `TimeParseError` keeps `.token` and gains `.reason` (`"unparseable" \| "already_passed"`, §10) |
 | `clients/core/src/format.ts` | Echo for dates, periods, and intervals (unchanged for existing forms) |
 | `clients/core/test/time.test.ts` | Extended shared-fixture cases + trap regression set |
 | `fixtures/time-parse-cases.json` | New grammar cases |
-| `fixtures/nl-corpus.json` | Content updated per the owner decisions (`last` removed; `30s ramp`, `next month`, `03/04`, `every 3 days` pinned; counts updated); add the runner that asserts it |
+| `fixtures/nl-corpus.json` | Content updated per the owner decisions (`last` removed; `30s ramp`, `next month`, `03/04`, `every 3 days`, and `this <weekday>` pinned; counts updated); add the runner that asserts it |
 | `backend/public/nl-time.js` | Verbatim port of every change |
 | `backend/public/index.html` | Confirm step + metadata chips around the existing echo |
 | `backend/src/server.ts` | General interval: derive `repeat_days` from the anchor for a weekday-less interval; store/emit the interval; ICS gains `FREQ=DAILY;INTERVAL=n`; reject a lone integer outside 0–23 |
@@ -614,7 +674,7 @@ recurrence schedules correctly.
 
 ### Goals
 
-- Resolve all 164 corpus cases as the corpus specifies (106 already green, 58 to gain).
+- Resolve all 169 corpus cases as the corpus specifies (106 already green, 63 to gain).
 - Keep every one of the 106 `supported` cases green — no regression.
 - Distinguish intervals from weekday sets, so `every 2 weeks 7am` no longer eats the `2` (§5.3).
 - Forward-only bare weekdays; day periods with fixed anchors; year-rollover dates.
@@ -636,6 +696,7 @@ recurrence schedules correctly.
 
 - **Silently guessing.** A plausible-but-wrong time is the failure this design exists to remove.
 - **Resolving a bare weekday into the past.**
+- **Resolving a passed `this <weekday>` forward instead of refusing** — it must throw `already_passed` (§6.3, §10).
 - **Consuming a bare integer as a clock inside a phrase.**
 - **Letting `every <n> <unit>` collapse into a clock.**
 - **Demoting an absolute date or `next`/`this` into label text.**
@@ -647,15 +708,16 @@ recurrence schedules correctly.
 
 ## 15. Open Questions
 
-The blocking questions are resolved and encoded (§7, §12.2, §17); the corpus conflicts are fixed.
-What genuinely remains:
+The blocking questions are resolved and encoded (§6.3, §7, §10, §12.2, §17); the corpus conflicts
+are fixed, including whether `this <weekday>` is a token (it is, with a hard `already_passed`
+refusal). What genuinely remains:
 
 1. **Metadata keywords versus label words.** Is a label allowed to contain `chime` / `ramp` /
    `note:`? Extraction always wins today's design; is the detailed form the only escape hatch, or
    should the confirm step offer "keep as label"?
 2. **Confirm-step scope.** Does the confirm step apply only to genuinely ambiguous input, or also to
    high-consequence forms (intervals, `next month`)? Recommended: only genuine ambiguity.
-3. **Corpus in CI.** Should the runner be wired into `run_tests.sh` as a gate, and should the 58
+3. **Corpus in CI.** Should the runner be wired into `run_tests.sh` as a gate, and should the 63
    `target` cases become failing tests immediately (red until implemented) or be enabled case by
    case?
 
@@ -682,18 +744,19 @@ What genuinely remains:
 |---|---|---|
 | Forward-only weekdays | Always the next occurrence | Owner decision 1; a bare weekday never lands in the past |
 | `next`/`this` | Consumed as quantifiers | Fixes the `next monday 7am` label leak |
+| `this <weekday>` | The **current ISO week** (Monday-start, `mon=1…sun=7`); a hard **`already_passed` refusal** once that instant has gone | Owner correction; `this` is a weekday token, distinct from bare (forward-only) and `next` (next week) |
 | `last` | **Dropped from the grammar** | Owner decision 3; no backwards resolution, no past-time case |
 | Intervals vs weekday sets | Number+unit = interval; named day = set | Owner decision 3; fixes `every 2 weeks 7am` |
 | Metadata | Keyed keywords, pre-pass, removed anywhere | Owner decision 4; corpus mapping |
 | `30s ramp` | Metadata (ramp 30); a bare `30s` stays a duration | Settled call 6; `trap-30s-ramp` and `meta-30s-ramp` agree |
 | Ambiguity | Confirmed around the existing echo, never guessed | Owner decision 2 |
 | Lone integer > 23 | **Hard rejection**, not an ambiguity | Settled call 5; `inv-24`/`inv-25`; no `bare_integer` kind |
-| Unresolvable input | Fail loudly, name the token; the reason is exposed | Owner decision 5; `TimeParseError.token` / API `rejectedToken` |
+| Unresolvable input | Fail loudly, name the token; the reason (`unparseable` \| `already_passed`) is exposed | Owner decision 5; `TimeParseError.token` / `.reason`; API `rejectedToken` / `reason` |
 | Precedence | Leading prefix → trailing/anywhere span → split anchor | Preserves all `supported` cases; recovers interior recurrence |
 | Bare integer | A clock only as the entire expression | `clk-bare-7`; keeps stray integers in labels |
 | Numeric dates | day/month, with a month-first fallback when unambiguous | `25/12` and `10/31` resolve deterministically; `03/04` pinned by `abs-03-04` |
 | Interval storage | **General interval column (Option A)** (§7) | Owner decision 1; `every 3 days` works like `every 2 weeks` |
 | Weekday-less interval | Parser keeps `repeatDays: []`; server derives `repeat_days` from the anchor | Owner decision 2; fixes the swept-as-one-time bug |
-| Corpus runner | Asserts the **full** `expected` shape; `inv-*` asserted via `parseTime` | Settled calls 4 and 7 |
-| Unpinned tokens | `next month` and `03/04` pinned with cases; `this <weekday>`, `last week`, `last month` removed | Settled call 8; no unnamed, untested tokens |
+| Corpus runner | Asserts the **full** `expected` shape; invalid cases asserted via `parseTime` (token + reason) | Settled calls 4 and 7 |
+| Unpinned tokens | `next month`, `03/04`, and `this <weekday>` pinned with cases; `last week`, `last month` removed | Settled call 8; no unnamed, untested tokens |
 | Contract | Both fixtures, both implementations in lockstep | `time-parse-cases.json` pins; the corpus is the acceptance list |
