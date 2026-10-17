@@ -76,6 +76,33 @@
 
     var CONNECTORS = new Set(["at", "in"]);
 
+    /** Month name (short and full) -> 1-based calendar month (spec §6.4). */
+    var MONTH_NAMES = {
+      jan: 1,
+      january: 1,
+      feb: 2,
+      february: 2,
+      mar: 3,
+      march: 3,
+      apr: 4,
+      april: 4,
+      may: 5,
+      jun: 6,
+      june: 6,
+      jul: 7,
+      july: 7,
+      aug: 8,
+      august: 8,
+      sep: 9,
+      september: 9,
+      oct: 10,
+      october: 10,
+      nov: 11,
+      november: 11,
+      dec: 12,
+      december: 12,
+    };
+
     /** ISO weekday: 1 = Monday … 7 = Sunday. */
     function isoWeekday(date) {
       var day = date.getDay();
@@ -297,6 +324,113 @@
       return { days: weeks * 7 + days, next: toks.length };
     }
 
+    /**
+     * Read a day-of-month, tolerating an English ordinal suffix (`4th` -> `4`).
+     * Returns `null` for anything that is not a 1–31 number.
+     */
+    function parseDayNumber(token) {
+      var stripped = token.replace(/(st|nd|rd|th)$/, "");
+      if (!/^\d{1,2}$/.test(stripped)) return null;
+      var day = parseInt(stripped, 10);
+      if (day < 1 || day > 31) return null;
+      return day;
+    }
+
+    /**
+     * Read a `<d>/<m>` numeric date (spec §6.5). The reading is day/month when
+     * unambiguous: a first field over 12 must be the day, a second field over 12
+     * makes the first the month. When both fields are ≤ 12 the default is
+     * **day/month** (`03/04` = 3 Apr).
+     */
+    function parseNumericDate(token) {
+      var match = /^(\d{1,2})\/(\d{1,2})$/.exec(token);
+      if (!match) return null;
+      var a = parseInt(match[1], 10);
+      var b = parseInt(match[2], 10);
+      if (a < 1 || a > 31 || b < 1 || b > 31) return null;
+
+      var month;
+      var day;
+      if (a > 12) {
+        day = a;
+        month = b;
+      } else if (b > 12) {
+        month = a;
+        day = b;
+      } else {
+        day = a;
+        month = b;
+      }
+      if (month < 1 || month > 12) return null;
+      return { month: month, day: day };
+    }
+
+    /**
+     * Read an absolute date beginning at `i` (spec §6.4): `<month> <day>` (`dec 25`,
+     * `december 25`), `<day> <month>` (`25 dec`, `25th december`), `<month>
+     * <ordinal>` (`jan 4th`), `<d>/<m>` numeric (`25/12`), or ISO (`2026-12-31`).
+     * Returns the date and the index just past it, or `null`.
+     */
+    function parseAbsoluteDate(toks, i) {
+      var first = toks[i];
+      if (first === undefined) return null;
+
+      // ISO `YYYY-MM-DD`.
+      var iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(first);
+      if (iso) {
+        var year = parseInt(iso[1], 10);
+        var month = parseInt(iso[2], 10);
+        var day = parseInt(iso[3], 10);
+        if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+        return { date: { month: month, day: day, year: year }, next: i + 1 };
+      }
+
+      // `<d>/<m>` numeric.
+      var numeric = parseNumericDate(first);
+      if (numeric) {
+        return { date: { month: numeric.month, day: numeric.day }, next: i + 1 };
+      }
+
+      var second = toks[i + 1];
+      var firstMonth = MONTH_NAMES[first];
+      if (firstMonth !== undefined) {
+        // `<month> <day>` / `<month> <ordinal>`.
+        if (second === undefined) return null;
+        var dayOfMonth = parseDayNumber(second);
+        if (dayOfMonth === null) return null;
+        return { date: { month: firstMonth, day: dayOfMonth }, next: i + 2 };
+      }
+
+      // `<day> <month>` / `<ordinal> <month>`.
+      var dayNumber = parseDayNumber(first);
+      var secondMonth = second !== undefined ? MONTH_NAMES[second] : undefined;
+      if (dayNumber !== null && secondMonth !== undefined) {
+        return { date: { month: secondMonth, day: dayNumber }, next: i + 2 };
+      }
+
+      return null;
+    }
+
+    /**
+     * Resolve a calendar date at `hours:minutes` to a local wall-clock instant
+     * (spec §6.4). An explicit year is honoured verbatim, including a **past** year
+     * (the §9 futurity check is a later concern). With no year the next occurrence
+     * is used: a resolved instant at or before `now` rolls to the next year.
+     */
+    function resolveAbsoluteDate(now, date, hours, minutes) {
+      var candidate = new Date(now.getTime());
+      candidate.setHours(hours, minutes, 0, 0);
+      if (date.year !== undefined) {
+        candidate.setFullYear(date.year, date.month - 1, date.day);
+        return candidate;
+      }
+      candidate.setMonth(date.month - 1, date.day);
+      if (candidate.getTime() <= now.getTime()) {
+        candidate.setFullYear(candidate.getFullYear() + 1);
+      }
+      return candidate;
+    }
+
     function buildAbsolute(ctx, hours, minutes, targetDays) {
       // Today counts if the time has not passed; otherwise the next matching day.
       for (var offset = 0; offset <= 7; offset++) {
@@ -389,6 +523,54 @@
           return finalize(buildClockTime(ctx, qualifier, [], 0, 0), [], ctx.now);
         }
         return null;
+      }
+
+      // Absolute-date anchor (spec §6.4), standalone or joined to a clock in
+      // either order (spec §5.4). A lone date resolves to 00:00 on that day.
+      if (!qualifier && repeatDays.length === 0) {
+        // Date → clock: `dec 25 7am`, `2026-12-31 9am`.
+        var date = parseAbsoluteDate(toks, i);
+        if (date) {
+          var dj = date.next;
+          while (dj < toks.length && CONNECTORS.has(toks[dj])) dj++;
+          if (dj === toks.length) {
+            return finalize(resolveAbsoluteDate(ctx.now, date.date, 0, 0), [], ctx.now);
+          }
+          var dateClock = parseClock(toks, dj);
+          if (
+            dateClock &&
+            dateClock.next === toks.length &&
+            (!dateClock.bare || allowBareIntegerClock)
+          ) {
+            return finalize(
+              resolveAbsoluteDate(ctx.now, date.date, dateClock.hours, dateClock.minutes),
+              [],
+              ctx.now
+            );
+          }
+        }
+
+        // Clock → date: `5pm 10/31`.
+        var leadClock = parseClock(toks, i);
+        if (leadClock) {
+          var cj = leadClock.next;
+          while (cj < toks.length && CONNECTORS.has(toks[cj])) cj++;
+          if (cj < toks.length) {
+            var trailingDate = parseAbsoluteDate(toks, cj);
+            if (trailingDate && trailingDate.next === toks.length) {
+              return finalize(
+                resolveAbsoluteDate(
+                  ctx.now,
+                  trailingDate.date,
+                  leadClock.hours,
+                  leadClock.minutes
+                ),
+                [],
+                ctx.now
+              );
+            }
+          }
+        }
       }
 
       // Duration form: only ever standalone (no day/recurrence qualifier).
