@@ -86,6 +86,8 @@ interface Clock {
   minutes: number;
   /** Index into the token array just past the clock. */
   next: number;
+  /** True only for the bare-integer form (`7`, no meridiem, no colon). */
+  bare: boolean;
 }
 
 interface Duration {
@@ -217,7 +219,8 @@ function makeClock(
   hour: number,
   minute: number,
   meridiem: string | undefined,
-  next: number
+  next: number,
+  bare: boolean
 ): Clock | null {
   if (!Number.isInteger(minute) || minute < 0 || minute > 59) return null;
   if (meridiem) {
@@ -225,11 +228,11 @@ function makeClock(
     if (hour < 1 || hour > 12) return null;
     let hours = hour % 12;
     if (meridiem === "pm") hours += 12;
-    return { hours, minutes: minute, next };
+    return { hours, minutes: minute, next, bare };
   }
   // Bare / colon times without a meridiem are read as 24-hour.
   if (hour < 0 || hour > 23) return null;
-  return { hours: hour, minutes: minute, next };
+  return { hours: hour, minutes: minute, next, bare };
 }
 
 /** Parse a clock token (possibly spread over two tokens, e.g. `7 am`). */
@@ -240,7 +243,7 @@ function parseClock(toks: string[], i: number): Clock | null {
   // 7am / 12pm / 13pm (invalid)
   let match = /^(\d{1,2})(am|pm)$/.exec(first);
   if (match) {
-    return makeClock(parseInt(match[1], 10), 0, match[2], i + 1);
+    return makeClock(parseInt(match[1], 10), 0, match[2], i + 1, false);
   }
 
   // 7:30am / 07:00 / 19:00 / 7:30
@@ -252,16 +255,16 @@ function parseClock(toks: string[], i: number): Clock | null {
       meridiem = toks[next];
       next++;
     }
-    return makeClock(parseInt(match[1], 10), parseInt(match[2], 10), meridiem, next);
+    return makeClock(parseInt(match[1], 10), parseInt(match[2], 10), meridiem, next, false);
   }
 
   // Bare hour: `7` -> 07:00, `19` -> 19:00, optionally followed by am/pm.
   match = /^(\d{1,2})$/.exec(first);
   if (match) {
     if (i + 1 < toks.length && (toks[i + 1] === "am" || toks[i + 1] === "pm")) {
-      return makeClock(parseInt(match[1], 10), 0, toks[i + 1], i + 2);
+      return makeClock(parseInt(match[1], 10), 0, toks[i + 1], i + 2, false);
     }
-    return makeClock(parseInt(match[1], 10), 0, undefined, i + 1);
+    return makeClock(parseInt(match[1], 10), 0, undefined, i + 1, true);
   }
 
   return null;
@@ -354,8 +357,16 @@ function finalize(
 /**
  * Try to parse a sequence of tokens as exactly one complete time expression.
  * Returns `null` if the tokens are not a single valid expression.
+ *
+ * `allowBareIntegerClock` is true only when `toks` is the entire input: a
+ * bare-integer clock (`7`) is otherwise a trap, silently swallowing a number
+ * that belongs to the label (spec §5.4/§11 #6).
  */
-function tryParseExpression(toks: string[], now: Date): ParsedTime | null {
+function tryParseExpression(
+  toks: string[],
+  now: Date,
+  allowBareIntegerClock: boolean
+): ParsedTime | null {
   const ctx: BuildContext = { now };
   let i = 0;
 
@@ -402,7 +413,7 @@ function tryParseExpression(toks: string[], now: Date): ParsedTime | null {
   }
 
   const clock = parseClock(toks, i);
-  if (clock && clock.next === toks.length) {
+  if (clock && clock.next === toks.length && (!clock.bare || allowBareIntegerClock)) {
     const targetTime = buildClockTime(ctx, qualifier, repeatDays, clock.hours, clock.minutes);
     return finalize(targetTime, repeatDays, ctx.now);
   }
@@ -422,12 +433,12 @@ export function parseTime(input: string, now?: Date): ParsedTime {
   }
 
   const toks = raw.map((t) => t.toLowerCase());
-  const parsed = tryParseExpression(toks, nowDate);
+  const parsed = tryParseExpression(toks, nowDate, true);
   if (parsed) return parsed;
 
   // Name the offending (first unconsumed) token when a valid prefix exists.
   for (let end = toks.length - 1; end >= 1; end--) {
-    if (tryParseExpression(toks.slice(0, end), nowDate)) {
+    if (tryParseExpression(toks.slice(0, end), nowDate, false)) {
       throw new TimeParseError(
         `Could not parse time expression: "${raw[end]}".`,
         raw[end]
@@ -455,7 +466,7 @@ function findTimeSpan(
   // Prefer the longest trailing span: label first, time last. Iterating `start`
   // upward returns the smallest start (i.e. the longest suffix) that parses.
   for (let start = 0; start < toks.length; start++) {
-    const parsed = tryParseExpression(toks.slice(start), now);
+    const parsed = tryParseExpression(toks.slice(start), now, false);
     if (parsed) {
       return { parsed, rest: raw.slice(0, start).join(" ") };
     }
@@ -463,7 +474,7 @@ function findTimeSpan(
   // Otherwise the longest span anywhere; the surrounding tokens form the label.
   for (let len = toks.length; len >= 1; len--) {
     for (let start = 0; start + len <= toks.length; start++) {
-      const parsed = tryParseExpression(toks.slice(start, start + len), now);
+      const parsed = tryParseExpression(toks.slice(start, start + len), now, false);
       if (parsed) {
         const label = raw.slice(0, start).concat(raw.slice(start + len));
         return { parsed, rest: label.join(" ") };
@@ -490,7 +501,9 @@ export function parseLeadingTime(
 
   const toks = raw.map((t) => t.toLowerCase());
   for (let end = toks.length; end >= 1; end--) {
-    const parsed = tryParseExpression(toks.slice(0, end), nowDate);
+    // Only the whole input may carry a bare-integer clock; shorter prefixes
+    // are slices, where a bare integer would swallow part of the label.
+    const parsed = tryParseExpression(toks.slice(0, end), nowDate, end === toks.length);
     if (parsed) {
       return { parsed, rest: raw.slice(end).join(" ") };
     }

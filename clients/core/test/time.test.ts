@@ -272,3 +272,13 @@ describe("parseTime — interpretation echo (shared fixture)", () => {
     });
   }
 });
+
+describe("bare-integer clock guard", () => {
+  it("allows a lone integer as the whole expression", () => {
+    assertLocal(parseTime("7", MON_10).targetTime, 2026, 9, 22, 7, 0);
+  });
+  it("never selects a bare integer inside a phrase", () => {
+    assert.equal(parseLeadingTime("foo 5 bar", MON_10), null);
+    assert.equal(parseLeadingTime("call at 5", MON_10), null);
+  });
+});
