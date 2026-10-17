@@ -363,7 +363,15 @@ class AlarmService {
           repeatDays: repeatDays,
         );
 
-        if (status == 'disabled' ||
+        if (status == 'ringing') {
+          // A remotely-ringing alarm is already being handled: the ring screen
+          // owns it and the DISMISS push (or the next poll) ends it. Neither
+          // arm nor force-stop it here. A synthetic CREATE for its now-past
+          // target would fall inside the grace window and fire immediately,
+          // restarting the alarm in an endless re-arm/ring loop after a remote
+          // silence (the pre-existing status the fix guards against).
+          await IdMapper.setEnabled(intId, true);
+        } else if (status == 'disabled' ||
             status == 'canceled' ||
             status == 'dismissed' ||
             status == 'missed') {
@@ -528,6 +536,27 @@ class AlarmService {
 
     await Alarm.set(alarmSettings: alarmSettings);
     return alarmSettings;
+  }
+
+  /// Reports `ringing` to the backend for [intId], but only when the platform
+  /// still confirms the alarm is actually ringing.
+  ///
+  /// Opening the ring screen can race a remote silence: a DISMISS push may stop
+  /// the alarm after the screen was queued but before this report runs. An
+  /// unconditional report would overwrite the server's `dismissed` back to
+  /// `ringing`, which the reconcile then re-arms — the remote-silence loop.
+  /// The `Alarm.isRinging` re-check keeps the server's authoritative state
+  /// intact while still reporting a legitimately ringing alarm.
+  static Future<void> reportRingingIfStillRinging(int intId) async {
+    try {
+      final uuid = await IdMapper.getUuid(intId);
+      if (uuid == null || uuid.startsWith('local_')) return;
+      if (!await Alarm.isRinging(intId)) return;
+      await BackendClient.updateAlarmState(uuid, 'ringing');
+    } catch (e) {
+      // ignore: avoid_print
+      print('[AlarmService] reportRingingIfStillRinging error: $e');
+    }
   }
 
   /// Dismiss active alarm and notify backend
