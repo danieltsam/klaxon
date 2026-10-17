@@ -78,3 +78,37 @@ This document tracks implemented features and future enhancements for the Remote
 - Rapid terminal command (`alarm 25m "Oven"`) or Raycast extension for zero-friction scheduling without opening the browser.
 - **Shipped** from the approved 2026-09-21 design: [`docs/superpowers/specs/2026-09-21-clients-cli-raycast-design.md`](superpowers/specs/2026-09-21-clients-cli-raycast-design.md). A shared dependency-free core (`clients/core`) with two presentation shells (`clients/cli`, `clients/raycast`). No backend changes were required.
 - Verified end-to-end against the live homelab.
+
+---
+
+## 3. Backlog — UX & Polish (captured 2026-10-17, from a device walkthrough)
+
+### 3.1 Bugs to fix first
+- **"Arm Alarm" creates a ghost duplicate.** Arming creates two alarms; the second disappears after about a second. Data integrity — fix first.
+- **Toasts queue and drift.** "Alarm armed" / "deactivated" toasts linger, stack, and describe actions that are no longer current. A new toast must pre-empt the previous one.
+- **Deleting alarms is serialised.** Roughly half a second per alarm with dead screen time between. It should run as one action.
+
+### 3.2 Alarm list
+- **Reordering is invisible.** Selecting a later alarm moves it to the top, but the rows look nearly identical, so the move is not apparent. It needs a visible move animation.
+- **The Duplicate action is in question.** The owner doubts anyone wants to duplicate an alarm rather than create one. Also open: what two alarms at the same clock time should do.
+
+### 3.3 Set-an-alarm flow (the "quick to set" reinvestigation)
+- **"New Alarm" should land in the title field.** Remove the pre-filled "morning workout" placeholder and focus the name input.
+- **Review the hour and minute wheels.** The owner prefers them to Google Clock's inner/outer hour ring, but calls them "a little clunky" and wants alternatives explored.
+- **Fewer taps overall.** Google Clock is the bar.
+
+### 3.4 Haptics
+- Add a **10-minute milestones** style. Also try **8, 6 and 12-minute** variants.
+- **Promote SOS and double-heartbeat to permanent options** for alarm haptics.
+- **Then retire the haptics testing lab.**
+
+### 3.5 Settings polish
+- The sound-profile dropdown gives **no preview** when tapping *ding / chime / digital*, and the labels are unclear.
+- The dropdown box is **square** while the rest of the app is round.
+
+### 3.6 Branding
+- Rename the app to **KLAXON** (K-L-A-X-O-N) in the app title, with a small **klaxon SVG**.
+
+### 3.7 Research (no code yet)
+- **Tunnel options.** Test Tailscale Funnel and Cloudflare Tunnel properly.
+- **Non-technical users.** What options exist for someone who does not want to run their own homelab or service — including what auth would entail. Revisit the reachability plan.
