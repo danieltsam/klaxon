@@ -924,7 +924,9 @@
      * the input and treat the surrounding tokens as the label. A trailing span is
      * preferred (the natural "label first" phrasing, e.g. `gym tomorrow 7am`),
      * falling back to the longest span anywhere. Returns `null` when nothing
-     * parses. Mirrors `findTimeSpan` in clients/core/src/time.ts.
+     * parses. The selected token range `[start, end)` is returned too, so the
+     * caller can judge whether that expression carried an anchor (spec §5.4
+     * stage 3). Mirrors `findTimeSpan` in clients/core/src/time.ts.
      */
     function findTimeSpan(raw, toks, now) {
       // Prefer the longest trailing span: label first, time last. Iterating
@@ -932,7 +934,12 @@
       for (var start = 0; start < toks.length; start++) {
         var trailing = tryParseExpression(toks.slice(start), now, false);
         if (trailing) {
-          return { parsed: trailing, rest: raw.slice(0, start).join(" ") };
+          return {
+            parsed: trailing,
+            rest: raw.slice(0, start).join(" "),
+            start: start,
+            end: toks.length,
+          };
         }
       }
       // Otherwise the longest span anywhere; the surrounding tokens form the label.
@@ -941,10 +948,121 @@
           var inner = tryParseExpression(toks.slice(start2, start2 + len), now, false);
           if (inner) {
             var label = raw.slice(0, start2).concat(raw.slice(start2 + len));
-            return { parsed: inner, rest: label.join(" ") };
+            return {
+              parsed: inner,
+              rest: label.join(" "),
+              start: start2,
+              end: start2 + len,
+            };
           }
         }
       }
+      return null;
+    }
+
+    /**
+     * True when the expression at `[start, end)` carries no recurrence, day
+     * qualifier, `this`/`next`, or absolute-date anchor — i.e. the ladder selected
+     * a bare clock/period. Mirrors the anchor dispatch at the head of
+     * `tryParseExpression`; stage 3 overrides only such an unanchored selection.
+     * Mirrors `spanIsUnanchored` in clients/core/src/time.ts.
+     */
+    function spanIsUnanchored(toks, start, end) {
+      var i = start;
+      while (i < end && CONNECTORS.has(toks[i])) i++;
+      if (i >= end) return true;
+      if (matchRecurrencePrefix(toks, i)) return false;
+      if (matchNextThis(toks, i)) return false;
+      if (matchDayQualifier(toks, i)) return false;
+      if (parseAbsoluteDate(toks, i)) return false;
+      // Clock → date (`5pm 10/31`): the clock is anchored by the trailing date.
+      var clock = parseClock(toks, i);
+      if (clock) {
+        var j = clock.next;
+        while (j < end && CONNECTORS.has(toks[j])) j++;
+        if (j < end && parseAbsoluteDate(toks, j)) return false;
+      }
+      return true;
+    }
+
+    /** True when `[from, to)` holds any token that is not a connector. */
+    function hasInteriorText(toks, from, to) {
+      for (var k = from; k < to; k++) {
+        if (!CONNECTORS.has(toks[k])) return true;
+      }
+      return false;
+    }
+
+    /**
+     * Label for a split-anchor join: every original token except the anchor
+     * `[aStart, aEnd)`, the clock `[cStart, cEnd)`, and the connector(s) directly
+     * introducing the clock (e.g. the `at` in `at 8pm`), original order
+     * preserved. Mirrors `splitLabel` in clients/core/src/time.ts.
+     */
+    function splitLabel(raw, toks, aStart, aEnd, cStart, cEnd) {
+      var clockStart = cStart;
+      while (clockStart > aEnd && CONNECTORS.has(toks[clockStart - 1])) clockStart--;
+      var kept = [];
+      for (var k = 0; k < raw.length; k++) {
+        if (k >= aStart && k < aEnd) continue;
+        if (k >= clockStart && k < cEnd) continue;
+        kept.push(raw[k]);
+      }
+      return kept.join(" ");
+    }
+
+    /**
+     * Stage 3 split-anchor fallback (spec §5.4). When the ladder selected an
+     * unanchored clock/period but a recurrence or absolute-date anchor is stranded
+     * in the label, join the anchor to the trailing clock and make the intervening
+     * tokens part of the label, preserving order. This recovers
+     * `dance practice every tuesday in the gym at 8pm` as `every tuesday` + `8pm`
+     * with label `dance practice in the gym`. Returns `null` when no split applies.
+     *
+     * A bare integer is never joined here (§5.4 clock priority: bare is lowest and
+     * only ever a clock as the whole expression), and the anchor must be separated
+     * from the clock by interior label text — an anchor already adjacent to its
+     * clock was consumed by stages 1–2 and is left to them. Mirrors
+     * `findSplitAnchor` in clients/core/src/time.ts.
+     */
+    function findSplitAnchor(raw, toks, now) {
+      // The clock stages 1–2 would select: the trailing clock/period.
+      var c = -1;
+      var clock = null;
+      for (var k = 0; k < toks.length; k++) {
+        var candidate = parseClock(toks, k) ?? parseDayPeriod(toks, k);
+        if (candidate && candidate.next === toks.length && !candidate.bare) {
+          c = k;
+          clock = candidate;
+          break;
+        }
+      }
+      if (!clock) return null;
+
+      // A recurrence anchor before the clock, separated by interior label text.
+      for (var a = 0; a < c; a++) {
+        var recurrence = matchRecurrencePrefix(toks, a);
+        if (recurrence && recurrence.next < c && hasInteriorText(toks, recurrence.next, c)) {
+          var joined = toks.slice(a, recurrence.next).concat(toks.slice(c, clock.next));
+          var parsed = tryParseExpression(joined, now, false);
+          if (parsed) {
+            return { parsed: parsed, rest: splitLabel(raw, toks, a, recurrence.next, c, clock.next) };
+          }
+        }
+      }
+
+      // An absolute-date anchor before the clock, separated by interior label text.
+      for (var a2 = 0; a2 < c; a2++) {
+        var date = parseAbsoluteDate(toks, a2);
+        if (date && date.next < c && hasInteriorText(toks, date.next, c)) {
+          var joined2 = toks.slice(a2, date.next).concat(toks.slice(c, clock.next));
+          var parsed2 = tryParseExpression(joined2, now, false);
+          if (parsed2) {
+            return { parsed: parsed2, rest: splitLabel(raw, toks, a2, date.next, c, clock.next) };
+          }
+        }
+      }
+
       return null;
     }
 
@@ -978,8 +1096,25 @@
       }
       // No leading time prefix: fall back to a span anywhere in the input.
       var span = findTimeSpan(raw, toks, nowDate);
-      if (span && metadata.alarm) span.parsed.alarm = metadata.alarm;
-      return span;
+      if (span) {
+        // Stage 3 (spec §5.4): when the span selected an unanchored clock/period
+        // but a recurrence/date anchor is stranded in the label, the joined anchor
+        // wins.
+        if (spanIsUnanchored(toks, span.start, span.end)) {
+          var split = findSplitAnchor(raw, toks, nowDate);
+          if (split) {
+            if (metadata.alarm) split.parsed.alarm = metadata.alarm;
+            return split;
+          }
+        }
+        if (metadata.alarm) span.parsed.alarm = metadata.alarm;
+        return { parsed: span.parsed, rest: span.rest };
+      }
+
+      // Stages 1–2 produced nothing: the literal stage-3 fallback still applies.
+      var split2 = findSplitAnchor(raw, toks, nowDate);
+      if (split2 && metadata.alarm) split2.parsed.alarm = metadata.alarm;
+      return split2;
     }
 
     // ── Display formatters (ported verbatim from clients/core/src/format.ts) ──

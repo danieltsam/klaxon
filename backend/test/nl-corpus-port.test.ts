@@ -93,7 +93,7 @@ interface NLTimeApi {
 }
 
 /** Updated by each task as it flips `target` ids into `fixtures/nl-corpus-asserted.json`. */
-const EXPECTED_REMAINING_TARGETS = 1;
+const EXPECTED_REMAINING_TARGETS = 0;
 
 /**
  * Walk upward from the working directory until `relativePath` is found, so the
