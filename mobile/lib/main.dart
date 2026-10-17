@@ -57,6 +57,32 @@ Future<void> registerToken(String token) async {
   await BackendClient.registerDeviceToken(token);
 }
 
+/// Shows a transient bottom toast. A new toast pre-empts the current one: the
+/// previous toast is dismissed immediately and never queued, so the visible
+/// message always matches the action the user just took.
+void showToast(BuildContext context, String message) {
+  final messenger = ScaffoldMessenger.of(context);
+  // Drop whatever toast is on screen first. Without this, `showSnackBar`
+  // queues the new message behind the old one, so the UI shows stale,
+  // out-of-sync confirmations.
+  messenger.removeCurrentSnackBar();
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(
+        message,
+        style: const TextStyle(fontSize: 13, color: Color(0xFFF7F8F8)),
+      ),
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: const Color(0xFF16181B),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(color: Color(0xFF26282E)),
+      ),
+      duration: const Duration(seconds: 3),
+    ),
+  );
+}
+
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
@@ -2261,21 +2287,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
   void _showToast(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: const TextStyle(fontSize: 13, color: Color(0xFFF7F8F8)),
-        ),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: const Color(0xFF16181B),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: const BorderSide(color: Color(0xFF26282E)),
-        ),
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    showToast(context, message);
   }
 
   // ALARM DETAIL & ADJUSTMENTS MODAL
