@@ -103,6 +103,19 @@ const MONTH_NAMES: Record<string, number> = {
   december: 12,
 };
 
+/**
+ * Day-period word -> its fixed clock anchor (spec §6.2). A period is a clock:
+ * it resolves to this time and, like any passed clock, rolls forward a day.
+ */
+const DAY_PERIODS: Record<string, { hours: number; minutes: number }> = {
+  morning: { hours: 9, minutes: 0 },
+  afternoon: { hours: 15, minutes: 0 },
+  evening: { hours: 19, minutes: 0 },
+  tonight: { hours: 21, minutes: 0 },
+  noon: { hours: 12, minutes: 0 },
+  midnight: { hours: 0, minutes: 0 },
+};
+
 /** A calendar day with an optional explicit year (spec §6.4). */
 interface AbsoluteDate {
   month: number;
@@ -302,6 +315,19 @@ function parseClock(toks: string[], i: number): Clock | null {
   }
 
   return null;
+}
+
+/**
+ * Read a day period beginning at `i` (spec §6.2), optionally prefixed `this`
+ * (`this morning`). Returns it as a `Clock` — never `bare`, so it is never
+ * mistaken for the bare-integer trap — or `null` when no period is present.
+ */
+function parseDayPeriod(toks: string[], i: number): Clock | null {
+  let j = i;
+  if (toks[j] === "this") j++;
+  const period = DAY_PERIODS[toks[j]];
+  if (!period) return null;
+  return { hours: period.hours, minutes: period.minutes, next: j + 1, bare: false };
 }
 
 /** Parse one or more duration components consuming the rest of the tokens. */
@@ -581,7 +607,7 @@ function tryParseExpression(
   // Absolute-date anchor (spec §6.4), standalone or joined to a clock in
   // either order (spec §5.4). A lone date resolves to 00:00 on that day.
   if (!qualifier && repeatDays.length === 0) {
-    // Date → clock: `dec 25 7am`, `2026-12-31 9am`.
+    // Date → clock/period: `dec 25 7am`, `2026-12-31 9am`, `dec 25 noon`.
     const date = parseAbsoluteDate(toks, i);
     if (date) {
       let j = date.next;
@@ -589,7 +615,7 @@ function tryParseExpression(
       if (j === toks.length) {
         return finalize(resolveAbsoluteDate(ctx.now, date.date, 0, 0), [], ctx.now);
       }
-      const clock = parseClock(toks, j);
+      const clock = parseClock(toks, j) ?? parseDayPeriod(toks, j);
       if (clock && clock.next === toks.length && (!clock.bare || allowBareIntegerClock)) {
         return finalize(
           resolveAbsoluteDate(ctx.now, date.date, clock.hours, clock.minutes),
@@ -637,6 +663,14 @@ function tryParseExpression(
   const clock = parseClock(toks, i);
   if (clock && clock.next === toks.length && (!clock.bare || allowBareIntegerClock)) {
     const targetTime = buildClockTime(ctx, qualifier, repeatDays, clock.hours, clock.minutes);
+    return finalize(targetTime, repeatDays, ctx.now);
+  }
+
+  // Day period as a clock (spec §6.2): `afternoon`, `this morning`,
+  // `tomorrow noon`. Never `bare`, so it always passes the trap guard above.
+  const period = parseDayPeriod(toks, i);
+  if (period && period.next === toks.length) {
+    const targetTime = buildClockTime(ctx, qualifier, repeatDays, period.hours, period.minutes);
     return finalize(targetTime, repeatDays, ctx.now);
   }
 
