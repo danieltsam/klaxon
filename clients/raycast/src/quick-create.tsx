@@ -45,7 +45,17 @@ export default function QuickCreateCommand() {
     },
     onSubmit: async (formValues) => {
       const trimmed = formValues.query.trim();
-      const leading = parseLeadingTime(trimmed);
+      // A confident `already_passed` refusal (e.g. a passed `this friday`) is a
+      // handled error here, never an unhandled rejection from the submit path.
+      let leading: ReturnType<typeof parseLeadingTime>;
+      try {
+        leading = parseLeadingTime(trimmed);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setParseError(message);
+        await showToast({ title: "Remote Alarm", message, style: Toast.Style.Failure });
+        return;
+      }
       if (!leading) {
         setParseError("Could not find a time in that sentence. Try '25m Oven'.");
         return;

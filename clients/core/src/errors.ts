@@ -47,14 +47,19 @@ export class RemoteAlarmNotFoundError extends RemoteAlarmError {
   }
 }
 
+/** Why a natural-language time input was refused. */
+export type RefusalReason = "unparseable" | "already_passed";
+
 /** Invalid natural-language time input. Carries the offending token in `token`. */
 export class TimeParseError extends Error {
   token?: string;
+  reason: RefusalReason;
 
-  constructor(message: string, token?: string) {
+  constructor(message: string, token?: string, reason: RefusalReason = "unparseable") {
     super(message);
     this.name = "TimeParseError";
     this.token = token;
+    this.reason = reason;
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
