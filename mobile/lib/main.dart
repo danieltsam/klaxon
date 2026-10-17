@@ -756,10 +756,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   }
 
   void _navigateToRingScreen(AlarmSettings alarmSettings) async {
-    final uuid = await IdMapper.getUuid(alarmSettings.id);
-    if (uuid != null && !uuid.startsWith('local_')) {
-      BackendClient.updateAlarmState(uuid, 'ringing');
-    }
+    // Report `ringing` only if the alarm has not already been stopped (e.g. by
+    // a remote silence): a stale report would overwrite the server's dismissed
+    // state and the reconcile would re-arm the alarm. Fire-and-forget so the
+    // ring screen still opens without waiting on the network.
+    unawaited(AlarmService.reportRingingIfStillRinging(alarmSettings.id));
 
     if (_isRingScreenOpen) return;
     _isRingScreenOpen = true;
