@@ -116,6 +116,17 @@ const DAY_PERIODS: Record<string, { hours: number; minutes: number }> = {
   midnight: { hours: 0, minutes: 0 },
 };
 
+/**
+ * Ramp keyword phrase -> seconds (spec §8). A bare `<n>s` is deliberately
+ * absent: only `<n>s ramp` is a ramp, so `30s` stays a duration.
+ */
+const RAMP_PHRASES: Record<string, number> = {
+  "no ramp": 0,
+  "quick ramp": 15,
+  "gentle ramp": 30,
+  "deep ramp": 60,
+};
+
 /** A calendar day with an optional explicit year (spec §6.4). */
 interface AbsoluteDate {
   month: number;
@@ -852,19 +863,95 @@ function tryParseExpression(
 }
 
 /**
+ * Stage 0 metadata pre-pass (spec §5.1/§8). Recognizes metadata keywords as
+ * standalone tokens anywhere in the input and removes them from the stream
+ * before the time grammar runs, returning the cleaned `raw`/`toks` plus the
+ * extracted `alarm` (absent when the input named none).
+ *
+ * `note:` is special: it consumes everything to the end of the input, verbatim
+ * and with original casing, as the description — tokens after it are never
+ * parsed as time. A bare `<n>s` is left alone on purpose: only `<n>s ramp` (the
+ * number immediately followed by the literal word `ramp`) is a ramp, so `30s`
+ * stays a duration (spec §8).
+ */
+function extractMetadata(
+  raw: string[],
+  toks: string[]
+): { alarm: AlarmMetadata | undefined; raw: string[]; toks: string[] } {
+  const alarm: AlarmMetadata = {};
+  let found = false;
+
+  // `note:` swallows the rest of the input verbatim (original casing preserved).
+  let limit = toks.length;
+  const noteIndex = toks.indexOf("note:");
+  if (noteIndex !== -1) {
+    alarm.description = raw.slice(noteIndex + 1).join(" ");
+    found = true;
+    limit = noteIndex;
+  }
+
+  const keptRaw: string[] = [];
+  const keptToks: string[] = [];
+  for (let i = 0; i < limit; i++) {
+    const token = toks[i];
+
+    if (token === "chime") {
+      alarm.sound_tone = "chime";
+      found = true;
+      continue;
+    }
+    if (token === "digital") {
+      // Alias `digital pulse`; the trailing word is consumed with it.
+      if (toks[i + 1] === "pulse") i++;
+      alarm.sound_tone = "digital";
+      found = true;
+      continue;
+    }
+
+    const seconds = /^(\d+)s$/.exec(token);
+    if (seconds && toks[i + 1] === "ramp") {
+      alarm.ramp_seconds = parseInt(seconds[1], 10);
+      found = true;
+      i++;
+      continue;
+    }
+
+    const phrase = RAMP_PHRASES[`${token} ${toks[i + 1]}`];
+    if (phrase !== undefined) {
+      alarm.ramp_seconds = phrase;
+      found = true;
+      i++;
+      continue;
+    }
+
+    keptRaw.push(raw[i]);
+    keptToks.push(token);
+  }
+
+  return { alarm: found ? alarm : undefined, raw: keptRaw, toks: keptToks };
+}
+
+/**
  * Parse a complete time expression. Throws `TimeParseError` if the whole input
  * is not one valid expression.
  */
 export function parseTime(input: string, now?: Date): ParsedTime {
   const nowDate = now ?? new Date();
-  const raw = input.trim().split(/\s+/).filter(Boolean);
-  if (raw.length === 0) {
+  const inputRaw = input.trim().split(/\s+/).filter(Boolean);
+  if (inputRaw.length === 0) {
     throw new TimeParseError("Empty time expression.", "");
   }
 
-  const toks = raw.map((t) => t.toLowerCase());
+  const inputToks = inputRaw.map((t) => t.toLowerCase());
+  const metadata = extractMetadata(inputRaw, inputToks);
+  const raw = metadata.raw;
+  const toks = metadata.toks;
+
   const parsed = tryParseExpression(toks, nowDate, true);
-  if (parsed) return parsed;
+  if (parsed) {
+    if (metadata.alarm) parsed.alarm = metadata.alarm;
+    return parsed;
+  }
 
   // Name the offending (first unconsumed) token when a valid prefix exists.
   for (let end = toks.length - 1; end >= 1; end--) {
@@ -876,9 +963,10 @@ export function parseTime(input: string, now?: Date): ParsedTime {
     }
   }
 
+  const offending = raw[0] ?? inputRaw[0];
   throw new TimeParseError(
-    `Could not parse time expression: "${raw[0]}".`,
-    raw[0]
+    `Could not parse time expression: "${offending}".`,
+    offending
   );
 }
 
@@ -926,18 +1014,25 @@ export function parseLeadingTime(
   now?: Date
 ): { parsed: ParsedTime; rest: string } | null {
   const nowDate = now ?? new Date();
-  const raw = input.trim().split(/\s+/).filter(Boolean);
-  if (raw.length === 0) return null;
+  const inputRaw = input.trim().split(/\s+/).filter(Boolean);
+  if (inputRaw.length === 0) return null;
 
-  const toks = raw.map((t) => t.toLowerCase());
+  const inputToks = inputRaw.map((t) => t.toLowerCase());
+  const metadata = extractMetadata(inputRaw, inputToks);
+  const raw = metadata.raw;
+  const toks = metadata.toks;
+
   for (let end = toks.length; end >= 1; end--) {
     // Only the whole input may carry a bare-integer clock; shorter prefixes
     // are slices, where a bare integer would swallow part of the label.
     const parsed = tryParseExpression(toks.slice(0, end), nowDate, end === toks.length);
     if (parsed) {
+      if (metadata.alarm) parsed.alarm = metadata.alarm;
       return { parsed, rest: raw.slice(end).join(" ") };
     }
   }
   // No leading time prefix: fall back to a span anywhere in the input.
-  return findTimeSpan(raw, toks, nowDate);
+  const span = findTimeSpan(raw, toks, nowDate);
+  if (span && metadata.alarm) span.parsed.alarm = metadata.alarm;
+  return span;
 }

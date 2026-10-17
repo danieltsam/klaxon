@@ -93,7 +93,7 @@ interface NLTimeApi {
 }
 
 /** Updated by each task as it flips `target` ids into `fixtures/nl-corpus-asserted.json`. */
-const EXPECTED_REMAINING_TARGETS = 14;
+const EXPECTED_REMAINING_TARGETS = 1;
 
 /**
  * Walk upward from the working directory until `relativePath` is found, so the
@@ -172,7 +172,9 @@ function assertExpected(parsed: ParsedTime, rest: string, expected: Expected): v
     assert.equal(parsed.interval, undefined);
   }
   if (expected.alarm) {
-    assert.deepEqual(parsed.alarm, expected.alarm);
+    // `{ ...parsed.alarm }` re-homes the vm-realm object onto the host Object
+    // prototype so `deepEqual` compares values, not realms (as for interval).
+    assert.deepEqual({ ...parsed.alarm }, expected.alarm);
   } else {
     assert.equal(parsed.alarm, undefined);
   }
