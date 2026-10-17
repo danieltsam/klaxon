@@ -298,6 +298,22 @@ function matchRecurrencePrefix(
   return null;
 }
 
+/**
+ * True when the token stream contains an `every` that does not begin a
+ * recognized recurrence form. `every` is a strong recurrence signal, so an
+ * `every <token>` the grammar cannot read must fail loudly rather than fall
+ * through to a bare weekday and silently demote the recurrence to a one-time
+ * alarm (spec §5.3/§10). The motivating case is `every 3rd monday`:
+ * ordinal-of-month is not expressible and an interval of 3 is not storable, so
+ * no reading is safe.
+ */
+function hasOrphanEvery(toks: string[]): boolean {
+  for (let i = 0; i < toks.length; i++) {
+    if (toks[i] === "every" && !matchRecurrencePrefix(toks, i)) return true;
+  }
+  return false;
+}
+
 function matchDayQualifier(toks: string[], i: number): { qualifier: DayQualifier; next: number } | null {
   const first = toks[i];
   if (first === "tomorrow" || first === "tmr") {
@@ -659,12 +675,21 @@ function buildClockTime(
     return candidate;
   }
   if (qualifier?.kind === "this-weekend") {
-    // The coming Saturday: the nearest Saturday on or after today (today counts
-    // when it is itself Saturday), so it anchors deterministically.
+    // `this weekend` is `this saturday` at 00:00: the Saturday of the current
+    // Monday-start ISO week. A resolved instant at or before `now` — Saturday
+    // after 00:00, or all of Sunday, once that week's Saturday has gone — is a
+    // hard `already_passed` refusal, mirroring `this <weekday>` (spec §6.3).
+    // Never roll forward: that would silently skip to the next weekend.
     const candidate = new Date(ctx.now.getTime());
-    const delta = (6 - isoWeekday(candidate) + 7) % 7;
-    candidate.setDate(candidate.getDate() + delta);
+    candidate.setDate(candidate.getDate() - (isoWeekday(candidate) - 1) + (6 - 1));
     candidate.setHours(hours, minutes, 0, 0);
+    if (candidate.getTime() <= ctx.now.getTime()) {
+      throw new TimeParseError(
+        `"this weekend" has already passed.`,
+        "this weekend",
+        "already_passed"
+      );
+    }
     return candidate;
   }
   if (qualifier?.kind === "next-week") {
@@ -808,9 +833,11 @@ function tryParseExpression(
       }
     }
 
-    // Clock → date: `5pm 10/31`.
+    // Clock → date: `5pm 10/31`. The same bare-integer guard as the date → clock
+    // branch above: a bare integer is a clock only as the whole expression, so a
+    // stray integer before a date stays in the label (spec §5.4/§11 #6).
     const clock = parseClock(toks, i);
-    if (clock) {
+    if (clock && (!clock.bare || allowBareIntegerClock)) {
       let j = clock.next;
       while (j < toks.length && CONNECTORS.has(toks[j])) j++;
       if (j < toks.length) {
@@ -987,7 +1014,7 @@ function findTimeSpan(
   // Prefer the longest trailing span: label first, time last. Iterating `start`
   // upward returns the smallest start (i.e. the longest suffix) that parses.
   for (let start = 0; start < toks.length; start++) {
-    const parsed = tryParseExpression(toks.slice(start), now, false);
+    const parsed = speculative(() => tryParseExpression(toks.slice(start), now, false));
     if (parsed) {
       return { parsed, rest: raw.slice(0, start).join(" "), start, end: toks.length };
     }
@@ -995,7 +1022,7 @@ function findTimeSpan(
   // Otherwise the longest span anywhere; the surrounding tokens form the label.
   for (let len = toks.length; len >= 1; len--) {
     for (let start = 0; start + len <= toks.length; start++) {
-      const parsed = tryParseExpression(toks.slice(start, start + len), now, false);
+      const parsed = speculative(() => tryParseExpression(toks.slice(start, start + len), now, false));
       if (parsed) {
         const label = raw.slice(0, start).concat(raw.slice(start + len));
         return { parsed, rest: label.join(" "), start, end: start + len };
@@ -1120,6 +1147,21 @@ function findSplitAnchor(
 }
 
 /**
+ * Run a speculative parse probe, swallowing an `already_passed` refusal so the
+ * caller can keep searching for a valid expression elsewhere in the input. Only
+ * exploratory probes (shorter prefixes, the span search) use this; the confident
+ * whole-input parse raises `already_passed` directly (spec §10).
+ */
+function speculative<T>(probe: () => T): T | null {
+  try {
+    return probe();
+  } catch (err) {
+    if (err instanceof TimeParseError && err.reason === "already_passed") return null;
+    throw err;
+  }
+}
+
+/**
  * Longest leading prefix that parses as a single time expression, plus the
  * unconsumed remainder. When no prefix parses, falls back to the longest
  * parseable span anywhere in the input (trailing spans preferred) so label-first
@@ -1139,16 +1181,35 @@ export function parseLeadingTime(
   const raw = metadata.raw;
   const toks = metadata.toks;
 
-  for (let end = toks.length; end >= 1; end--) {
-    // Only the whole input may carry a bare-integer clock; shorter prefixes
-    // are slices, where a bare integer would swallow part of the label.
-    const parsed = tryParseExpression(toks.slice(0, end), nowDate, end === toks.length);
+  // The confident whole-input parse. A passed `this <weekday>` / `this weekend`
+  // here is a hard `already_passed` refusal the caller wants to surface, so this
+  // throw is deliberately NOT swallowed (spec §10). Only the whole input may
+  // carry a bare-integer clock.
+  const whole = tryParseExpression(toks, nowDate, true);
+  if (whole) {
+    if (metadata.alarm) whole.alarm = metadata.alarm;
+    return { parsed: whole, rest: "" };
+  }
+
+  // Speculative prefix probing: shorter prefixes are slices, so a passed
+  // `this <weekday>` inside a longer phrase must not abort the search. Swallow
+  // `already_passed` and keep looking, so the documented null contract holds and
+  // a valid shorter prefix still wins. Shorter prefixes never carry a
+  // bare-integer clock, where a bare integer would swallow part of the label.
+  for (let end = toks.length - 1; end >= 1; end--) {
+    const parsed = speculative(() => tryParseExpression(toks.slice(0, end), nowDate, false));
     if (parsed) {
       if (metadata.alarm) parsed.alarm = metadata.alarm;
       return { parsed, rest: raw.slice(end).join(" ") };
     }
   }
-  // No leading time prefix: fall back to a span anywhere in the input.
+
+  // An `every` the grammar cannot read must not fall through to a bare weekday
+  // (spec §5.3/§10): fail loudly by resolving nothing.
+  if (hasOrphanEvery(toks)) return null;
+
+  // No leading time prefix: fall back to a span anywhere in the input. This too
+  // is speculative, so `already_passed` is swallowed here as well.
   const span = findTimeSpan(raw, toks, nowDate);
   if (span) {
     // Stage 3 (spec §5.4): when the span selected an unanchored clock/period but
