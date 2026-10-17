@@ -202,7 +202,6 @@
             <div class="mb-4 flex items-start justify-between gap-4">
               <div>
                 <h2 class="text-lg font-semibold tracking-tight lowercase text-app-main">your alarms</h2>
-                <p class="text-xs text-app-dim mt-1">in selection mode the checkbox replaces the status dot in place. click rows to toggle, Esc to cancel.</p>
               </div>
               <span id="alarms-count-badge" class="px-2 py-0.5 rounded-sm border border-app-border text-[11px] font-mono text-app-muted shrink-0">0</span>
             </div>
@@ -224,11 +223,6 @@
                   <button onclick="setAlarmFilter('active')" id="filter-tab-active" class="px-2.5 py-1 rounded-md text-xs font-medium text-app-muted hover:text-app-main lowercase transition-colors" type="button">active</button>
                   <button onclick="setAlarmFilter('off')" id="filter-tab-off" class="px-2.5 py-1 rounded-md text-xs font-medium text-app-muted hover:text-app-main lowercase transition-colors" type="button">off</button>
                 </div>
-              </div>
-
-              <!-- interaction note -->
-              <div id="selection-note" class="px-4 py-2.5 border-b border-app-border bg-app-surface-2 text-[11px] text-app-muted leading-relaxed">
-                at rest: status dot + hover the trailing <span class="text-app-main">select</span> action (or cmd/ctrl-click a row) to enter selection. in selection mode: checkbox replaces dot; click rows to toggle; Esc to cancel.
               </div>
 
               <div id="all-alarms-list" class="divide-y divide-app-border">
@@ -364,8 +358,8 @@
     <div class="fixed bottom-8 left-1/2 -translate-x-1/2 z-40">
       <button onclick="openCreateModal()" id="btn-new-alarm" class="flex items-center gap-2 pl-5 pr-4 py-2.5 rounded-full bg-app-accent hover:bg-app-accent-hover text-white text-xs font-medium shadow-fab hover:shadow-fab-hover transition-all" type="button" title="new alarm">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-        <span>+ new alarm</span>
-        <kbd id="new-alarm-kbd" class="ml-1.5 hidden sm:inline-flex items-center justify-center rounded-sm border border-white/20 bg-white/15 px-1.5 py-0.5 text-[10px] font-mono text-white/90 leading-none">⌘K</kbd>
+        <span>new alarm</span>
+        <kbd id="new-alarm-kbd" class="ml-1.5 hidden sm:inline text-[10px] font-mono text-white/90 leading-none">⌘K</kbd>
       </button>
     </div>
   </div>
@@ -1350,7 +1344,9 @@
       detailed.classList.add('hidden');
       toggle.textContent = 'all options →';
       saveBtn.classList.add('hidden');
+      saveBtn.type = 'button';
       addBtn.classList.remove('hidden');
+      addBtn.type = 'submit';
 
       document.getElementById('create-alarm-modal').classList.remove('hidden');
       document.getElementById('new-alarm-nl').focus();
@@ -1437,6 +1433,13 @@
       }
     });
 
+    document.getElementById('new-alarm-nl').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        document.getElementById('create-alarm-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }
+    });
+
     function toggleCreateOptions() {
       const detailed = document.getElementById('create-detailed-options');
       const toggle = document.getElementById('create-expand-options');
@@ -1448,7 +1451,9 @@
         detailed.classList.remove('hidden');
         toggle.textContent = '← hide options';
         saveBtn.classList.remove('hidden');
+        saveBtn.type = 'submit';
         addBtn.classList.add('hidden');
+        addBtn.type = 'button';
         feedback.textContent = '';
         // Seed detailed form from NL if it parses
         const nlValue = document.getElementById('new-alarm-nl').value.trim();
@@ -1474,7 +1479,9 @@
         detailed.classList.add('hidden');
         toggle.textContent = 'all options →';
         saveBtn.classList.add('hidden');
+        saveBtn.type = 'button';
         addBtn.classList.remove('hidden');
+        addBtn.type = 'submit';
       }
     }
 
