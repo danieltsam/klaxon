@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:alarm/alarm.dart';
 import '../utils/id_mapper.dart';
+import 'alarm_state_outbox.dart';
 import 'backend_client.dart';
 
 class AlarmService {
@@ -62,6 +63,89 @@ class AlarmService {
       // ignore: avoid_print
       print('[AlarmService] flushMissedReports error: $e');
     }
+  }
+
+  /// Injection seam for tests; production posts through [BackendClient].
+  static Future<bool> Function(String uuid, String status, String? targetTime)?
+      stateSenderForTest;
+
+  /// Delivers one queued state change to the backend. Returns whether the
+  /// backend accepted it.
+  static Future<bool> _sendState(
+    String uuid,
+    String status,
+    String? targetTime,
+  ) {
+    final sender = stateSenderForTest;
+    if (sender != null) return sender(uuid, status, targetTime);
+    return BackendClient.updateAlarmState(uuid, status, targetTime: targetTime);
+  }
+
+  /// Persists [status] for [uuid] and immediately tries to deliver it.
+  ///
+  /// The entry is written before any network call, so a report that fails — or
+  /// one interrupted by the app being backgrounded or killed — is not lost: it
+  /// survives in [AlarmStateOutbox] and is retried on the next flush. The
+  /// immediate attempt is fire-and-forget so the caller (e.g. the ring screen)
+  /// is never blocked on the network.
+  static Future<void> enqueueStateReport(
+    String uuid,
+    String status, {
+    String? targetTime,
+  }) async {
+    await AlarmStateOutbox.put(PendingAlarmState(
+      uuid: uuid,
+      status: status,
+      targetTime: targetTime,
+      queuedAt: DateTime.now(),
+    ));
+    unawaited(flushPendingStateReports());
+  }
+
+  /// Retries every queued state change once, dropping entries the backend
+  /// confirms and abandoning those that have failed [AlarmStateOutbox.maxAttempts]
+  /// times. A failure is logged and swallowed: a lost state report must never
+  /// break the reconcile of the alarms that did work.
+  ///
+  /// Flushes are serialised through [_stateFlushChain] so two overlapping calls
+  /// (an immediate dismissal report and the periodic reconcile) cannot race the
+  /// outbox's read-modify-write.
+  static Future<void> flushPendingStateReports() {
+    final run = _stateFlushChain.then((_) => _flushPendingStateReportsOnce());
+    _stateFlushChain = run.then<void>((_) {}, onError: (_) {});
+    return run;
+  }
+
+  static Future<void> _flushPendingStateReportsOnce() async {
+    final entries = await AlarmStateOutbox.all();
+    if (entries.isEmpty) return;
+    for (final entry in entries) {
+      try {
+        final accepted =
+            await _sendState(entry.uuid, entry.status, entry.targetTime);
+        if (accepted) {
+          await AlarmStateOutbox.remove(entry.uuid);
+        } else {
+          await AlarmStateOutbox.recordFailure(entry.uuid);
+        }
+      } catch (e) {
+        // ignore: avoid_print
+        print('[AlarmService] flushPendingStateReports error: $e');
+        await AlarmStateOutbox.recordFailure(entry.uuid);
+      }
+    }
+  }
+
+  static Future<void> _stateFlushChain = Future<void>.value();
+
+  /// Completes when every flush requested so far has finished. Test-only.
+  static Future<void> get pendingStateFlush => _stateFlushChain;
+
+  /// Clears the persisted outbox and the test seam. Test-only.
+  static Future<void> resetStateOutboxForTest() async {
+    stateSenderForTest = null;
+    _stateFlushChain = Future<void>.value();
+    await AlarmStateOutbox.clear();
   }
 
   /// Resolve audio asset path for given tone name
@@ -363,6 +447,35 @@ class AlarmService {
           repeatDays: repeatDays,
         );
 
+        // Self-heal a dismissal the server never recorded. A persisted pending
+        // `dismissed` entry means the device dismissed this alarm but the
+        // backend never confirmed it (a lost or failed request). When the
+        // server still reports it ringing — or pending past its target — push
+        // the corrected state instead of leaving it stale. When the server has
+        // already converged, drop the entry so a confirmed dismissal is never
+        // re-sent. (Only backend uuids reach here; `local_` alarms are absent
+        // from the remote list.)
+        if (await AlarmStateOutbox.hasPendingStatus(uuid, 'dismissed')) {
+          final serverAgrees = status == 'dismissed' ||
+              status == 'disabled' ||
+              status == 'canceled' ||
+              status == 'missed';
+          if (serverAgrees) {
+            await AlarmStateOutbox.remove(uuid);
+          } else {
+            final targetIsPast = targetDate.isBefore(DateTime.now());
+            final serverIsStale =
+                status == 'ringing' || (status == 'pending' && targetIsPast);
+            if (serverIsStale) {
+              await Alarm.stop(intId);
+              await IdMapper.setEnabled(intId, false);
+              // Leave the entry queued: the flush at the end of this reconcile
+              // pushes the corrected `dismissed` state.
+              continue;
+            }
+          }
+        }
+
         if (status == 'ringing') {
           // A remotely-ringing alarm is already being handled: the ring screen
           // owns it and the DISMISS push (or the next poll) ends it. Neither
@@ -447,6 +560,12 @@ class AlarmService {
           print('[AlarmService] Purged non-canonical or stale stored mapping for $id ($uuid)');
         }
       }
+
+      // Retry any state change the backend never confirmed (e.g. a dismissal
+      // lost while the app was backgrounded), so the fetch above can converge.
+      // Bounded: entries are dropped after [AlarmStateOutbox.maxAttempts]
+      // failures.
+      await flushPendingStateReports();
 
       // Report any stale alarms declined during this sync in a single call, so
       // the backend converges immediately on reconnect (§6.2). One failed
@@ -566,8 +685,10 @@ class AlarmService {
     final uuid = await IdMapper.getUuid(settings.id);
 
     if (uuid != null && !uuid.startsWith('local_')) {
-      // Async notify backend
-      BackendClient.updateAlarmState(uuid, 'dismissed');
+      // Queue the dismissal before attempting delivery: if this report fails,
+      // or the app is backgrounded/killed mid-request, it is retried from the
+      // persisted outbox on the next flush (app start and every reconcile).
+      await enqueueStateReport(uuid, 'dismissed');
     }
 
     // Check if this was a recurring alarm; if so, schedule next occurrence
