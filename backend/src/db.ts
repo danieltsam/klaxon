@@ -221,6 +221,26 @@ export const AlarmRepo = {
     return result.changes > 0;
   },
 
+  /**
+   * Repair a lost dismissal report: transition an alarm that is still
+   * `ringing` to `dismissed`. Called only by the abandoned-ring sweep, which
+   * decides the alarm has rung unacknowledged long enough that the phone is not
+   * coming back with a report.
+   *
+   * Guarded on `status = 'ringing'` so it is atomic and can never overwrite a
+   * state the phone (or the missed sweep) set in the meantime. It is deliberately
+   * NOT `markMissed`: the alarm fired, so calling it missed would be dishonest
+   * (and is the exact confusion the owner reported). No `missed_*` field is set.
+   */
+  markDismissed(id: string): boolean {
+    const result = db.prepare(`
+      UPDATE alarms
+      SET status = 'dismissed'
+      WHERE id = ? AND status = 'ringing'
+    `).run(id);
+    return result.changes > 0;
+  },
+
   update(id: string, updates: Partial<AlarmRecord>): boolean {
     const existing = this.getById(id);
     if (!existing) return false;

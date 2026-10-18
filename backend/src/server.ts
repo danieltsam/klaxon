@@ -213,6 +213,98 @@ export function sweepMissedAlarms(now: Date = new Date()): number {
 }
 
 /**
+ * How long a `ringing` alarm may stay unacknowledged before the abandoned-ring
+ * sweep resolves it.
+ *
+ * This is NOT a ring timeout. An alarm rings until it is dismissed, so there is
+ * no legitimate upper bound on a *ring* — the bound is on how long "still
+ * ringing" stays credible. The window is chosen to be clearly "nobody is coming
+ * back" rather than "still ringing":
+ *
+ * - far beyond the alarm's own cadence — a snooze is ~9 minutes and the longest
+ *   volume ramp is 60 seconds;
+ * - far beyond any plausible deliberate ring — a person dismisses a blaring
+ *   alarm within minutes, and two hours of continuous ringing is not a state
+ *   anyone intentionally holds;
+ * - short enough that the 17-hour ghost that motivated this cannot recur.
+ *
+ * `target_time` is the reference, not a new column: it is already authoritative
+ * for the moment an alarm next rings (spec §6.3), so for a `ringing` alarm it is
+ * the moment the ring began. A late `ringing` report cannot make a fresh ring
+ * look old, because the phone only rings at `target_time`.
+ */
+export const RINGING_ABANDON_MS = 2 * 60 * 60 * 1_000;
+
+/**
+ * Resolve a `ringing` alarm that has rung unacknowledged past
+ * `RINGING_ABANDON_MS` (spec §6.1's sweep, extended to the abandoned ring).
+ *
+ * The transition is `dismissed`, deliberately NOT `missed`. The live failure
+ * this closes was a *lost dismissal report*: the alarm rang, the owner dismissed
+ * it, and the report never reached the backend, so the row sat `ringing` for
+ * ~17 hours and produced a permanent ghost banner. `dismissed` is exactly the
+ * state that lost report would have set, so the sweep *repairs the missing
+ * report* instead of reclassifying the alarm. `missed` would be wrong on two
+ * counts: it means "it did not fire" (spec §5) and this alarm did fire, and the
+ * owner already reported that a dismissed alarm reading as missed is confusing.
+ * Reusing `dismissed` also keeps the reason set closed — no new `missed_reason`
+ * and no new status is introduced, so every existing reader (dashboard, clients,
+ * calendar mapping) already handles the result.
+ *
+ * A resolved alarm is logged with its full unacknowledged duration so the lost
+ * report remains visible in the audit trail even though the row no longer
+ * carries a failure reason.
+ *
+ * One-time and recurring alarms are both swept: the phone reports `dismissed`
+ * for either, so the repaired state is the same for both. The sweep never sends
+ * FCM — it exists precisely because the phone is not answering, and a normal
+ * dismissal is silent on the backend too.
+ *
+ * Independent of `sweepMissedAlarms`: that sweep reads only `pending`/`snoozed`,
+ * so the two cannot contend for the same row.
+ */
+export function sweepAbandonedRingingAlarms(now: Date = new Date()): number {
+  let candidates: AlarmRecord[];
+  try {
+    candidates = db.prepare(`
+      SELECT * FROM alarms
+      WHERE status = 'ringing'
+    `).all() as AlarmRecord[];
+  } catch (err) {
+    console.error('[sweep] failed to read ringing alarms:', err);
+    return 0;
+  }
+
+  const nowMs = now.getTime();
+  let resolved = 0;
+
+  for (const alarm of candidates) {
+    try {
+      const ringingSinceMs = new Date(alarm.target_time).getTime();
+      if (isNaN(ringingSinceMs)) continue;
+      if (ringingSinceMs + RINGING_ABANDON_MS >= nowMs) continue;
+
+      if (!AlarmRepo.markDismissed(alarm.id)) continue;
+      resolved++;
+
+      const ringingForMinutes = Math.round((nowMs - ringingSinceMs) / 60_000);
+      console.error(
+        `[sweep] alarm ${alarm.id} rang unacknowledged for ${ringingForMinutes} min ` +
+        `(> ${RINGING_ABANDON_MS / 60_000} min): resolving as dismissed`
+      );
+
+      // A dismissal leaves the past calendar entry in place (spec §9). Never
+      // throws; a no-op under test.
+      void mirrorSafely({ ...alarm, status: 'dismissed' });
+    } catch (err) {
+      console.error(`[sweep] failed to resolve abandoned ringing alarm ${alarm.id}:`, err);
+    }
+  }
+
+  return resolved;
+}
+
+/**
  * A rejected or expired credential stalls the calendar silently, so it gets a
  * loud, actionable message distinct from a transient Google failure. Both the
  * push path and the reconcile path emit it: a dead token is most likely to be
@@ -1065,6 +1157,9 @@ if (!isTestRun) {
   setInterval(() => {
     try {
       sweepMissedAlarms();
+      // Resolve a `ringing` alarm that was never acknowledged, so a lost
+      // dismissal report cannot leave a permanent ghost "ringing" banner.
+      sweepAbandonedRingingAlarms();
       // Delivery-health monitor (spec §5.4): a dead token, a failed dispatch, or
       // an alarm now missed must surface instead of going quiet.
       const health = computeDeliveryHealth();

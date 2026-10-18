@@ -283,6 +283,9 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     _initFCM();
     _loadBackendUrl().then((_) {
       _loadSettings();
+      // Flush any state change the backend never confirmed (e.g. a dismissal
+      // lost while the app was backgrounded) as soon as the base URL is known.
+      unawaited(AlarmService.flushPendingStateReports());
       _syncWithBackend(silent: true);
     });
 
