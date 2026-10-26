@@ -820,6 +820,14 @@
       }
     }
 
+    // A `missed` row is only a failure when its reason is evidence of one.
+    // `dispatched_not_reported` and `unknown` are derived from dispatch counters
+    // and prove nothing about delivery, so they are not shown as failures.
+    const UNCONFIRMED_MISSED_REASONS = ['dispatched_not_reported', 'unknown'];
+    function isKnownMissedReason(reason) {
+      return !!reason && !UNCONFIRMED_MISSED_REASONS.includes(reason);
+    }
+
     function isAlarmActive(alarm) {
       return alarm.status === 'pending' || alarm.status === 'snoozed' || alarm.status === 'ringing';
     }
@@ -876,7 +884,7 @@
     function renderDashboard() {
       const filteredList = getFilteredAlarms();
       const missedAlarms = allAlarms
-        .filter(a => a.status === 'missed' && matchesSearch(a))
+        .filter(a => a.status === 'missed' && isKnownMissedReason(a.missed_reason) && matchesSearch(a))
         .sort((a, b) => new Date(b.missed_at || 0) - new Date(a.missed_at || 0));
 
       document.getElementById('alarms-count-badge').textContent = filteredList.length;

@@ -3631,7 +3631,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
     // Missed alarms are failures, not live alarms. Split them out so they are
     // never mixed into the active list or the hero card.
-    final missedAlarms = filteredAlarms.where((a) => a.status == 'missed').toList()
+    final missedAlarms = filteredAlarms.where((a) => a.status == 'missed' && _isKnownMissedReason(a.missedReason)).toList()
       ..sort((a, b) {
         final aAt = a.missedAt ?? a.dateTime;
         final bAt = b.missedAt ?? b.dateTime;
@@ -4280,6 +4280,16 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         ),
       ),
     );
+  }
+
+  /// A `missed` row is only a failure when its reason is evidence of one.
+  ///
+  /// `dispatched_not_reported` and `unknown` are derived from the backend's
+  /// dispatch counters and prove nothing about delivery, so a row carrying them
+  /// is not shown as a failure. Mirrors the backend's `isKnownMissedReason`.
+  bool _isKnownMissedReason(String? reason) {
+    if (reason == null || reason.isEmpty) return false;
+    return reason != 'dispatched_not_reported' && reason != 'unknown';
   }
 
   /// Map the backend's closed missed-reason vocabulary (§7 / server.ts) to a
