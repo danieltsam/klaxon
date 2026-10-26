@@ -595,6 +595,9 @@
     let ringingAlarmId = null;
     let selectedDays = [];
     let editSelectedDays = [];
+    // Preserved through the edit flow: the form has no interval control, and a
+    // delete-and-recreate would otherwise turn a fortnightly alarm weekly.
+    let editingIntervalWeeks = 1;
     let currentSearchQuery = '';
     let isPreviewPlaying = false;
     let currentActiveView = 'dashboard';
@@ -1230,6 +1233,7 @@
       document.getElementById('edit-alarm-ramp').value = String(alarm.ramp_seconds || 15);
 
       editSelectedDays = alarm.repeat_days ? alarm.repeat_days.split(',').map(d => parseInt(d.trim(), 10)).filter(Boolean) : [];
+      editingIntervalWeeks = alarm.recurrence_interval_weeks || 1;
       updateEditDayButtons();
 
       document.getElementById('alarm-detail-modal').classList.remove('hidden');
@@ -1288,7 +1292,8 @@
             description: desc,
             repeat_days: repeatDaysStr,
             sound_tone: tone,
-            ramp_seconds: ramp
+            ramp_seconds: ramp,
+            recurrence_interval_weeks: editingIntervalWeeks
           })
         });
 
@@ -1552,13 +1557,24 @@
           feedback.textContent = 'could not understand that time';
           return;
         }
+        // The parser resolves recurrence and metadata; carry them. A day interval
+        // cannot be stored, so refuse instead of creating a one-time alarm.
+        if (leading.parsed.interval) {
+          const { count, unit } = leading.parsed.interval;
+          if (unit === 'days' || count < 1 || count > 2) {
+            feedback.textContent = `cannot store every ${count} ${unit}: only weekly or fortnightly recurrence`;
+            return;
+          }
+        }
+        const meta = leading.parsed.alarm || {};
         payload = {
           target_time: leading.parsed.targetTime.toISOString(),
           label: leading.rest || 'alarm',
-          description: '',
+          description: meta.description || '',
           repeat_days: leading.parsed.repeatDays.length > 0 ? leading.parsed.repeatDays.join(',') : null,
-          sound_tone: appSettings.sound_tone,
-          ramp_seconds: appSettings.ramp_seconds
+          sound_tone: meta.sound_tone || appSettings.sound_tone,
+          ramp_seconds: meta.ramp_seconds !== undefined ? meta.ramp_seconds : appSettings.ramp_seconds,
+          recurrence_interval_weeks: leading.parsed.interval ? leading.parsed.interval.count : 1
         };
       }
 

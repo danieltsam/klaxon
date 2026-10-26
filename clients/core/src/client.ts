@@ -17,6 +17,7 @@ import {
   RemoteAlarmNotFoundError,
 } from "./errors.js";
 import { parseTime } from "./time.js";
+import type { IntervalSpec } from "./time.js";
 import type {
   Alarm,
   AlarmMutationResult,
@@ -81,6 +82,36 @@ function asNumber(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
 }
 
+/** SQLite integers can arrive as numbers or digit strings; both mean the same. */
+function asInteger(value: unknown): number | undefined {
+  if (typeof value === "number") return Number.isInteger(value) ? value : undefined;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * The backend stores weekly (1) or fortnightly (2) recurrence only. An interval
+ * it cannot store is refused here rather than dropped: an alarm that silently
+ * becomes one-time is worse than one that refuses to be created.
+ */
+function intervalToWeeks(interval: IntervalSpec | undefined): 1 | 2 | undefined {
+  if (!interval) return undefined;
+  if (interval.unit === "days") {
+    throw new RemoteAlarmError(
+      `Cannot create an alarm that repeats every ${interval.count} day${interval.count === 1 ? "" : "s"}: only weekly or fortnightly recurrence can be stored. Use a weekday set instead.`
+    );
+  }
+  if (!Number.isInteger(interval.count) || interval.count < 1 || interval.count > 2) {
+    throw new RemoteAlarmError(
+      `Cannot create an alarm that repeats every ${interval.count} weeks: only weekly or fortnightly recurrence can be stored.`
+    );
+  }
+  return interval.count as 1 | 2;
+}
+
 function validateSoundTone(tone: unknown): void {
   if (tone === undefined) return;
   if (typeof tone !== "string" || !SOUND_TONES.includes(tone as SoundTone)) {
@@ -142,6 +173,15 @@ export function normalizeAlarm(payload: Record<string, unknown>): Alarm {
 
   const rampSeconds = asNumber(payload.ramp_seconds);
   if (rampSeconds !== undefined) alarm.ramp_seconds = rampSeconds;
+
+  const intervalWeeks = asInteger(payload.recurrence_interval_weeks);
+  if (intervalWeeks !== undefined) alarm.recurrence_interval_weeks = intervalWeeks;
+
+  if (typeof payload.recurrence_anchor_date === "string") {
+    alarm.recurrence_anchor_date = payload.recurrence_anchor_date;
+  } else if (payload.recurrence_anchor_date === null) {
+    alarm.recurrence_anchor_date = null;
+  }
 
   const createdAt = asString(payload.created_at);
   if (createdAt !== undefined) alarm.created_at = createdAt;
@@ -255,12 +295,14 @@ export class RemoteAlarmClient {
   }
 
   async createAlarm(input: CreateAlarmInput): Promise<AlarmMutationResult> {
-    validateSoundTone(input.sound_tone);
-
     // Exactly one time path. The union makes "neither/both" a compile error,
     // but guard at runtime too for callers that bypass the type (e.g. JS).
     let targetTime: Date;
     let inferredRepeatDays: Weekday[] = [];
+    let inferredInterval: 1 | 2 | undefined;
+    let inferredMetadata:
+      | { sound_tone?: SoundTone; ramp_seconds?: number; description?: string }
+      | undefined;
     if (input.targetTime !== undefined) {
       if ((input as { when?: unknown }).when !== undefined) {
         throw new RemoteAlarmError(
@@ -273,18 +315,30 @@ export class RemoteAlarmClient {
       const parsed = parseTime(input.when, this.now());
       targetTime = parsed.targetTime;
       inferredRepeatDays = parsed.repeatDays;
+      inferredMetadata = parsed.alarm;
+      inferredInterval = intervalToWeeks(parsed.interval);
     }
 
     const repeatDays = input.repeat_days ?? inferredRepeatDays;
+    const intervalWeeks = input.recurrence_interval_weeks ?? inferredInterval;
+    // Precedence: an explicit field beats the sentence, the sentence beats a
+    // default. Anything the expression named is carried rather than dropped.
+    const description = input.description ?? inferredMetadata?.description;
+    const soundTone = input.sound_tone ?? inferredMetadata?.sound_tone;
+    const rampSeconds = input.ramp_seconds ?? inferredMetadata?.ramp_seconds;
+    validateSoundTone(soundTone);
 
     const body: Record<string, unknown> = {
       target_time: toAlignedIso(targetTime),
       label: input.label,
     };
-    if (input.description !== undefined) body.description = input.description;
+    if (description !== undefined) body.description = description;
     if (repeatDays.length > 0) body.repeat_days = encodeRepeatDays(repeatDays);
-    if (input.sound_tone !== undefined) body.sound_tone = input.sound_tone;
-    if (input.ramp_seconds !== undefined) body.ramp_seconds = input.ramp_seconds;
+    if (soundTone !== undefined) body.sound_tone = soundTone;
+    if (rampSeconds !== undefined) body.ramp_seconds = rampSeconds;
+    if (intervalWeeks !== undefined && intervalWeeks > 1) {
+      body.recurrence_interval_weeks = intervalWeeks;
+    }
 
     const raw = await this.request<Record<string, unknown>>(
       "POST",

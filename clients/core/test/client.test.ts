@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  normalizeAlarm,
   RemoteAlarmClient,
   RemoteAlarmError,
   RemoteAlarmNetworkError,
@@ -626,5 +627,99 @@ describe("RemoteAlarmClient — timeout wiring", () => {
     const start = Date.now();
     await assert.rejects(client.health(), RemoteAlarmNetworkError);
     assert.ok(Date.now() - start < 1000, "override should abort quickly, not at the 4s default");
+  });
+});
+
+describe("RemoteAlarmClient — parsed interval and metadata carriage", () => {
+  const now = new Date(2026, 8, 21, 6, 0, 0, 0);
+  const make = (calls: Call[]) => {
+    void calls;
+    return new RemoteAlarmClient({
+      baseUrl: "http://h:3000",
+      fetch: ((input: unknown, init?: RequestInit) => {
+        calls.push({ url: String(input), init: init ?? {} });
+        return Promise.resolve(
+          jsonResponse(201, { id: "a1", target_time: "x", label: "Gym", status: "pending" })
+        );
+      }) as unknown as FetchLike,
+      now: () => now,
+    });
+  };
+
+  it("sends a parsed fortnightly interval instead of dropping it", async () => {
+    const calls: Call[] = [];
+    await make(calls).createAlarm({ label: "Gym", when: "every 2 weeks 7am" });
+
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.equal(body.recurrence_interval_weeks, 2);
+  });
+
+  it("keeps the weekday set of a fortnightly weekday rule", async () => {
+    const calls: Call[] = [];
+    await make(calls).createAlarm({ label: "Gym", when: "every other monday 7am" });
+
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.equal(body.recurrence_interval_weeks, 2);
+    assert.equal(body.repeat_days, "1");
+  });
+
+  it("refuses a day interval the backend cannot store, without sending", async () => {
+    const calls: Call[] = [];
+    await assert.rejects(
+      make(calls).createAlarm({ label: "Gym", when: "every 3 days 7am" }),
+      (err: unknown) => {
+        assert.ok(err instanceof RemoteAlarmError);
+        assert.match(err.message, /only weekly or fortnightly/);
+        return true;
+      }
+    );
+    assert.equal(calls.length, 0);
+  });
+
+  it("lets an explicit interval override the sentence", async () => {
+    const calls: Call[] = [];
+    await make(calls).createAlarm({
+      label: "Gym",
+      when: "every 2 weeks 7am",
+      recurrence_interval_weeks: 1,
+    });
+
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.equal("recurrence_interval_weeks" in body, false);
+  });
+
+  it("carries a parsed tone and note, and lets explicit fields win", async () => {
+    const calls: Call[] = [];
+    const client = make(calls);
+
+    await client.createAlarm({ label: "Gym", when: "chime tomorrow 7am" });
+    assert.equal(JSON.parse(calls[0].init.body as string).sound_tone, "chime");
+
+    await client.createAlarm({ label: "Gym", when: "tomorrow 7am note: bring towel" });
+    assert.equal(
+      JSON.parse(calls[1].init.body as string).description,
+      "bring towel"
+    );
+
+    await client.createAlarm({
+      label: "Gym",
+      when: "chime tomorrow 7am",
+      sound_tone: "alarm",
+    });
+    assert.equal(JSON.parse(calls[2].init.body as string).sound_tone, "alarm");
+  });
+
+  it("reads interval fields back from the wire", () => {
+    const alarm = normalizeAlarm({
+      id: "a",
+      target_time: "2026-10-27T20:30:00.000Z",
+      label: "Gym",
+      status: "pending",
+      recurrence_interval_weeks: "2",
+      recurrence_anchor_date: null,
+    });
+
+    assert.equal(alarm.recurrence_interval_weeks, 2);
+    assert.equal(alarm.recurrence_anchor_date, null);
   });
 });

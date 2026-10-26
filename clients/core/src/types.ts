@@ -46,6 +46,10 @@ export interface Alarm {
   repeat_days?: Weekday[];
   sound_tone?: SoundTone;
   ramp_seconds?: number;
+  /** 1 = weekly (default), 2 = fortnightly. Every alarm row carries this. */
+  recurrence_interval_weeks?: number;
+  /** ISO date "YYYY-MM-DD" the fortnightly cadence is anchored to; null when weekly. */
+  recurrence_anchor_date?: string | null;
   created_at?: string;
   /** ISO-8601 UTC — when the alarm was declared missed. */
   missed_at?: string;
@@ -71,6 +75,11 @@ export type CreateAlarmInput = {
   repeat_days?: Weekday[];
   sound_tone?: SoundTone;
   ramp_seconds?: number;
+  /**
+   * 2 = fortnightly, 1 = weekly. When `when` names an interval, core derives
+   * this and rejects day intervals, which the backend cannot store.
+   */
+  recurrence_interval_weeks?: 1 | 2;
 } & (
   | { when: string; targetTime?: never }
   | { targetTime: Date; when?: never }
