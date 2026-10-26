@@ -1,4 +1,4 @@
-package com.remotealarm.mobile
+package com.klaxon.mobile
 
 import android.app.NotificationManager
 import android.content.Context
@@ -14,7 +14,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val PERMISSIONS_CHANNEL = "com.remotealarm.mobile/permissions"
+    private val PERMISSIONS_CHANNEL = "com.klaxon.mobile/permissions"
     private var channel: MethodChannel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {

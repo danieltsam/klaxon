@@ -23,7 +23,7 @@ if (hasReleaseKeystore) {
 }
 
 android {
-    namespace = "com.remotealarm.mobile"
+    namespace = "com.klaxon.mobile"
     compileSdk = 36
     buildToolsVersion = "36.0.0"
     ndkVersion = "28.2.13676358"
@@ -38,7 +38,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.remotealarm.mobile"
+        applicationId = "com.klaxon.mobile"
         minSdk = flutter.minSdkVersion
         targetSdk = 34
         versionCode = flutter.versionCode
