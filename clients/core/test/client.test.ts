@@ -723,3 +723,24 @@ describe("RemoteAlarmClient — parsed interval and metadata carriage", () => {
     assert.equal(alarm.recurrence_anchor_date, null);
   });
 });
+
+describe("RemoteAlarmClient — interval on update", () => {
+  it("sends recurrence_interval_weeks on PATCH and leaves it alone when omitted", async () => {
+    const calls: Call[] = [];
+    const client = new RemoteAlarmClient({
+      baseUrl: "http://h:3000",
+      fetch: ((input: unknown, init?: RequestInit) => {
+        calls.push({ url: String(input), init: init ?? {} });
+        return Promise.resolve(
+          jsonResponse(200, { id: "a1", target_time: "x", label: "Gym", status: "pending" })
+        );
+      }) as unknown as FetchLike,
+    });
+
+    await client.updateAlarm("a1", { label: "Gym", recurrence_interval_weeks: 2 });
+    assert.equal(JSON.parse(calls[0].init.body as string).recurrence_interval_weeks, 2);
+
+    await client.updateAlarm("a1", { label: "Gym" });
+    assert.equal("recurrence_interval_weeks" in JSON.parse(calls[1].init.body as string), false);
+  });
+});

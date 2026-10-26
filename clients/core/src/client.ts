@@ -380,6 +380,9 @@ export class RemoteAlarmClient {
     if (patch.description !== undefined) body.description = patch.description;
     if (patch.sound_tone !== undefined) body.sound_tone = patch.sound_tone;
     if (patch.ramp_seconds !== undefined) body.ramp_seconds = patch.ramp_seconds;
+    if (patch.recurrence_interval_weeks !== undefined) {
+      body.recurrence_interval_weeks = patch.recurrence_interval_weeks;
+    }
     if (patch.status !== undefined) body.status = patch.status;
 
     const raw = await this.request<Record<string, unknown>>(

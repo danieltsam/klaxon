@@ -116,6 +116,8 @@ export interface UpdateAlarmInput {
   repeat_days?: Weekday[];
   sound_tone?: SoundTone;
   ramp_seconds?: number;
+  /** 2 = fortnightly, 1 = weekly. Omit to leave the stored cadence alone. */
+  recurrence_interval_weeks?: 1 | 2;
   status?: SetStateStatus;
 }
 
