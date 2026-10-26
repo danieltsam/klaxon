@@ -106,6 +106,31 @@ describe('Fastify Alarm API & Persistence Test Suite', () => {
       assert.match(data.error, /Invalid target_time/);
     });
 
+    it('POST /api/alarms should return the existing row for a duplicate instant and label', async () => {
+      // The phone keeps one alarm per instant: a second row for the same time
+      // and label replaces the first locally, and cancelling it disarms the
+      // survivor. So the create path must be idempotent for the same intent.
+      const target = new Date(Date.now() + 40 * 24 * 60 * 60 * 1000).toISOString();
+      const payload = { target_time: target, label: 'Duplicate Guard' };
+
+      const first = await app.inject({ method: 'POST', url: '/api/alarms', payload });
+      const second = await app.inject({ method: 'POST', url: '/api/alarms', payload });
+
+      assert.strictEqual(first.statusCode, 201);
+      assert.strictEqual(second.statusCode, 200);
+      const firstName = JSON.parse(first.body);
+      const secondBody = JSON.parse(second.body);
+      assert.strictEqual(secondBody.id, firstName.id);
+      assert.strictEqual(secondBody.deduplicated, true);
+
+      const rows = db
+        .prepare("SELECT COUNT(*) AS n FROM alarms WHERE label = 'Duplicate Guard'")
+        .get() as { n: number };
+      assert.strictEqual(rows.n, 1);
+
+      db.prepare("DELETE FROM alarms WHERE label = 'Duplicate Guard'").run();
+    });
+
     it('POST /api/alarms should create alarm, truncate seconds, and store repeat_days', async () => {
       // Derive the fixture from "now" so the target is always in the future.
       // A past target on a recurring alarm is deliberately rolled forward by

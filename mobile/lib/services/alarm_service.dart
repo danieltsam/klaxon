@@ -375,6 +375,11 @@ class AlarmService {
         onRemoteDismissed.add(intId);
         // ignore: avoid_print
         print('[AlarmService] Canceled alarm $intId ($uuid)');
+        // A cancel must never leave the phone with fewer armed alarms than the
+        // backend has pending rows. On 2026-10-27 a duplicate's cancel removed
+        // the only armed copy and the survivor stayed pending, silently: the
+        // 06:30 alarm never rang. Reconcile re-arms anything now missing.
+        await syncWithBackend();
       } else if (action == 'DISMISS') {
         await Alarm.stop(intId);
         await IdMapper.setSnoozed(intId, false);

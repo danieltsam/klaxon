@@ -280,15 +280,6 @@ export const AlarmRepo = {
    * Guarded on `pending`/`snoozed` so it is atomic and cannot overwrite a state
    * the phone set in the meantime.
    */
-  dismissUnconfirmed(id: string): boolean {
-    const result = db.prepare(`
-      UPDATE alarms
-      SET status = 'dismissed'
-      WHERE id = ? AND status IN ('pending', 'snoozed')
-    `).run(id);
-    return result.changes > 0;
-  },
-
   update(id: string, updates: Partial<AlarmRecord>): boolean {
     const existing = this.getById(id);
     if (!existing) return false;
