@@ -1,4 +1,5 @@
 import type { AlarmRecord } from './db.js';
+import { isKnownMissedReason } from './db.js';
 
 /**
  * The closed set of reasons delivery is considered unhealthy. A quiet interval
@@ -71,7 +72,10 @@ export function evaluateDeliveryHealth(input: {
       dispatchFailed = true;
     }
 
-    if (alarm.status === 'missed' && alarm.missed_at) {
+    // Only a *known* failure is worth raising. A row whose reason is silence
+    // (`dispatched_not_reported` / `unknown`) is not evidence the alarm failed,
+    // and raising it made the banner cry wolf over a guess.
+    if (alarm.status === 'missed' && alarm.missed_at && isKnownMissedReason(alarm.missed_reason)) {
       const missedMs = new Date(alarm.missed_at).getTime();
       if (Number.isFinite(missedMs) && missedMs >= missedFloorMs && missedMs <= nowMs) {
         alarmMissed = true;

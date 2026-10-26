@@ -4,7 +4,7 @@ import fastifyStatic from '@fastify/static';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
-import { AlarmRepo, DeviceRepo, SettingsRepo, AlarmRecord, AppSettings, db } from './db.js';
+import { AlarmRepo, DeviceRepo, SettingsRepo, AlarmRecord, AppSettings, db, isKnownMissedReason } from './db.js';
 import { initFirebase, isFirebaseReady, sendFcmDataMessage, sendFcmNotification, FcmPayload } from './fcm.js';
 import { GcalMirror, unconfiguredTransport, classifyGcalError, type GcalTransport } from './gcal.js';
 import { createGcalTransport } from './gcal-google.js';
@@ -193,6 +193,22 @@ export function sweepMissedAlarms(now: Date = new Date()): number {
       if (targetMs + MISSED_GRACE_MS >= nowMs) continue;
 
       const reason = deriveMissedReason(alarm);
+
+      // Silence is not evidence of failure. `dispatched_not_reported` and
+      // `unknown` are derived from dispatch counters, and `sent > 0` does not
+      // prove delivery — so recording them as `missed` produced the false
+      // records the owner reported. Resolve those quietly instead; only a known
+      // failure is recorded and surfaced.
+      if (!isKnownMissedReason(reason)) {
+        if (!AlarmRepo.dismissUnconfirmed(alarm.id)) continue;
+        console.error(
+          `[sweep] alarm ${alarm.id} passed its target with no failure evidence ` +
+          `(${reason}): resolving as dismissed`
+        );
+        void mirrorSafely({ ...alarm, status: 'dismissed' });
+        continue;
+      }
+
       if (!AlarmRepo.markMissed(alarm.id, reason, nowIso)) continue;
       marked++;
 

@@ -2,6 +2,27 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
+/**
+ * `missed_reason` values that are evidence of *silence*, not of failure.
+ *
+ * The sweep derives a reason from the dispatch counters, but `sent > 0` does
+ * not prove the alarm rang (see `deriveMissedReason`). A row carrying one of
+ * these is not a failure the user can act on or trust, so the sweep resolves it
+ * quietly to `dismissed` instead of recording a `missed` the owner reported as
+ * wrong. Every other reason is a fact: nothing could be sent, FCM rejected it,
+ * or the phone itself said it could not ring.
+ */
+export const UNCONFIRMED_MISSED_REASONS: readonly string[] = [
+  'dispatched_not_reported',
+  'unknown',
+];
+
+/** True when `reason` is evidence of failure rather than evidence of silence. */
+export function isKnownMissedReason(reason: string | null | undefined): boolean {
+  if (!reason) return false;
+  return !UNCONFIRMED_MISSED_REASONS.includes(reason);
+}
+
 export interface AlarmRecord {
   id: string;
   target_time: string;
@@ -21,8 +42,7 @@ export interface AlarmRecord {
   last_dispatch_at?: string | null;     // when that dispatch happened
 }
 
-export interface DeviceRecord {
-  token: string;
+export interface DeviceRecord {  token: string;
   battery_level?: number | null;
   is_charging?: number | boolean | null;
   device_name?: string | null;
@@ -168,9 +188,13 @@ export const AlarmRepo = {
   },
 
   updateStatus(id: string, status: string): boolean {
+    // A status change away from `missed` corrects the record: a late report can
+    // prove the sweep's guess wrong, so the failure fields must not linger on a
+    // row that is no longer a failure. `missed` is never set through this path —
+    // `markMissed` is its only writer — so clearing here is always safe.
     const result = db.prepare(`
       UPDATE alarms
-      SET status = ?
+      SET status = ?, missed_at = NULL, missed_reason = NULL
       WHERE id = ?
     `).run(status, id);
     return result.changes > 0;
@@ -237,6 +261,30 @@ export const AlarmRepo = {
       UPDATE alarms
       SET status = 'dismissed'
       WHERE id = ? AND status = 'ringing'
+    `).run(id);
+    return result.changes > 0;
+  },
+
+  /**
+   * Quietly resolve an alarm that passed its target with **no evidence of
+   * failure**.
+   *
+   * The sweep only records `missed` when it has evidence (see
+   * `isKnownMissedReason`). When all it has is silence, that is not a failure
+   * and must not be recorded as one — the reported symptom was a `missed` row
+   * for an alarm that had rung. It still needs a terminal state, so it resolves
+   * to `dismissed`: the same assumption the abandoned-ring sweep makes, and
+   * consistent with those alarms having rung. No `missed_*` field is set, so
+   * nothing presents it to the user as a failure.
+   *
+   * Guarded on `pending`/`snoozed` so it is atomic and cannot overwrite a state
+   * the phone set in the meantime.
+   */
+  dismissUnconfirmed(id: string): boolean {
+    const result = db.prepare(`
+      UPDATE alarms
+      SET status = 'dismissed'
+      WHERE id = ? AND status IN ('pending', 'snoozed')
     `).run(id);
     return result.changes > 0;
   },

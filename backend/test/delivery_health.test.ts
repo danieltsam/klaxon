@@ -62,16 +62,27 @@ describe('evaluateDeliveryHealth', () => {
   it('flags alarm_missed when a missed alarm is inside the window', () => {
     const h = evaluateDeliveryHealth({
       ...base,
-      alarms: [alarm({ status: 'missed', missed_at: '2026-10-16T06:00:00Z', last_dispatch_failed: 0 })]
+      alarms: [alarm({ status: 'missed', missed_at: '2026-10-16T06:00:00Z', missed_reason: 'delivery_failed', last_dispatch_failed: 0 })]
     });
     assert.deepEqual(h.reasons, ['alarm_missed']);
+  });
+
+  it('does not flag alarm_missed when the reason is only silence', () => {
+    // `dispatched_not_reported` is derived from the dispatch counters and proves
+    // nothing about delivery, so it must not raise the banner.
+    const h = evaluateDeliveryHealth({
+      ...base,
+      alarms: [alarm({ status: 'missed', missed_at: '2026-10-16T06:00:00Z', missed_reason: 'dispatched_not_reported', last_dispatch_sent: 1, last_dispatch_failed: 0 })]
+    });
+    assert.equal(h.ok, true);
+    assert.deepEqual(h.reasons, []);
   });
 
   it('does not flag alarm_missed for an old missed alarm', () => {
     const oldMissed = new Date(NOW.getTime() - MISSED_ALERT_WINDOW_MS - 1000).toISOString();
     const h = evaluateDeliveryHealth({
       ...base,
-      alarms: [alarm({ status: 'missed', missed_at: oldMissed, last_dispatch_failed: 0 })]
+      alarms: [alarm({ status: 'missed', missed_at: oldMissed, missed_reason: 'delivery_failed', last_dispatch_failed: 0 })]
     });
     assert.equal(h.ok, true);
     assert.deepEqual(h.reasons, []);

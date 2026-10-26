@@ -192,7 +192,7 @@
                 <h2 class="text-lg font-semibold tracking-tight lowercase text-app-main">missed</h2>
                 <span id="missed-alarms-count-badge" class="px-2 py-0.5 rounded-sm border border-app-danger/40 text-[11px] font-mono text-app-danger">0</span>
               </div>
-              <p class="text-xs text-app-dim hidden sm:block">kept for review. tap a row to reschedule.</p>
+              <p class="text-xs text-app-dim hidden sm:block">alarms we couldn't ring. kept for review.</p>
             </div>
             <div id="missed-alarms-list" class="space-y-3"></div>
           </section>
@@ -889,15 +889,7 @@
         missedSection.classList.remove('hidden');
         missedCountBadge.textContent = missedAlarms.length;
         missedList.innerHTML = missedAlarms.map(alarm => {
-          const targetStr = `${formatDate(alarm.target_time)} ${formatTime(alarm.target_time)}`;
-          const missedStr = `${formatDate(alarm.missed_at)} ${formatTime(alarm.missed_at)}`;
           const missedReasonStr = formatMissedReason(alarm.missed_reason);
-          const missedReasonLine = missedReasonStr
-            ? `<div class="text-xs text-app-danger mt-1">${missedReasonStr}</div>`
-            : '';
-          const dispatchAudit = alarm.last_dispatch_at
-            ? `<div class="text-[11px] text-app-dim mt-1">last dispatch attempted: <span class="font-mono text-app-muted">${formatDate(alarm.last_dispatch_at)} ${formatTime(alarm.last_dispatch_at)}</span> · sent: <span class="font-mono text-app-muted">${alarm.last_dispatch_sent ?? 0}</span> · failed: <span class="font-mono text-app-muted">${alarm.last_dispatch_failed ?? 0}</span></div>`
-            : '';
 
           return `
             <div class="rounded-lg border border-app-danger/40 bg-app-surface p-4 flex items-center justify-between gap-4">
@@ -906,10 +898,8 @@
                   <span class="text-base font-medium font-mono text-app-main">${formatTime(alarm.target_time)}</span>
                   <span class="text-sm text-app-main truncate">${escapeHtml(alarm.label)}</span>
                 </div>
-                <div class="text-xs text-app-muted mt-1">fired at <span class="font-mono text-app-main">${formatTime(alarm.missed_at)}</span> · ${missedReasonStr || 'device couldn\'t ring'}</div>
-                ${dispatchAudit}
+                <div class="text-xs text-app-muted mt-1">${formatDate(alarm.target_time)}${missedReasonStr ? ` · ${missedReasonStr}` : ''}</div>
               </div>
-              <button onclick="openAlarmDetail('${alarm.id}')" class="shrink-0 text-xs text-app-muted hover:text-app-main transition-colors" type="button">reschedule</button>
             </div>
           `;
         }).join('');

@@ -1105,81 +1105,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     _loadAllAlarms();
   }
 
-  void _rescheduleMissedAlarm(_AlarmItem item) {
-    _openTimePickerSheet(
-      context: context,
-      initialTime: item.dateTime,
-      repeatDays: item.repeatDays,
-      initialIntervalWeeks: item.intervalWeeks,
-      initialAnchorDate: item.anchorDate,
-      onApplied: (newTime, newDays, newIntervalWeeks, newAnchorDate) async {
-        // Guard against silently re-arming a stale one-time alarm.
-        final anchorDate = newAnchorDate != null ? DateTime.tryParse(newAnchorDate) : null;
-        final armTarget = AlarmService.computeArmTarget(
-          newTime,
-          repeatDays: newDays,
-          intervalWeeks: newIntervalWeeks,
-          anchorDate: anchorDate,
-        );
-        if (armTarget == null) {
-          _showToast('cannot reschedule a one-time alarm to the past');
-          return;
-        }
-
-        final finalTarget = newDays.isEmpty
-            ? newTime
-            : AlarmService.computeFutureOccurrence(
-                newTime,
-                repeatDays: newDays,
-                intervalWeeks: newIntervalWeeks,
-                anchorDate: anchorDate,
-              );
-
-        final audioPath = AlarmService.getAudioPathForTone(item.soundTone);
-        final settings = AlarmSettings(
-          id: item.id,
-          dateTime: finalTarget,
-          assetAudioPath: audioPath,
-          loopAudio: true,
-          vibrate: true,
-          volumeSettings: AlarmService.buildPerceptualVolumeSettings(item.rampSeconds),
-          notificationSettings: NotificationSettings(
-            title: item.title,
-            body: 'Tap to dismiss or snooze',
-            stopButton: 'stop',
-          ),
-        );
-
-        await Alarm.set(alarmSettings: settings);
-        await IdMapper.saveMapping(
-          item.id,
-          item.uuid ?? 'local_${item.id}',
-          label: item.title,
-          description: item.description,
-          targetTime: finalTarget,
-          soundTone: item.soundTone,
-          rampSeconds: item.rampSeconds,
-          repeatDays: newDays,
-        );
-        await IdMapper.setIntervalWeeks(item.id, newIntervalWeeks);
-        await IdMapper.setAnchorDate(item.id, newIntervalWeeks > 1 ? _isoDate(finalTarget) : null);
-        await IdMapper.setEnabled(item.id, true);
-
-        // Tell the backend this alarm is alive again with a new target time.
-        if (item.uuid != null && !item.uuid!.startsWith('local_')) {
-          await AlarmService.enqueueStateReport(
-            item.uuid!,
-            'pending',
-            targetTime: finalTarget.toUtc().toIso8601String(),
-          );
-        }
-
-        _showToast('alarm rescheduled for ${_formatTime(finalTarget)}');
-        await _syncWithBackend(silent: true);
-      },
-    );
-  }
-
   String _getRelativeCountdown(DateTime target) {
     final now = DateTime.now();
     final diff = target.difference(now);
@@ -4460,21 +4385,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                   ),
                 ),
               ],
-            ),
-          ),
-
-          // Reschedule action: plain text, no border, no fill.
-          const SizedBox(width: 10),
-          TextButton(
-            style: TextButton.styleFrom(
-              padding: EdgeInsets.zero,
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            onPressed: () => _rescheduleMissedAlarm(alarm),
-            child: const Text(
-              'reschedule',
-              style: TextStyle(color: Color(0xFFF7F8F8), fontSize: 12, fontWeight: FontWeight.w600),
             ),
           ),
         ],

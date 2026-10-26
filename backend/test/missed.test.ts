@@ -94,13 +94,26 @@ describe('Missed alarms: sweep, reason, report, calendar', () => {
   });
 
   describe('sweepMissedAlarms (spec §6.1)', () => {
-    it('marks a past one-time alarm missed with timestamp and reason', () => {
+    it('resolves an alarm with no failure evidence quietly to dismissed', () => {
       const alarm = insertAlarm();
+      sweepMissedAlarms(NOW);
+      const row = AlarmRepo.getById(alarm.id)!;
+      // Silence is not evidence of failure: `unknown` is derived from the
+      // dispatch counters, so the alarm is resolved quietly and carries no
+      // failure fields. Recording it as `missed` was the false record reported.
+      assert.strictEqual(row.status, 'dismissed');
+      assert.strictEqual(row.missed_at, null);
+      assert.strictEqual(row.missed_reason, null);
+    });
+
+    it('marks a past one-time alarm missed when the failure is known', () => {
+      const alarm = insertAlarm();
+      AlarmRepo.recordDispatch(alarm.id, 0, 1); // delivery_failed
       sweepMissedAlarms(NOW);
       const row = AlarmRepo.getById(alarm.id)!;
       assert.strictEqual(row.status, 'missed');
       assert.strictEqual(row.missed_at, NOW.toISOString());
-      assert.strictEqual(row.missed_reason, 'unknown'); // no dispatch recorded
+      assert.strictEqual(row.missed_reason, 'delivery_failed');
     });
 
     it('records no_device_registered when the last dispatch had zero devices', () => {
@@ -160,6 +173,7 @@ describe('Missed alarms: sweep, reason, report, calendar', () => {
 
     it('sweeps a snoozed one-time alarm whose time is beyond grace (spec §15 item 3)', () => {
       const snoozed = insertAlarm({ status: 'snoozed' });
+      AlarmRepo.recordDispatch(snoozed.id, 0, 1); // a known failure, so it is recorded
       sweepMissedAlarms(NOW);
       assert.strictEqual(AlarmRepo.getById(snoozed.id)!.status, 'missed');
     });
@@ -202,9 +216,26 @@ describe('Missed alarms: sweep, reason, report, calendar', () => {
       assert.strictEqual(AlarmRepo.getById(alarm.id)!.status, 'snoozed');
     });
 
+    it('a dismissed report corrects a false missed record', () => {
+      const alarm = insertAlarm();
+      AlarmRepo.recordDispatch(alarm.id, 0, 1); // recorded as a known failure
+      sweepMissedAlarms(NOW);
+      assert.strictEqual(AlarmRepo.getById(alarm.id)!.status, 'missed');
+
+      // A late report — exactly what the mobile outbox delivers — proves the
+      // sweep wrong. Correcting the record must clear the failure fields, not
+      // leave a dismissed alarm carrying `missed_at`.
+      AlarmRepo.updateStatus(alarm.id, 'dismissed');
+      const row = AlarmRepo.getById(alarm.id)!;
+      assert.strictEqual(row.status, 'dismissed');
+      assert.strictEqual(row.missed_at, null);
+      assert.strictEqual(row.missed_reason, null);
+    });
+
     it('one bad row does not stop the sweep (spec §4.1)', () => {
       const bad = insertAlarm({ target_time: 'not-a-timestamp' });
       const good = insertAlarm();
+      AlarmRepo.recordDispatch(good.id, 0, 1); // a known failure
       sweepMissedAlarms(NOW);
       assert.strictEqual(AlarmRepo.getById(bad.id)!.status, 'pending'); // skipped
       assert.strictEqual(AlarmRepo.getById(good.id)!.status, 'missed'); // still processed
