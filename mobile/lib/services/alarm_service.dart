@@ -250,7 +250,7 @@ class AlarmService {
 
       if (action == 'CREATE') {
         final targetTimeStr = data['target_time']?.toString();
-        final label = data['label'] ?? 'Remote Alarm';
+        final label = data['label'] ?? 'Klaxon';
         final tone = data['sound_tone']?.toString() ?? 'alarm';
         final rampSec = int.tryParse(data['ramp_seconds']?.toString() ?? '30') ?? 30;
 
@@ -403,7 +403,7 @@ class AlarmService {
       for (final remote in remoteAlarms) {
         final uuid = remote['id']?.toString();
         final targetTimeStr = remote['target_time']?.toString();
-        final label = remote['label']?.toString() ?? 'Remote Alarm';
+        final label = remote['label']?.toString() ?? 'Klaxon';
         final repeatDaysStr = remote['repeat_days']?.toString();
         final tone = remote['sound_tone']?.toString() ?? 'alarm';
         final rampSec = int.tryParse(remote['ramp_seconds']?.toString() ?? '30') ?? 30;
