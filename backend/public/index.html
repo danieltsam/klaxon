@@ -1481,8 +1481,15 @@
       }
     }
 
+    // A create is a single-use action: the POST awaits FCM dispatch and the
+    // calendar mirror, so it can take about a second. Without this guard the
+    // form looks inert, the user presses Enter again, and the second submit
+    // creates an identical alarm. Reproduced 2026-10-26 with two rows 1s apart.
+    let isCreating = false;
+
     document.getElementById('create-alarm-form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (isCreating) return;
       const feedback = document.getElementById('create-alarm-feedback');
       feedback.textContent = '';
 
@@ -1555,6 +1562,13 @@
         };
       }
 
+      isCreating = true;
+      const addBtn = document.getElementById('nl-add-btn');
+      const saveBtn = document.getElementById('create-save-btn');
+      if (addBtn) addBtn.disabled = true;
+      if (saveBtn) saveBtn.disabled = true;
+      feedback.textContent = 'creating…';
+
       try {
         const res = await fetch('/api/alarms', {
           method: 'POST',
@@ -1571,6 +1585,13 @@
         }
       } catch (err) {
         feedback.textContent = 'network error';
+      } finally {
+        isCreating = false;
+        if (addBtn) addBtn.disabled = false;
+        if (saveBtn) saveBtn.disabled = false;
+        // Success closes the modal and resets this line; on failure keep the
+        // error visible instead of blanking it.
+        if (feedback.textContent === 'creating…') feedback.textContent = '';
       }
     });
 
