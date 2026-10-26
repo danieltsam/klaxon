@@ -24,7 +24,7 @@ class HapticsLabModal extends StatefulWidget {
 }
 
 class _HapticsLabModalState extends State<HapticsLabModal> {
-  static const MethodChannel _permissionsChannel = MethodChannel('com.remotealarm.mobile/permissions');
+  static const MethodChannel _permissionsChannel = MethodChannel('com.klaxon.mobile/permissions');
 
   bool _testSwitchState = true;
   double _interactiveScrubValue = 25.0;

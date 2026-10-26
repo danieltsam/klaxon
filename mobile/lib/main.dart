@@ -2060,7 +2060,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     // Native → Dart bridge: the alarm plugin's full-screen notification can
     // deliver a fresh intent (com.gdelataillade.alarm.action.RING) while the
     // activity is already alive. Register once, reusing the permissions channel.
-    const permChannel = MethodChannel('com.remotealarm.mobile/permissions');
+    const permChannel = MethodChannel('com.klaxon.mobile/permissions');
     permChannel.setMethodCallHandler((call) async {
       if (call.method == 'onLaunchIntentAction') {
         final action = call.arguments as String?;
@@ -2082,7 +2082,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       try {
-        const ch = MethodChannel('com.remotealarm.mobile/permissions');
+        const ch = MethodChannel('com.klaxon.mobile/permissions');
         final action = await ch.invokeMethod<String>('getLaunchIntentAction');
         if (action == 'com.gdelataillade.alarm.action.RING' && mounted) {
           if (await Alarm.isRinging()) _checkActiveRingingAlarm();
@@ -2165,7 +2165,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   /// re-shown on later launches/resumes instead of never.
   Future<void> _ensureFullScreenIntentPermission({bool force = false}) async {
     try {
-      const channel = MethodChannel('com.remotealarm.mobile/permissions');
+      const channel = MethodChannel('com.klaxon.mobile/permissions');
       final granted = await channel.invokeMethod<bool>('canUseFullScreenIntent') ?? false;
       if (granted) return;
 
@@ -2213,7 +2213,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   /// launches/resumes instead of never.
   Future<void> _ensureBatteryOptimizationExemption({bool force = false}) async {
     try {
-      const channel = MethodChannel('com.remotealarm.mobile/permissions');
+      const channel = MethodChannel('com.klaxon.mobile/permissions');
       final exempt = await channel.invokeMethod<bool>('isIgnoringBatteryOptimizations') ?? true;
       if (exempt) return;
 
