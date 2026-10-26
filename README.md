@@ -1,4 +1,4 @@
-# Remote Alarm
+# Klaxon
 
 A self-hosted remotely manageable Alarm app for Android phones. I run the backend myself, and I can set, trigger, and manage alarms on my phone from my workstation or any other device that can set network requests to my backend.
 

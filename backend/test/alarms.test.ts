@@ -25,7 +25,7 @@ describe('Fastify Alarm API & Persistence Test Suite', () => {
       });
       assert.strictEqual(response.statusCode, 200);
       assert.match(response.headers['content-type'] || '', /text\/html/);
-      assert.match(response.body, /Remote Alarm/);
+      assert.match(response.body, /Klaxon/);
     });
 
     it('GET /api/calendar.ics should return standard iCalendar RFC 5545 feed', async () => {

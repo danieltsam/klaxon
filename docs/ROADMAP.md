@@ -1,6 +1,6 @@
-# Remote Alarm System — Features & Roadmap
+# Klaxon — Features & Roadmap
 
-This document tracks implemented features and future enhancements for the Remote Alarm System.
+This document tracks implemented features and future enhancements for Klaxon.
 
 ---
 
