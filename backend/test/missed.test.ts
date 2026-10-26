@@ -4,6 +4,7 @@ import {
   app,
   sweepMissedAlarms,
   deriveMissedReason,
+  computeDeliveryHealth,
   missedSweepStarted,
   DEVICE_MISSED_REASONS,
   MISSED_GRACE_MS,
@@ -94,16 +95,20 @@ describe('Missed alarms: sweep, reason, report, calendar', () => {
   });
 
   describe('sweepMissedAlarms (spec §6.1)', () => {
-    it('resolves an alarm with no failure evidence quietly to dismissed', () => {
+    it('records an unconfirmed pass as missed, without raising delivery health', () => {
       const alarm = insertAlarm();
       sweepMissedAlarms(NOW);
       const row = AlarmRepo.getById(alarm.id)!;
-      // Silence is not evidence of failure: `unknown` is derived from the
-      // dispatch counters, so the alarm is resolved quietly and carries no
-      // failure fields. Recording it as `missed` was the false record reported.
-      assert.strictEqual(row.status, 'dismissed');
-      assert.strictEqual(row.missed_at, null);
-      assert.strictEqual(row.missed_reason, null);
+      // The pass is recorded. Labelling it `dismissed` claimed a dismissal
+      // nobody made, which hid a real failure (2026-10-27 06:30).
+      assert.strictEqual(row.status, 'missed');
+      assert.strictEqual(row.missed_at, NOW.toISOString());
+      assert.strictEqual(row.missed_reason, 'unknown');
+
+      // Recording must not become nagging: an unconfirmed reason never raises
+      // the delivery-health alert.
+      const health = computeDeliveryHealth(NOW);
+      assert.equal(health.reasons.includes('alarm_missed'), false);
     });
 
     it('marks a past one-time alarm missed when the failure is known', () => {

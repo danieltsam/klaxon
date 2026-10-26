@@ -4,7 +4,7 @@ import fastifyStatic from '@fastify/static';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
-import { AlarmRepo, DeviceRepo, SettingsRepo, AlarmRecord, AppSettings, db, isKnownMissedReason } from './db.js';
+import { AlarmRepo, DeviceRepo, SettingsRepo, AlarmRecord, AppSettings, db } from './db.js';
 import { initFirebase, isFirebaseReady, sendFcmDataMessage, sendFcmNotification, FcmPayload } from './fcm.js';
 import { GcalMirror, unconfiguredTransport, classifyGcalError, type GcalTransport } from './gcal.js';
 import { createGcalTransport } from './gcal-google.js';
@@ -194,21 +194,11 @@ export function sweepMissedAlarms(now: Date = new Date()): number {
 
       const reason = deriveMissedReason(alarm);
 
-      // Silence is not evidence of failure. `dispatched_not_reported` and
-      // `unknown` are derived from dispatch counters, and `sent > 0` does not
-      // prove delivery — so recording them as `missed` produced the false
-      // records the owner reported. Resolve those quietly instead; only a known
-      // failure is recorded and surfaced.
-      if (!isKnownMissedReason(reason)) {
-        if (!AlarmRepo.dismissUnconfirmed(alarm.id)) continue;
-        console.error(
-          `[sweep] alarm ${alarm.id} passed its target with no failure evidence ` +
-          `(${reason}): resolving as dismissed`
-        );
-        void mirrorSafely({ ...alarm, status: 'dismissed' });
-        continue;
-      }
-
+      // Record every unconfirmed pass. A row whose reason is silence
+      // (`dispatched_not_reported` / `unknown`) is still recorded, because the
+      // alternative is claiming a dismissal nobody made: that is how a failed
+      // 06:30 alarm became invisible. Delivery health deliberately ignores those
+      // reasons, so the record exists without crying wolf (alerts.ts).
       if (!AlarmRepo.markMissed(alarm.id, reason, nowIso)) continue;
       marked++;
 
@@ -566,6 +556,26 @@ app.post<{
   // Auto-anchor: a fortnightly alarm without an anchor defaults to its start date
   if (normalizedInterval === 2 && !normalizedAnchorDate) {
     normalizedAnchorDate = effectiveTargetIso.slice(0, 10);
+  }
+
+  // A retry or a double submit must not create a second alarm for the same
+  // instant and label. Duplicates are not harmless: the phone keeps one alarm
+  // per instant, so the second silently replaces the first, and cancelling it
+  // leaves nothing armed. That is how the 2026-10-27 06:30 alarm was lost.
+  const duplicate = db.prepare(`
+    SELECT * FROM alarms
+    WHERE target_time = ?
+      AND LOWER(TRIM(label)) = LOWER(TRIM(?))
+      AND status IN ('pending', 'snoozed', 'ringing')
+    LIMIT 1
+  `).get(effectiveTargetIso, label.trim()) as AlarmRecord | undefined;
+
+  if (duplicate) {
+    return reply.status(200).send({
+      ...duplicate,
+      deduplicated: true,
+      fcm_dispatch: { sent: 0, failed: 0 }
+    });
   }
 
   const id = uuidv4();
