@@ -671,6 +671,10 @@ class AlarmService {
       final uuid = await IdMapper.getUuid(intId);
       if (uuid == null || uuid.startsWith('local_')) return;
       if (!await Alarm.isRinging(intId)) return;
+      // Deliberately NOT queued through AlarmStateOutbox: a durable 'ringing'
+      // could be flushed after a remote silence and overwrite the server's
+      // authoritative 'dismissed' back to 'ringing', which the reconcile then
+      // re-arms — the remote-silence loop this guard exists to prevent.
       await BackendClient.updateAlarmState(uuid, 'ringing');
     } catch (e) {
       // ignore: avoid_print
@@ -734,9 +738,11 @@ class AlarmService {
     await Alarm.set(alarmSettings: newSettings);
 
     if (uuid != null && !uuid.startsWith('local_')) {
-      // Async notify backend with the exact next-ring time so the server's
-      // target_time matches the alarm the phone actually armed (§6.3).
-      BackendClient.updateAlarmState(
+      // Queue the snooze with the exact next-ring time so the server's
+      // target_time matches the alarm the phone actually armed (§6.3). It goes
+      // through the persisted outbox: a report lost to a failed request or to
+      // the app being killed would otherwise leave the server stale.
+      await enqueueStateReport(
         uuid,
         'snoozed',
         targetTime: snoozeTime.toUtc().toIso8601String(),

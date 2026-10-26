@@ -917,7 +917,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         await IdMapper.setEnabled(item.id, true);
         await IdMapper.setTargetTime(item.id, target);
         if (item.uuid != null && !item.uuid!.startsWith('local_')) {
-          BackendClient.updateAlarmState(
+          await AlarmService.enqueueStateReport(
             item.uuid!,
             'pending',
             targetTime: target.toUtc().toIso8601String(),
@@ -936,7 +936,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         await Alarm.stop(item.id);
         await IdMapper.setEnabled(item.id, false);
         if (item.uuid != null && !item.uuid!.startsWith('local_')) {
-          BackendClient.updateAlarmState(item.uuid!, 'disabled');
+          await AlarmService.enqueueStateReport(item.uuid!, 'disabled');
         }
         _showToast('alarm deactivated');
       } catch (e) {
@@ -1167,7 +1167,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
         // Tell the backend this alarm is alive again with a new target time.
         if (item.uuid != null && !item.uuid!.startsWith('local_')) {
-          await BackendClient.updateAlarmState(
+          await AlarmService.enqueueStateReport(
             item.uuid!,
             'pending',
             targetTime: finalTarget.toUtc().toIso8601String(),
