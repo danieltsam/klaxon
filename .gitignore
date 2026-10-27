@@ -73,3 +73,12 @@ Thumbs.db
 AGENT_HANDOFF.md
 docs/PROJECT-STATE.md
 docs/agent_context/
+
+# Local scratch and agent state
+.scratch/
+.superpowers/
+
+# Env files other than the documented templates
+.env.*
+!.env.example
+!backend/.env.example
