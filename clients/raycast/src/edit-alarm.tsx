@@ -3,7 +3,6 @@ import {
   Form,
   FormValidation,
   getPreferenceValues,
-  Icon,
   LaunchProps,
   List,
   showToast,
@@ -34,6 +33,7 @@ interface EditAlarmValues {
   description: string;
   datetime: Date | null;
   recurrence: string;
+  interval: string;
   tone: string;
   ramp: string;
 }
@@ -67,6 +67,7 @@ function EditAlarmForm({ alarm }: EditAlarmProps) {
       description: alarm.description ?? "",
       datetime: toLocalDate(alarm),
       recurrence: recurrenceValue,
+      interval: alarm.recurrence_interval_weeks === 2 ? "2" : "1",
       tone: alarm.sound_tone ?? "alarm",
       ramp: String(alarm.ramp_seconds ?? 30),
     },
@@ -74,6 +75,7 @@ function EditAlarmForm({ alarm }: EditAlarmProps) {
       label: FormValidation.Required,
       datetime: FormValidation.Required,
       recurrence: FormValidation.Required,
+      interval: FormValidation.Required,
       tone: FormValidation.Required,
       ramp: FormValidation.Required,
     },
@@ -86,6 +88,8 @@ function EditAlarmForm({ alarm }: EditAlarmProps) {
           repeat_days: daysFromRecurrenceValue(formValues.recurrence),
           sound_tone: formValues.tone as SoundTone,
           ramp_seconds: Number(formValues.ramp),
+          // Sent unconditionally so a fortnightly alarm can be made weekly.
+          recurrence_interval_weeks: Number(formValues.interval) as 1 | 2,
         });
         await showDispatchToast(result, "Updated");
         if (summary.noDevices) {
@@ -96,7 +100,7 @@ function EditAlarmForm({ alarm }: EditAlarmProps) {
         pop();
       } catch (err) {
         await showToast({
-          title: "Remote Alarm",
+          title: "Klaxon",
           message: err instanceof Error ? err.message : String(err),
           style: Toast.Style.Failure,
         });
@@ -124,6 +128,15 @@ function EditAlarmForm({ alarm }: EditAlarmProps) {
           <Form.Dropdown.Item key={opt.key} value={opt.key} title={opt.label} />
         ))}
       </Form.Dropdown>
+      <Form.Dropdown title="Interval" {...itemProps.interval}>
+        {INTERVAL_OPTIONS.map((opt) => (
+          <Form.Dropdown.Item
+            key={opt.value}
+            value={opt.value}
+            title={opt.label}
+          />
+        ))}
+      </Form.Dropdown>
       <Form.Dropdown title="Tone" {...itemProps.tone}>
         {SOUND_TONES.map((tone) => (
           <Form.Dropdown.Item key={tone} value={tone} title={tone} />
@@ -131,7 +144,11 @@ function EditAlarmForm({ alarm }: EditAlarmProps) {
       </Form.Dropdown>
       <Form.Dropdown title="Ramp" {...itemProps.ramp}>
         {RAMP_OPTIONS.map((ramp) => (
-          <Form.Dropdown.Item key={ramp} value={String(ramp)} title={`${ramp}s`} />
+          <Form.Dropdown.Item
+            key={ramp}
+            value={String(ramp)}
+            title={`${ramp}s`}
+          />
         ))}
       </Form.Dropdown>
       {summary.noDevices && (
@@ -154,25 +171,33 @@ export function EditAlarm({ alarm }: { alarm?: Alarm }) {
   if (!alarm) {
     return (
       <Form>
-        <Form.Description title="Alarm not found" text="The alarm could not be loaded." />
+        <Form.Description
+          title="Alarm not found"
+          text="The alarm could not be loaded."
+        />
       </Form>
     );
   }
   return <EditAlarmForm alarm={alarm} />;
 }
 
-export default function EditAlarmCommand(props: LaunchProps<{ arguments: { id: string } }>) {
+export default function EditAlarmCommand(
+  props: LaunchProps<{ arguments: { id: string } }>,
+) {
   const client = useClient();
   const prefs = getPreferenceValues<Preferences>();
-  const { data: alarms, isLoading, error } = useFetch<Alarm[]>(
-    async () => client.listAlarms("all"),
-    { execute: true }
-  );
+  const {
+    data: alarms,
+    isLoading,
+    error,
+  } = useFetch<Alarm[]>(async () => client.listAlarms("all"), {
+    execute: true,
+  });
   const alarm = alarms?.find((a) => a.id === props.arguments.id);
 
   if (error && !isLoading) {
     return (
-      <List isLoading={isLoading} navigationTitle="Remote Alarm">
+      <List isLoading={isLoading} navigationTitle="Klaxon">
         <ErrorEmptyView error={error} backendUrl={prefs.backendUrl} />
       </List>
     );
