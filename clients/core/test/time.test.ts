@@ -431,3 +431,41 @@ describe("clock followed by a day qualifier", () => {
     assert.equal(split.parsed.targetTime.getDate(), 29);
   });
 });
+
+describe("clock with an anchor after it", () => {
+  const now = new Date(2026, 8, 26, 10, 0, 0, 0); // Sat 26 Sep 2026, 10:00 local
+
+  it("keeps a recurrence written after the clock", () => {
+    const split = parseLeadingTime("7am every mon gym", now);
+    assert.ok(split);
+    assert.deepEqual(split.parsed.repeatDays, [1]);
+    assert.equal(split.rest, "gym");
+    assert.equal(split.parsed.targetTime.getDay(), 1);
+  });
+
+  it("accepts `on` between the clock and the day", () => {
+    const split = parseLeadingTime("7am on monday gym", now);
+    assert.ok(split);
+    assert.equal(split.rest, "gym");
+    assert.equal(split.parsed.targetTime.getDay(), 1);
+  });
+
+  it("joins a day period to a following day qualifier", () => {
+    const split = parseLeadingTime("noon tomorrow dentist", now);
+    assert.ok(split);
+    assert.equal(split.rest, "dentist");
+    assert.equal(split.parsed.targetTime.getDate(), 27);
+    assert.equal(split.parsed.targetTime.getHours(), 12);
+  });
+
+  it("refuses a date that does not exist instead of rolling it", () => {
+    assert.throws(
+      () => parseLeadingTime("31 apr 7am dentist", now),
+      (err: unknown) => {
+        assert.ok(err instanceof TimeParseError);
+        assert.match(err.message, /not a real date/);
+        return true;
+      }
+    );
+  });
+});

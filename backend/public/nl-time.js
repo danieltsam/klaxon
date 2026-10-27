@@ -91,7 +91,7 @@
       sunday: 7,
     };
 
-    var CONNECTORS = new Set(["at", "in"]);
+    var CONNECTORS = new Set(["at", "in", "on"]);
 
     /** Month name (short and full) -> 1-based calendar month (spec §6.4). */
     var MONTH_NAMES = {
@@ -502,6 +502,47 @@
      * makes the first the month. When both fields are ≤ 12 the default is
      * **day/month** (`03/04` = 3 Apr).
      */
+    /** Days in a 1-based month, for a given year (Feb 29 depends on it). */
+    function daysInMonth(month, year) {
+      return new Date(year, month, 0).getDate();
+    }
+
+    /**
+     * Refuse a date that does not exist. The builders use setMonth, which rolls
+     * 31 April into 1 May, so an impossible date used to resolve to a plausible
+     * wrong day. Scanning before the ladder keeps the refusal from being
+     * swallowed by a shorter, valid speculative parse.
+     */
+    function assertRealDates(toks, now) {
+      var year = now.getFullYear();
+      function check(day, month, token) {
+        if (month < 1 || month > 12) return;
+        if (day > daysInMonth(month, year)) {
+          throw new TimeParseError(
+            '"' + (token || day + "/" + month) + '" is not a real date in ' + year + ".",
+            token,
+            "unparseable"
+          );
+        }
+      }
+
+      for (var i = 0; i < toks.length; i++) {
+        var monthAfter = MONTH_NAMES[toks[i]];
+        if (monthAfter) {
+          var next = toks[i + 1];
+          var day = next ? parseDayNumber(next) : null;
+          if (day !== null) check(day, monthAfter, toks[i] + " " + next);
+        }
+        var monthBefore = MONTH_NAMES[toks[i + 1]];
+        if (monthBefore) {
+          var dayBefore = parseDayNumber(toks[i]);
+          if (dayBefore !== null) check(dayBefore, monthBefore, toks[i] + " " + toks[i + 1]);
+        }
+        var numeric = parseNumericDate(toks[i]);
+        if (numeric) check(numeric.day, numeric.month, toks[i]);
+      }
+    }
+
     function parseNumericDate(token) {
       var match = /^(\d{1,2})\/(\d{1,2})$/.exec(token);
       if (!match) return null;
@@ -860,6 +901,30 @@
             }
           }
         }
+
+        // Clock → recurrence: `7am every mon`. Without this the prefix parses
+        // alone and the recurrence words become the label.
+        if (leadClock) {
+          var rj = leadClock.next;
+          while (rj < toks.length && CONNECTORS.has(toks[rj])) rj++;
+          if (rj < toks.length) {
+            var trailingRepeat = matchRecurrencePrefix(toks, rj);
+            if (trailingRepeat && trailingRepeat.next === toks.length) {
+              return finalize(
+                buildClockTime(
+                  ctx,
+                  null,
+                  trailingRepeat.repeatDays,
+                  leadClock.hours,
+                  leadClock.minutes
+                ),
+                trailingRepeat.repeatDays,
+                ctx.now,
+                trailingRepeat.interval
+              );
+            }
+          }
+        }
       }
 
       // Duration form: only ever standalone (no day/recurrence qualifier). The
@@ -890,9 +955,46 @@
       // Day period as a clock (spec §6.2): `afternoon`, `this morning`,
       // `tomorrow noon`. Never `bare`, so it always passes the trap guard above.
       var period = parseDayPeriod(toks, i);
-      if (period && period.next === toks.length) {
-        var periodTime = buildClockTime(ctx, qualifier, repeatDays, period.hours, period.minutes);
-        return finalize(periodTime, repeatDays, ctx.now, interval);
+      if (period) {
+        var pj = period.next;
+        while (pj < toks.length && CONNECTORS.has(toks[pj])) pj++;
+
+        if (pj === toks.length) {
+          var periodTime = buildClockTime(ctx, qualifier, repeatDays, period.hours, period.minutes);
+          return finalize(periodTime, repeatDays, ctx.now, interval);
+        }
+
+        var trailingPeriodDay = matchDayQualifier(toks, pj);
+        if (trailingPeriodDay && trailingPeriodDay.next === toks.length) {
+          return finalize(
+            buildClockTime(
+              ctx,
+              trailingPeriodDay.qualifier,
+              repeatDays,
+              period.hours,
+              period.minutes
+            ),
+            repeatDays,
+            ctx.now,
+            interval
+          );
+        }
+
+        var trailingPeriodRepeat = matchRecurrencePrefix(toks, pj);
+        if (trailingPeriodRepeat && trailingPeriodRepeat.next === toks.length) {
+          return finalize(
+            buildClockTime(
+              ctx,
+              null,
+              trailingPeriodRepeat.repeatDays,
+              period.hours,
+              period.minutes
+            ),
+            trailingPeriodRepeat.repeatDays,
+            ctx.now,
+            trailingPeriodRepeat.interval
+          );
+        }
       }
 
       return null;
@@ -982,6 +1084,7 @@
       var metadata = extractMetadata(inputRaw, inputToks);
       var raw = metadata.raw;
       var toks = metadata.toks;
+      assertRealDates(toks, now ?? new Date());
 
       var parsed = tryParseExpression(toks, nowDate, true);
       if (parsed) {
@@ -1185,6 +1288,7 @@
       var metadata = extractMetadata(inputRaw, inputToks);
       var raw = metadata.raw;
       var toks = metadata.toks;
+      assertRealDates(toks, now ?? new Date());
 
       // The confident whole-input parse. A passed `this <weekday>` / `this
       // weekend` here is a hard `already_passed` refusal the caller wants to

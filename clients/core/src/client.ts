@@ -400,6 +400,21 @@ export class RemoteAlarmClient {
       if (patch.repeat_days === undefined && parsed.repeatDays.length > 0) {
         body.repeat_days = encodeRepeatDays(parsed.repeatDays);
       }
+      // An edit that names an interval or metadata must carry it, exactly as a
+      // create does. Dropping it silently made "edited" a lie.
+      if (patch.recurrence_interval_weeks === undefined) {
+        const inferred = intervalToWeeks(parsed.interval);
+        if (inferred !== undefined) body.recurrence_interval_weeks = inferred;
+      }
+      if (patch.sound_tone === undefined && parsed.alarm?.sound_tone !== undefined) {
+        body.sound_tone = parsed.alarm.sound_tone;
+      }
+      if (patch.ramp_seconds === undefined && parsed.alarm?.ramp_seconds !== undefined) {
+        body.ramp_seconds = parsed.alarm.ramp_seconds;
+      }
+      if (patch.description === undefined && parsed.alarm?.description !== undefined) {
+        body.description = parsed.alarm.description;
+      }
     } else if (patch.targetTime !== undefined) {
       // Absolute LOCAL instant — same single conversion point as parsed times.
       body.target_time = toAlignedIso(patch.targetTime);
