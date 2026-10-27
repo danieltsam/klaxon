@@ -53,6 +53,23 @@
     var WEEKDAYS = [1, 2, 3, 4, 5];
     var WEEKENDS = [6, 7];
 
+    var NUMBER_WORDS = {
+      a: "1",
+      an: "1",
+      one: "1",
+      two: "2",
+      three: "3",
+      four: "4",
+      five: "5",
+      six: "6",
+      seven: "7",
+      eight: "8",
+      nine: "9",
+      ten: "10",
+      eleven: "11",
+      twelve: "12",
+    };
+
     var WEEKDAY_NAMES = {
       mon: 1,
       monday: 1,
@@ -298,6 +315,9 @@
       if (first === "tomorrow" || first === "tmr") {
         return { qualifier: { kind: "tomorrow" }, next: i + 1 };
       }
+      if (first === "day" && toks[i + 1] === "after" && toks[i + 2] === "tomorrow") {
+        return { qualifier: { kind: "in-days", days: 2 }, next: i + 3 };
+      }
       if (first === "today") {
         return { qualifier: { kind: "today" }, next: i + 1 };
       }
@@ -446,7 +466,12 @@
     function parseDayWeekOffset(toks, i) {
       var j = i;
       if (toks[j] === "in") j++;
-      var joined = toks.slice(j).join("");
+      var joined = toks
+        .slice(j)
+        .map(function (token) {
+          return NUMBER_WORDS[token] || token;
+        })
+        .join("");
       var match = /^(?:(\d+)(?:w|week|weeks))?(?:(\d+)(?:d|day|days))?(?:fromnow)?$/.exec(
         joined
       );
@@ -588,6 +613,12 @@
         candidate.setDate(candidate.getDate() + 1);
         candidate.setHours(hours, minutes, 0, 0);
         return candidate;
+      }
+      if (qualifier && qualifier.kind === "in-days") {
+        var inDays = new Date(ctx.now.getTime());
+        inDays.setDate(inDays.getDate() + qualifier.days);
+        inDays.setHours(hours, minutes, 0, 0);
+        return inDays;
       }
       if (qualifier && qualifier.kind === "today") {
         var candidate2 = new Date(ctx.now.getTime());
@@ -806,6 +837,29 @@
             }
           }
         }
+
+        // Clock → day qualifier: `6pm tomorrow`, `1:45 pm today`, `6pm day after
+        // tomorrow`. Mirrors the same branch in clients/core/src/time.ts.
+        if (leadClock) {
+          var dj = leadClock.next;
+          while (dj < toks.length && CONNECTORS.has(toks[dj])) dj++;
+          if (dj < toks.length) {
+            var trailingDay = matchDayQualifier(toks, dj);
+            if (trailingDay && trailingDay.next === toks.length) {
+              return finalize(
+                buildClockTime(
+                  ctx,
+                  trailingDay.qualifier,
+                  [],
+                  leadClock.hours,
+                  leadClock.minutes
+                ),
+                [],
+                ctx.now
+              );
+            }
+          }
+        }
       }
 
       // Duration form: only ever standalone (no day/recurrence qualifier). The
@@ -923,7 +977,7 @@
       }
 
       var inputToks = inputRaw.map(function (t) {
-        return t.toLowerCase();
+        return t.toLowerCase().replace(/\./g, "");
       });
       var metadata = extractMetadata(inputRaw, inputToks);
       var raw = metadata.raw;
@@ -1126,7 +1180,7 @@
       if (inputRaw.length === 0) return null;
 
       var inputToks = inputRaw.map(function (t) {
-        return t.toLowerCase();
+        return t.toLowerCase().replace(/\./g, "");
       });
       var metadata = extractMetadata(inputRaw, inputToks);
       var raw = metadata.raw;

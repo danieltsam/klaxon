@@ -24,8 +24,6 @@ declare namespace Preferences {
   export type QuickCreate = ExtensionPreferences & {}
   /** Preferences accessible in the `create-alarm` command */
   export type CreateAlarm = ExtensionPreferences & {}
-  /** Preferences accessible in the `edit-alarm` command */
-  export type EditAlarm = ExtensionPreferences & {}
   /** Preferences accessible in the `device-status` command */
   export type DeviceStatus = ExtensionPreferences & {}
   /** Preferences accessible in the `test-connection` command */
@@ -39,11 +37,6 @@ declare namespace Arguments {
   export type QuickCreate = {}
   /** Arguments passed to the `create-alarm` command */
   export type CreateAlarm = {}
-  /** Arguments passed to the `edit-alarm` command */
-  export type EditAlarm = {
-  /** Alarm ID */
-  "id": string
-}
   /** Arguments passed to the `device-status` command */
   export type DeviceStatus = {}
   /** Arguments passed to the `test-connection` command */

@@ -2,6 +2,7 @@ import {
   Action,
   ActionPanel,
   Form,
+  Icon,
   showToast,
   Toast,
   useNavigation,
@@ -12,7 +13,7 @@ import type { SoundTone } from "@remotealarm/core";
 import {
   daysFromRecurrenceValue,
   formatAge,
-  INTERVAL_OPTIONS,
+  previewTone,
   requiredField,
   RAMP_OPTIONS,
   RECURRENCE_OPTIONS,
@@ -30,7 +31,7 @@ interface CreateAlarmValues {
   description: string;
   datetime: Date | null;
   recurrence: string;
-  interval: string;
+  fortnightly: boolean;
   tone: string;
   ramp: string;
 }
@@ -43,54 +44,54 @@ export default function CreateAlarmCommand() {
   const summary = summarizeDevices(devices);
   const [defaultsSet, setDefaultsSet] = useState(false);
 
-  const { handleSubmit, itemProps, setValue } = useForm<CreateAlarmValues>({
-    initialValues: {
-      label: "",
-      description: "",
-      datetime: new Date(),
-      recurrence: "once",
-      interval: "1",
-      tone: settings?.sound_tone ?? "alarm",
-      ramp: String(settings?.ramp_seconds ?? 30),
-    },
-    validation: {
-      label: requiredField,
-      datetime: requiredField,
-      recurrence: requiredField,
-      interval: requiredField,
-      tone: requiredField,
-      ramp: requiredField,
-    },
-    onSubmit: async (formValues) => {
-      try {
-        const repeatDays = daysFromRecurrenceValue(formValues.recurrence);
-        const result = await client.createAlarm({
-          label: formValues.label,
-          targetTime: formValues.datetime ?? new Date(),
-          description: formValues.description || undefined,
-          repeat_days: repeatDays,
-          sound_tone: formValues.tone as SoundTone,
-          ramp_seconds: Number(formValues.ramp),
-          // A one-time alarm has no cadence to stretch.
-          recurrence_interval_weeks:
-            repeatDays && formValues.interval === "2" ? 2 : undefined,
-        });
-        await showDispatchToast(result, "Created");
-        if (summary.noDevices) {
-          await showWarning("No devices registered — this alarm won't ring.");
-        } else if (summary.stale) {
-          await showWarning("Phone last pinged over 24 hours ago.");
+  const { handleSubmit, itemProps, setValue, values } =
+    useForm<CreateAlarmValues>({
+      initialValues: {
+        label: "",
+        description: "",
+        datetime: new Date(),
+        recurrence: "once",
+        fortnightly: false,
+        tone: settings?.sound_tone ?? "alarm",
+        ramp: String(settings?.ramp_seconds ?? 30),
+      },
+      validation: {
+        label: requiredField,
+        datetime: requiredField,
+        recurrence: requiredField,
+        tone: requiredField,
+        ramp: requiredField,
+      },
+      onSubmit: async (formValues) => {
+        try {
+          const repeatDays = daysFromRecurrenceValue(formValues.recurrence);
+          const result = await client.createAlarm({
+            label: formValues.label,
+            targetTime: formValues.datetime ?? new Date(),
+            description: formValues.description || undefined,
+            repeat_days: repeatDays,
+            sound_tone: formValues.tone as SoundTone,
+            ramp_seconds: Number(formValues.ramp),
+            // A one-time alarm has no cadence to stretch.
+            recurrence_interval_weeks:
+              repeatDays && formValues.fortnightly ? 2 : undefined,
+          });
+          await showDispatchToast(result, "Created");
+          if (summary.noDevices) {
+            await showWarning("No devices registered — this alarm won't ring.");
+          } else if (summary.stale) {
+            await showWarning("Phone last pinged over 24 hours ago.");
+          }
+          pop();
+        } catch (err) {
+          await showToast({
+            title: "Klaxon",
+            message: err instanceof Error ? err.message : String(err),
+            style: Toast.Style.Failure,
+          });
         }
-        pop();
-      } catch (err) {
-        await showToast({
-          title: "Klaxon",
-          message: err instanceof Error ? err.message : String(err),
-          style: Toast.Style.Failure,
-        });
-      }
-    },
-  });
+      },
+    });
 
   useEffect(() => {
     if (settings && !defaultsSet) {
@@ -106,6 +107,11 @@ export default function CreateAlarmCommand() {
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Create Alarm" onSubmit={handleSubmit} />
+          <Action
+            title="Preview Tone"
+            icon={Icon.Speaker}
+            onAction={() => previewTone(values.tone as SoundTone)}
+          />
         </ActionPanel>
       }
     >
@@ -125,15 +131,12 @@ export default function CreateAlarmCommand() {
           <Form.Dropdown.Item key={opt.key} value={opt.key} title={opt.label} />
         ))}
       </Form.Dropdown>
-      <Form.Dropdown title="Interval" {...itemProps.interval}>
-        {INTERVAL_OPTIONS.map((opt) => (
-          <Form.Dropdown.Item
-            key={opt.value}
-            value={opt.value}
-            title={opt.label}
-          />
-        ))}
-      </Form.Dropdown>
+      <Form.Checkbox
+        title="Every 2 weeks"
+        label="Repeat on a fortnightly cadence"
+        info="Applies to the recurrence above. One-time alarms ignore it."
+        {...itemProps.fortnightly}
+      />
       <Form.Dropdown title="Tone" {...itemProps.tone}>
         {SOUND_TONES.map((tone) => (
           <Form.Dropdown.Item key={tone} value={tone} title={tone} />

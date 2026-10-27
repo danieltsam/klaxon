@@ -1,6 +1,7 @@
 import {
   Action,
   ActionPanel,
+  Icon,
   Form,
   showToast,
   Toast,
@@ -13,6 +14,7 @@ import type { SoundTone } from "@remotealarm/core";
 import { formatRecurrence, requiredField } from "./lib";
 import {
   formatAge,
+  previewTone,
   RAMP_OPTIONS,
   showDispatchToast,
   showWarning,
@@ -183,6 +185,11 @@ export default function QuickCreateCommand() {
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Create Alarm" onSubmit={handleSubmit} />
+          <Action
+            title="Preview Tone"
+            icon={Icon.Speaker}
+            onAction={() => previewTone(values.tone as SoundTone)}
+          />
         </ActionPanel>
       }
     >

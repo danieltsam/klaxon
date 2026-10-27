@@ -33,20 +33,6 @@
       "mode": "view"
     },
     {
-      "name": "edit-alarm",
-      "title": "Edit Alarm",
-      "description": "Edit an existing alarm.",
-      "mode": "view",
-      "arguments": [
-        {
-          "name": "id",
-          "type": "text",
-          "placeholder": "Alarm ID",
-          "required": true
-        }
-      ]
-    },
-    {
       "name": "device-status",
       "title": "Device Status",
       "description": "Check phone battery, charging state, and last ping age.",

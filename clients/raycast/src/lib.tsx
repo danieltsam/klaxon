@@ -4,6 +4,7 @@ import {
   Alert,
   Clipboard,
   Color,
+  environment,
   confirmAlert,
   getPreferenceValues,
   Icon,
@@ -13,6 +14,8 @@ import {
   Toast,
 } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
+import { execFile } from "node:child_process";
+import { join } from "node:path";
 import { useMemo } from "react";
 import type {
   Alarm,
@@ -324,6 +327,20 @@ export function showDispatchToast(
     message += " · no dispatch report";
   }
   return showToast({ title: "Klaxon", message });
+}
+
+/** Play a tone through the Mac so the name means something. */
+export function previewTone(tone: SoundTone): void {
+  const file = join(environment.assetsPath, "tones", `${tone}.mp3`);
+  execFile("afplay", [file], (err) => {
+    if (err) {
+      void showToast({
+        title: "Klaxon",
+        message: `Could not play ${tone}: ${err.message}`,
+        style: Toast.Style.Failure,
+      });
+    }
+  });
 }
 
 export function showWarning(message: string) {
