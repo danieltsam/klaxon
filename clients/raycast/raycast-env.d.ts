@@ -8,7 +8,7 @@
 /* eslint-disable @typescript-eslint/ban-types */
 
 type ExtensionPreferences = {
-  /** Backend URL - The URL of your Klaxon backend (homelab or tailnet). */
+  /** Backend URL - The URL of your Klaxon backend (homelab or tailnet). The scheme is optional; http:// is assumed. */
   "backendUrl": string,
   /** Confirm destructive actions - Show a confirmation alert before cancelling an alarm. */
   "confirmDestructive": boolean

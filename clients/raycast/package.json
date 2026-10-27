@@ -59,8 +59,8 @@
       "type": "textfield",
       "required": true,
       "title": "Backend URL",
-      "description": "The URL of your Klaxon backend (homelab or tailnet).",
-      "placeholder": "http://klaxon.tailnet:3000"
+      "description": "The URL of your Klaxon backend (homelab or tailnet). The scheme is optional; http:// is assumed.",
+      "placeholder": "baymax:8001"
     },
     {
       "name": "confirmDestructive",

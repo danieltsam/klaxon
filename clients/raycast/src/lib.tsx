@@ -251,9 +251,11 @@ export function alarmAccessories(alarm: Alarm, now: Date) {
 export function ErrorEmptyView({
   error,
   backendUrl,
+  onTest,
 }: {
   error: unknown;
   backendUrl: string;
+  onTest?: () => void;
 }) {
   let message = "Could not reach the Klaxon backend.";
   if (error instanceof RemoteAlarmError) {
@@ -268,6 +270,13 @@ export function ErrorEmptyView({
       description={`${message} Check the Backend URL preference: ${backendUrl}`}
       actions={
         <ActionPanel>
+          {onTest && (
+            <Action
+              title="Test Connection"
+              icon={Icon.Globe}
+              onAction={onTest}
+            />
+          )}
           <Action
             title="Open Preferences"
             onAction={openExtensionPreferences}
