@@ -53,6 +53,33 @@ const ALL_DAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 7];
 const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5];
 const WEEKENDS: Weekday[] = [6, 7];
 
+/**
+ * `1:45 p.m.` is the same clock as `1:45 pm`, but the periods survive
+ * whitespace tokenisation. Strip them for the parse tokens only; the label
+ * keeps the original text.
+ */
+function normalizeToken(token: string): string {
+  return token.toLowerCase().replace(/\./g, "");
+}
+
+/** Spoken counts in offsets, e.g. `in two days`. */
+const NUMBER_WORDS: Record<string, string> = {
+  a: "1",
+  an: "1",
+  one: "1",
+  two: "2",
+  three: "3",
+  four: "4",
+  five: "5",
+  six: "6",
+  seven: "7",
+  eight: "8",
+  nine: "9",
+  ten: "10",
+  eleven: "11",
+  twelve: "12",
+};
+
 const WEEKDAY_NAMES: Record<string, Weekday> = {
   mon: 1,
   monday: 1,
@@ -137,6 +164,7 @@ interface AbsoluteDate {
 type DayQualifier =
   | { kind: "today" }
   | { kind: "tomorrow" }
+  | { kind: "in-days"; days: number }
   | { kind: "weekday"; weekday: Weekday }
   | { kind: "this-weekday"; weekday: Weekday; token: string }
   | { kind: "next-weekday"; weekday: Weekday }
@@ -319,6 +347,9 @@ function matchDayQualifier(toks: string[], i: number): { qualifier: DayQualifier
   if (first === "tomorrow" || first === "tmr") {
     return { qualifier: { kind: "tomorrow" }, next: i + 1 };
   }
+  if (first === "day" && toks[i + 1] === "after" && toks[i + 2] === "tomorrow") {
+    return { qualifier: { kind: "in-days", days: 2 }, next: i + 3 };
+  }
   if (first === "today") {
     return { qualifier: { kind: "today" }, next: i + 1 };
   }
@@ -474,7 +505,10 @@ function parseDayWeekOffset(
 ): { days: number; next: number } | null {
   let j = i;
   if (toks[j] === "in") j++;
-  const joined = toks.slice(j).join("");
+  const joined = toks
+    .slice(j)
+    .map((token) => NUMBER_WORDS[token] ?? token)
+    .join("");
   const match = /^(?:(\d+)(?:w|week|weeks))?(?:(\d+)(?:d|day|days))?(?:fromnow)?$/.exec(joined);
   if (!match) return null;
   const [, w, d] = match;
@@ -634,6 +668,12 @@ function buildClockTime(
   if (qualifier?.kind === "tomorrow") {
     const candidate = new Date(ctx.now.getTime());
     candidate.setDate(candidate.getDate() + 1);
+    candidate.setHours(hours, minutes, 0, 0);
+    return candidate;
+  }
+  if (qualifier?.kind === "in-days") {
+    const candidate = new Date(ctx.now.getTime());
+    candidate.setDate(candidate.getDate() + qualifier.days);
     candidate.setHours(hours, minutes, 0, 0);
     return candidate;
   }
@@ -851,6 +891,24 @@ function tryParseExpression(
         }
       }
     }
+
+    // Clock → day qualifier: `6pm tomorrow`, `1:45 pm today`, `6pm day after
+    // tomorrow`. The ladder only tried qualifier → clock, so the trailing word
+    // fell into the label and the alarm resolved to today.
+    if (clock) {
+      let j = clock.next;
+      while (j < toks.length && CONNECTORS.has(toks[j])) j++;
+      if (j < toks.length) {
+        const trailingDay = matchDayQualifier(toks, j);
+        if (trailingDay && trailingDay.next === toks.length) {
+          return finalize(
+            buildClockTime(ctx, trailingDay.qualifier, [], clock.hours, clock.minutes),
+            [],
+            ctx.now
+          );
+        }
+      }
+    }
   }
 
   // Duration form: only ever standalone (no day/recurrence qualifier). The
@@ -969,7 +1027,7 @@ export function parseTime(input: string, now?: Date): ParsedTime {
     throw new TimeParseError("Empty time expression.", "");
   }
 
-  const inputToks = inputRaw.map((t) => t.toLowerCase());
+  const inputToks = inputRaw.map(normalizeToken);
   const metadata = extractMetadata(inputRaw, inputToks);
   const raw = metadata.raw;
   const toks = metadata.toks;
@@ -1176,7 +1234,7 @@ export function parseLeadingTime(
   const inputRaw = input.trim().split(/\s+/).filter(Boolean);
   if (inputRaw.length === 0) return null;
 
-  const inputToks = inputRaw.map((t) => t.toLowerCase());
+  const inputToks = inputRaw.map(normalizeToken);
   const metadata = extractMetadata(inputRaw, inputToks);
   const raw = metadata.raw;
   const toks = metadata.toks;

@@ -1,6 +1,7 @@
 import {
   Action,
   ActionPanel,
+  Icon,
   Form,
   getPreferenceValues,
   LaunchProps,
@@ -17,7 +18,7 @@ import {
   daysFromRecurrenceValue,
   ErrorEmptyView,
   formatAge,
-  INTERVAL_OPTIONS,
+  previewTone,
   RAMP_OPTIONS,
   RECURRENCE_OPTIONS,
   requiredField,
@@ -35,7 +36,7 @@ interface EditAlarmValues {
   description: string;
   datetime: Date | null;
   recurrence: string;
-  interval: string;
+  fortnightly: boolean;
   tone: string;
   ramp: string;
 }
@@ -63,13 +64,13 @@ function EditAlarmForm({ alarm }: EditAlarmProps) {
     return options;
   }, [alarm.repeat_days, recurrenceValue]);
 
-  const { handleSubmit, itemProps } = useForm<EditAlarmValues>({
+  const { handleSubmit, itemProps, values } = useForm<EditAlarmValues>({
     initialValues: {
       label: alarm.label,
       description: alarm.description ?? "",
       datetime: toLocalDate(alarm),
       recurrence: recurrenceValue,
-      interval: alarm.recurrence_interval_weeks === 2 ? "2" : "1",
+      fortnightly: alarm.recurrence_interval_weeks === 2,
       tone: alarm.sound_tone ?? "alarm",
       ramp: String(alarm.ramp_seconds ?? 30),
     },
@@ -77,7 +78,6 @@ function EditAlarmForm({ alarm }: EditAlarmProps) {
       label: requiredField,
       datetime: requiredField,
       recurrence: requiredField,
-      interval: requiredField,
       tone: requiredField,
       ramp: requiredField,
     },
@@ -91,7 +91,7 @@ function EditAlarmForm({ alarm }: EditAlarmProps) {
           sound_tone: formValues.tone as SoundTone,
           ramp_seconds: Number(formValues.ramp),
           // Sent unconditionally so a fortnightly alarm can be made weekly.
-          recurrence_interval_weeks: Number(formValues.interval) as 1 | 2,
+          recurrence_interval_weeks: formValues.fortnightly ? 2 : 1,
         });
         await showDispatchToast(result, "Updated");
         if (summary.noDevices) {
@@ -115,6 +115,11 @@ function EditAlarmForm({ alarm }: EditAlarmProps) {
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Save Changes" onSubmit={handleSubmit} />
+          <Action
+            title="Preview Tone"
+            icon={Icon.Speaker}
+            onAction={() => previewTone(values.tone as SoundTone)}
+          />
         </ActionPanel>
       }
     >
@@ -130,15 +135,12 @@ function EditAlarmForm({ alarm }: EditAlarmProps) {
           <Form.Dropdown.Item key={opt.key} value={opt.key} title={opt.label} />
         ))}
       </Form.Dropdown>
-      <Form.Dropdown title="Interval" {...itemProps.interval}>
-        {INTERVAL_OPTIONS.map((opt) => (
-          <Form.Dropdown.Item
-            key={opt.value}
-            value={opt.value}
-            title={opt.label}
-          />
-        ))}
-      </Form.Dropdown>
+      <Form.Checkbox
+        title="Every 2 weeks"
+        label="Repeat on a fortnightly cadence"
+        info="Applies to the recurrence above. One-time alarms ignore it."
+        {...itemProps.fortnightly}
+      />
       <Form.Dropdown title="Tone" {...itemProps.tone}>
         {SOUND_TONES.map((tone) => (
           <Form.Dropdown.Item key={tone} value={tone} title={tone} />

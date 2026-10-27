@@ -20,7 +20,6 @@ import {
   alarmAccessories,
   cancelAlarmWithConfirm,
   copyAlarmId,
-  DeviceStatusAccessory,
   ErrorEmptyView,
   groupAlarms,
   iconForStatus,
@@ -123,7 +122,6 @@ export default function ListAlarmsCommand() {
       searchBarPlaceholder="Search alarms…"
       navigationTitle="Klaxon"
     >
-      <DeviceStatusAccessory summary={summary} />
       {!isLoading && !hasAlarms ? (
         <List.Section title="Alarms">
           <List.Item
@@ -158,19 +156,72 @@ export default function ListAlarmsCommand() {
         </List.Section>
       ) : (
         <>
-          <List.Section title="Ringing" subtitle={`${groups.ringing.length}`}>
-            {groups.ringing.map((alarm) => (
-              <AlarmItem
-                key={alarm.id}
-                alarm={alarm}
-                now={now}
-                summary={summary}
-                client={client}
-                onChange={revalidate}
-                confirmDestructive={prefs.confirmDestructive}
-              />
-            ))}
-          </List.Section>
+          {groups.ringing.length > 0 && (
+            <List.Section title="Ringing" subtitle={`${groups.ringing.length}`}>
+              {groups.ringing.map((alarm) => (
+                <AlarmItem
+                  key={alarm.id}
+                  alarm={alarm}
+                  now={now}
+                  summary={summary}
+                  client={client}
+                  onChange={revalidate}
+                  confirmDestructive={prefs.confirmDestructive}
+                />
+              ))}
+            </List.Section>
+          )}
+          {groups.upcoming.length > 0 && (
+            <List.Section
+              title="Upcoming"
+              subtitle={`${groups.upcoming.length}`}
+            >
+              {groups.upcoming.map((alarm) => (
+                <AlarmItem
+                  key={alarm.id}
+                  alarm={alarm}
+                  now={now}
+                  summary={summary}
+                  client={client}
+                  onChange={revalidate}
+                  confirmDestructive={prefs.confirmDestructive}
+                />
+              ))}
+            </List.Section>
+          )}
+          {groups.today.length > 0 && (
+            <List.Section title="Today" subtitle={`${groups.today.length}`}>
+              {groups.today.map((alarm) => (
+                <AlarmItem
+                  key={alarm.id}
+                  alarm={alarm}
+                  now={now}
+                  summary={summary}
+                  client={client}
+                  onChange={revalidate}
+                  confirmDestructive={prefs.confirmDestructive}
+                />
+              ))}
+            </List.Section>
+          )}
+          {groups.recurring.length > 0 && (
+            <List.Section
+              title="Recurring"
+              subtitle={`${groups.recurring.length}`}
+            >
+              {groups.recurring.map((alarm) => (
+                <AlarmItem
+                  key={alarm.id}
+                  alarm={alarm}
+                  now={now}
+                  summary={summary}
+                  client={client}
+                  onChange={revalidate}
+                  confirmDestructive={prefs.confirmDestructive}
+                />
+              ))}
+            </List.Section>
+          )}
           {groups.missed.length > 0 && (
             <List.Section title="Missed" subtitle={`${groups.missed.length}`}>
               {groups.missed.map((alarm) => (
@@ -186,48 +237,6 @@ export default function ListAlarmsCommand() {
               ))}
             </List.Section>
           )}
-          <List.Section title="Today" subtitle={`${groups.today.length}`}>
-            {groups.today.map((alarm) => (
-              <AlarmItem
-                key={alarm.id}
-                alarm={alarm}
-                now={now}
-                summary={summary}
-                client={client}
-                onChange={revalidate}
-                confirmDestructive={prefs.confirmDestructive}
-              />
-            ))}
-          </List.Section>
-          <List.Section title="Upcoming" subtitle={`${groups.upcoming.length}`}>
-            {groups.upcoming.map((alarm) => (
-              <AlarmItem
-                key={alarm.id}
-                alarm={alarm}
-                now={now}
-                summary={summary}
-                client={client}
-                onChange={revalidate}
-                confirmDestructive={prefs.confirmDestructive}
-              />
-            ))}
-          </List.Section>
-          <List.Section
-            title="Recurring"
-            subtitle={`${groups.recurring.length}`}
-          >
-            {groups.recurring.map((alarm) => (
-              <AlarmItem
-                key={alarm.id}
-                alarm={alarm}
-                now={now}
-                summary={summary}
-                client={client}
-                onChange={revalidate}
-                confirmDestructive={prefs.confirmDestructive}
-              />
-            ))}
-          </List.Section>
         </>
       )}
     </List>

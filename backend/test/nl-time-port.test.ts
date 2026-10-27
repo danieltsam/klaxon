@@ -386,3 +386,30 @@ describe('nl-time.js — final-review regression locks', () => {
     assertLocal(period.parsed.targetTime, { y: 2026, mo: 12, d: 25, h: 12, mi: 0, s: 0 });
   });
 });
+
+describe('browser port — clock followed by a day qualifier', () => {
+  const now = new Date(2026, 9, 27, 22, 0, 0, 0);
+
+  it('joins `1:45 p.m. tomorrow` and leaves no label', () => {
+    const split = NLTime.parseLeadingTime('1:45 p.m. tomorrow', now);
+    assert.ok(split);
+    assert.equal(split.rest, '');
+    assert.equal(split.parsed.targetTime.getDate(), 28);
+    assert.equal(split.parsed.targetTime.getHours(), 13);
+    assert.equal(split.parsed.targetTime.getMinutes(), 45);
+  });
+
+  it('understands `day after tomorrow`', () => {
+    const split = NLTime.parseLeadingTime('day after tomorrow 6:30am', now);
+    assert.ok(split);
+    assert.equal(split.parsed.targetTime.getDate(), 29);
+    assert.equal(split.parsed.targetTime.getHours(), 6);
+  });
+
+  it('understands a spoken offset', () => {
+    const split = NLTime.parseLeadingTime('in two days gym', now);
+    assert.ok(split);
+    assert.equal(split.rest, 'gym');
+    assert.equal(split.parsed.targetTime.getDate(), 29);
+  });
+});

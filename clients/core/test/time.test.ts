@@ -403,3 +403,31 @@ describe("final-review regression locks", () => {
     assertLocal(period.parsed.targetTime, 2026, 12, 25, 12, 0);
   });
 });
+
+describe("clock followed by a day qualifier", () => {
+  const now = new Date(2026, 9, 27, 22, 0, 0, 0); // 27 Oct 2026, 22:00 local
+
+  it("joins `1:45 p.m. tomorrow` and leaves no label", () => {
+    const split = parseLeadingTime("1:45 p.m. tomorrow", now);
+    assert.ok(split);
+    assert.equal(split.rest, "");
+    assert.equal(split.parsed.targetTime.getDate(), 28);
+    assert.equal(split.parsed.targetTime.getHours(), 13);
+    assert.equal(split.parsed.targetTime.getMinutes(), 45);
+  });
+
+  it("understands `day after tomorrow`", () => {
+    const split = parseLeadingTime("day after tomorrow 6:30am", now);
+    assert.ok(split);
+    assert.equal(split.parsed.targetTime.getDate(), 29);
+    assert.equal(split.parsed.targetTime.getHours(), 6);
+    assert.equal(split.parsed.targetTime.getMinutes(), 30);
+  });
+
+  it("understands a spoken offset", () => {
+    const split = parseLeadingTime("in two days gym", now);
+    assert.ok(split);
+    assert.equal(split.rest, "gym");
+    assert.equal(split.parsed.targetTime.getDate(), 29);
+  });
+});
