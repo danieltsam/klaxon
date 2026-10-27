@@ -101,7 +101,7 @@ function describe(alarm: AlarmRecord): string {
   if (alarm.sound_tone) lines.push(`Tone: ${alarm.sound_tone}`);
   if (alarm.ramp_seconds !== undefined) lines.push(`Ramp: ${alarm.ramp_seconds}s`);
   if (alarm.repeat_days) lines.push(`Repeat: ${alarm.repeat_days}`);
-  return `Managed by Remote Alarm\n${lines.join('\n')}`;
+  return `Managed by Klaxon\n${lines.join('\n')}`;
 }
 
 export function toGoogleEvent(alarm: AlarmRecord, timeZone: string): GoogleEvent {

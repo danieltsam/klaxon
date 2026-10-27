@@ -330,7 +330,7 @@ export async function mirrorSafely(alarm: AlarmRecord): Promise<void> {
   // credentials in .env resolves a LIVE gcal config. A :memory: database never
   // holds a gcal_calendar_id, so an unguarded push calls calendars.insert and
   // creates a real calendar -- once per test file. That happened: 20 stray
-  // "Remote Alarms" calendars.
+  // "Klaxon" calendars.
   //
   // The reconcile scheduler is guarded the same way, for the same reason.
   // GCAL_ENABLED=false in the test script stops this at the config layer; this
@@ -422,10 +422,10 @@ app.get('/api/calendar.ics', async (_request, reply) => {
   let icsLines: string[] = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//RemoteAlarm//Remote Alarm System//EN',
+    'PRODID:-//Klaxon//Klaxon//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
-    'X-WR-CALNAME:Remote Alarms',
+    'X-WR-CALNAME:Klaxon',
     'X-WR-TIMEZONE:UTC'
   ];
 
@@ -442,7 +442,7 @@ app.get('/api/calendar.ics', async (_request, reply) => {
     icsLines.push(`DTSTART:${formatIcalDate(startDate)}`);
     icsLines.push(`DTEND:${formatIcalDate(endDate)}`);
     icsLines.push(`SUMMARY:⏰ ${alarm.label}`);
-    icsLines.push(`DESCRIPTION:Alarm ID: ${alarm.id}\\nStatus: ${alarm.status}\\nManaged by Remote Alarm System`);
+    icsLines.push(`DESCRIPTION:Alarm ID: ${alarm.id}\\nStatus: ${alarm.status}\\nManaged by Klaxon`);
 
     if (alarm.repeat_days) {
       const days = alarm.repeat_days
@@ -1144,7 +1144,7 @@ if (!isTestRun) {
 
   try {
     await app.listen({ port: PORT, host: HOST });
-    console.log(`\n[Server] Remote Alarm Backend running at http://${HOST}:${PORT}`);
+    console.log(`\n[Server] Klaxon Backend running at http://${HOST}:${PORT}`);
     console.log(`[Server] Dashboard available at http://localhost:${PORT}\n`);
   } catch (err) {
     app.log.error(err);
@@ -1200,7 +1200,7 @@ if (!isTestRun) {
       // raise (spec §5.4).
       if (webhookKind === 'healthchecks' && webhookUrl) {
         void sendWebhookAlert(healthchecksUrl(webhookUrl, health.ok), 'healthchecks', {
-          title: 'Remote Alarm healthcheck',
+          title: 'Klaxon healthcheck',
           body: health.ok ? 'ok' : health.reasons.join(', ')
         });
       }
@@ -1214,13 +1214,13 @@ if (!isTestRun) {
           // POST; Healthchecks already got its liveness ping above.
           if (webhookKind !== 'healthchecks') {
             void sendWebhookAlert(webhookUrl, webhookKind, {
-              title: 'Remote Alarm delivery unhealthy',
+              title: 'Klaxon delivery unhealthy',
               body: health.reasons.join(', ')
             });
           }
           // Best-effort phone push, alongside the webhook. It cannot reach a
           // force-stopped phone, which is why the dashboard and webhook exist.
-          void sendFcmNotification('Remote Alarm delivery unhealthy', health.reasons.join(', '));
+          void sendFcmNotification('Klaxon delivery unhealthy', health.reasons.join(', '));
         }
       }
     } catch (err) {

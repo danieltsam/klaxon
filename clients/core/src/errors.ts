@@ -1,5 +1,5 @@
 /**
- * Error hierarchy for the Remote Alarm client.
+ * Error hierarchy for the Klaxon client.
  *
  * The client always surfaces the server's own `error`/`message` string rather
  * than replacing it with a generic message — the backend's validation messages

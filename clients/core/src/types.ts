@@ -1,5 +1,5 @@
 /**
- * Wire + domain types for the Remote Alarm backend.
+ * Wire + domain types for the Klaxon backend.
  *
  * Wire-shape rules (verified against the live backend):
  * - `repeat_days` is overloaded on the wire: `string | number[]` on input, but
