@@ -42,4 +42,4 @@ npm run build    # bundles the extension
 npm test         # parser, formatting and client tests (node:test)
 ```
 
-This repo vendors its client core from the Klaxon backend project. See `VENDORED-FROM.md` before editing anything under `src/core/`.
+The extension uses `@remotealarm/core` from `../core`. All parser, formatting and client behaviour lives there, so change it in one place and rebuild the core.
