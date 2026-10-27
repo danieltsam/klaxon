@@ -1,10 +1,13 @@
 # Klaxon — Standalone Raycast Extension Design
 
 > **Date:** 2026-10-26
-> **Status:** Draft for owner approval. Nothing is built until this is approved.
-> **Target repo:** `/Users/dsam/Documents/raycast-extensions/klaxon` (empty Raycast scaffold, no commits)
+> **Status:** Historical. The standalone repo and the vendored core it describes were folded back into
+> the monorepo: the extension now lives at `clients/raycast` and imports `@remotealarm/core` like the
+> CLI. See `clients/raycast/README.md` for the Raycast Store path at release time.
+> **Target repo:** `/Users/dsam/Documents/raycast-extensions/klaxon` (deleted; superseded)
 > **Source of behaviour:** `clients/raycast` in `remote-alarm` — working and already exercised against the live homelab.
 > **Approach chosen:** port the working extension and vendor the shared core (owner decision, 2026-10-26).
+> **Superseded by:** owner decision 2026-10-27, keep one copy in the monorepo until public release.
 
 ---
 

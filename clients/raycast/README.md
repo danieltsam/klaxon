@@ -37,9 +37,20 @@ Recurrence is limited to weekly or fortnightly because that is what the backend 
 ## Development
 
 ```bash
-npm run lint     # Raycast lint
-npm run build    # bundles the extension
-npm test         # parser, formatting and client tests (node:test)
+npm run lint       # Raycast lint
+npm run build      # bundles the extension
+npm run typecheck  # tsc; ray build does not type-check
 ```
 
 The extension uses `@remotealarm/core` from `../core`. All parser, formatting and client behaviour lives there, so change it in one place and rebuild the core.
+
+## Publishing to the Raycast Store
+
+The extension stays in this repo until release. The store does not publish from a monorepo: it takes a pull request against `raycast/extensions` containing one self-contained folder, `extensions/klaxon/`, and runs `npm install` inside it. A `file:../core` dependency cannot resolve there.
+
+At release, pick one:
+
+1. **Vendor the core into the submission folder.** Copy `clients/core/src` into the submission as `src/core/`, strip the `.js` import specifiers, and rewrite the views to import `./core`. This is what the deleted standalone repo did. Repeatable, but the copy can drift.
+2. **Publish the core as a package.** Publish `@remotealarm/core` (probably renamed `klaxon-core`) and depend on a version. No drift, but a second public artifact to maintain.
+
+Either way the submission folder is generated and not the working copy. A small script that assembles it from `clients/raycast` plus `clients/core`, then runs `ray build`, is the thing to write when release comes.
