@@ -928,7 +928,7 @@
         const relativeStr = formatRelative(heroAlarm.target_time);
         const repeatStr = formatRepeatDays(heroAlarm.repeat_days);
         const toneStr = heroAlarm.sound_tone || 'alarm';
-        const rampStr = heroAlarm.ramp_seconds || 15;
+        const rampStr = heroAlarm.ramp_seconds ?? 15;
 
         heroContainer.innerHTML = `
           <section class="hero-glow rounded-xl">
@@ -1107,7 +1107,6 @@
       } else {
         header.classList.add('hidden');
         header.classList.remove('flex');
-        note.classList.remove('hidden');
         bulkBar.classList.add('hidden');
         bulkBar.classList.remove('flex');
       }
@@ -1145,7 +1144,7 @@
               description: alarm.description || '',
               repeat_days: alarm.repeat_days || null,
               sound_tone: alarm.sound_tone || 'alarm',
-              ramp_seconds: alarm.ramp_seconds || 15
+              ramp_seconds: alarm.ramp_seconds ?? 15
             })
           });
         } catch (err) {
@@ -1227,7 +1226,7 @@
       document.getElementById('edit-alarm-time').value = `${hh}:${min}`;
       document.getElementById('edit-alarm-date').value = `${yyyy}-${mm}-${dd}`;
       document.getElementById('edit-alarm-tone').value = alarm.sound_tone || 'alarm';
-      document.getElementById('edit-alarm-ramp').value = String(alarm.ramp_seconds || 15);
+      document.getElementById('edit-alarm-ramp').value = String(alarm.ramp_seconds ?? 15);
 
       editSelectedDays = alarm.repeat_days ? alarm.repeat_days.split(',').map(d => parseInt(d.trim(), 10)).filter(Boolean) : [];
       editingIntervalWeeks = alarm.recurrence_interval_weeks || 1;
@@ -1338,7 +1337,7 @@
       document.getElementById('new-alarm-title').value = '';
       document.getElementById('new-alarm-desc').value = '';
       document.getElementById('new-alarm-tone').value = appSettings.sound_tone || 'alarm';
-      document.getElementById('new-alarm-ramp').value = String(appSettings.ramp_seconds || 15);
+      document.getElementById('new-alarm-ramp').value = String(appSettings.ramp_seconds ?? 15);
       document.getElementById('new-alarm-nl').value = '';
       document.getElementById('create-alarm-feedback').textContent = '';
       hideNLPreview();
