@@ -3698,22 +3698,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                   // Workspace Picker
                   Row(
                     children: [
-                      Container(
-                        width: 20,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF5E6AD2),
-                          borderRadius: BorderRadius.circular(5),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            'K',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFFF7F8F8),
-                            ),
-                          ),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(5),
+                        child: Image.asset(
+                          'assets/klaxon.png',
+                          width: 20,
+                          height: 20,
+                          fit: BoxFit.cover,
                         ),
                       ),
                       const SizedBox(width: 8),
