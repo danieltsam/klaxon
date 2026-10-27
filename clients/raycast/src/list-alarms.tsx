@@ -7,7 +7,7 @@ import {
   Keyboard,
   List,
 } from "@raycast/api";
-import { useFetch } from "@raycast/utils";
+import { usePromise } from "@raycast/utils";
 import { useEffect } from "react";
 import type { Alarm } from "@remotealarm/core";
 import CreateAlarmCommand from "./create-alarm";
@@ -38,9 +38,7 @@ export default function ListAlarmsCommand() {
     isLoading: alarmsLoading,
     error: alarmsError,
     revalidate,
-  } = useFetch<Alarm[]>(async () => client.listAlarms("active"), {
-    execute: true,
-  });
+  } = usePromise(() => client.listAlarms("active"));
 
   // `missed` is excluded from `view=active` by design — the phone must never
   // treat one as something to arm — and included in `view=all`. Read it
@@ -50,9 +48,7 @@ export default function ListAlarmsCommand() {
     data: allAlarms,
     isLoading: allAlarmsLoading,
     revalidate: revalidateAll,
-  } = useFetch<Alarm[]>(async () => client.listAlarms("all"), {
-    execute: true,
-  });
+  } = usePromise(() => client.listAlarms("all"));
 
   const {
     data: devices,

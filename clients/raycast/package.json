@@ -90,6 +90,7 @@
     "dev": "ray develop",
     "fix-lint": "ray lint --fix",
     "lint": "ray lint",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "publish": "npx @raycast/api@latest publish"
   }
 }

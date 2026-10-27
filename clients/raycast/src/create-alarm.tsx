@@ -1,7 +1,7 @@
 import {
+  Action,
   ActionPanel,
   Form,
-  FormValidation,
   showToast,
   Toast,
   useNavigation,
@@ -13,6 +13,7 @@ import {
   daysFromRecurrenceValue,
   formatAge,
   INTERVAL_OPTIONS,
+  requiredField,
   RAMP_OPTIONS,
   RECURRENCE_OPTIONS,
   showDispatchToast,
@@ -53,12 +54,12 @@ export default function CreateAlarmCommand() {
       ramp: String(settings?.ramp_seconds ?? 30),
     },
     validation: {
-      label: FormValidation.Required,
-      datetime: FormValidation.Required,
-      recurrence: FormValidation.Required,
-      interval: FormValidation.Required,
-      tone: FormValidation.Required,
-      ramp: FormValidation.Required,
+      label: requiredField,
+      datetime: requiredField,
+      recurrence: requiredField,
+      interval: requiredField,
+      tone: requiredField,
+      ramp: requiredField,
     },
     onSubmit: async (formValues) => {
       try {

@@ -1,7 +1,7 @@
 import {
+  Action,
   ActionPanel,
   Form,
-  FormValidation,
   showToast,
   Toast,
   useNavigation,
@@ -10,7 +10,7 @@ import { useForm } from "@raycast/utils";
 import { useEffect, useState } from "react";
 import { parseLeadingTime, TimeParseError } from "@remotealarm/core";
 import type { SoundTone } from "@remotealarm/core";
-import { formatRecurrence } from "./lib";
+import { formatRecurrence, requiredField } from "./lib";
 import {
   formatAge,
   RAMP_OPTIONS,
@@ -55,9 +55,9 @@ export default function QuickCreateCommand() {
         ramp: String(settings?.ramp_seconds ?? 30),
       },
       validation: {
-        query: FormValidation.Required,
-        tone: FormValidation.Required,
-        ramp: FormValidation.Required,
+        query: requiredField,
+        tone: requiredField,
+        ramp: requiredField,
       },
       onSubmit: async (formValues) => {
         const trimmed = formValues.query.trim();

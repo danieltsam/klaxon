@@ -24,7 +24,6 @@ clients/**/dist/
 clients/**/build/
 clients/**/*.tsbuildinfo
 clients/raycast/.raycast/
-clients/raycast/raycast-env.d.ts
 
 # Flutter / Dart
 .dart_tool/

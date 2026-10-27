@@ -1,7 +1,7 @@
 import {
+  Action,
   ActionPanel,
   Form,
-  FormValidation,
   getPreferenceValues,
   LaunchProps,
   List,
@@ -9,7 +9,7 @@ import {
   Toast,
   useNavigation,
 } from "@raycast/api";
-import { useFetch, useForm } from "@raycast/utils";
+import { useForm, usePromise } from "@raycast/utils";
 import { useMemo } from "react";
 import { toLocalDate } from "@remotealarm/core";
 import type { Alarm, SoundTone } from "@remotealarm/core";
@@ -17,8 +17,10 @@ import {
   daysFromRecurrenceValue,
   ErrorEmptyView,
   formatAge,
+  INTERVAL_OPTIONS,
   RAMP_OPTIONS,
   RECURRENCE_OPTIONS,
+  requiredField,
   recurrenceValueFromDays,
   showDispatchToast,
   showWarning,
@@ -72,12 +74,12 @@ function EditAlarmForm({ alarm }: EditAlarmProps) {
       ramp: String(alarm.ramp_seconds ?? 30),
     },
     validation: {
-      label: FormValidation.Required,
-      datetime: FormValidation.Required,
-      recurrence: FormValidation.Required,
-      interval: FormValidation.Required,
-      tone: FormValidation.Required,
-      ramp: FormValidation.Required,
+      label: requiredField,
+      datetime: requiredField,
+      recurrence: requiredField,
+      interval: requiredField,
+      tone: requiredField,
+      ramp: requiredField,
     },
     onSubmit: async (formValues) => {
       try {
@@ -190,9 +192,7 @@ export default function EditAlarmCommand(
     data: alarms,
     isLoading,
     error,
-  } = useFetch<Alarm[]>(async () => client.listAlarms("all"), {
-    execute: true,
-  });
+  } = usePromise(() => client.listAlarms("all"));
   const alarm = alarms?.find((a) => a.id === props.arguments.id);
 
   if (error && !isLoading) {
