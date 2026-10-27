@@ -151,7 +151,7 @@ export const AlarmRepo = {
     if (view === 'history') {
       return db.prepare(`
         SELECT * FROM alarms 
-        WHERE status IN ('dismissed', 'canceled') 
+        WHERE status IN ('dismissed', 'canceled', 'missed') 
         ORDER BY target_time DESC 
         LIMIT 50
       `).all() as AlarmRecord[];
