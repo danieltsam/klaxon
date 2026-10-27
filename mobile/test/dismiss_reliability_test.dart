@@ -149,6 +149,32 @@ void main() {
       expect(await IdMapper.isSnoozed(intId), isFalse);
     });
 
+    test('a recurring dismissal reports pending with the next occurrence', () async {
+      const uuid = 'remote-recurring-uuid';
+      final intId = IdMapper.uuidToInt(uuid);
+      final firstRing = DateTime(2026, 10, 28, 7, 0);
+      await IdMapper.saveMapping(intId, uuid, label: 'Daily', targetTime: firstRing);
+      await IdMapper.setRepeatDays(intId, [1, 2, 3, 4, 5, 6, 7]);
+
+      final reports = <({String status, String? target})>[];
+      AlarmService.stateSenderForTest = (u, s, t) async {
+        reports.add((status: s, target: t));
+        return true;
+      };
+
+      await AlarmService.dismissAlarm(
+        _settingsFor(intId).copyWith(dateTime: firstRing),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(reports, hasLength(1));
+      expect(reports.single.status, 'pending',
+          reason: 'a recurring dismissal must not end the row');
+      expect(reports.single.target, isNotNull);
+      expect(setAlarmCalls, greaterThan(0),
+          reason: 'the next occurrence must be armed locally');
+    });
+
     test('bounded retry abandons an undeliverable state after maxAttempts',
         () async {
       const uuid = 'remote-doomed-uuid';

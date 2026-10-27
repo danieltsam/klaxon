@@ -796,27 +796,40 @@ class AlarmService {
     await IdMapper.setSnoozed(settings.id, false);
     final uuid = await IdMapper.getUuid(settings.id);
 
-    if (uuid != null && !uuid.startsWith('local_')) {
-      // Queue the dismissal before attempting delivery: if this report fails,
-      // or the app is backgrounded/killed mid-request, it is retried from the
-      // persisted outbox on the next flush (app start and every reconcile).
-      await enqueueStateReport(uuid, 'dismissed');
-    }
-
-    // Check if this was a recurring alarm; if so, schedule next occurrence
+    // A recurring alarm is not finished when it is dismissed: it moves to its
+    // next occurrence. Reporting `dismissed` for it told the backend the row was
+    // terminal, and the next reconcile then stopped the occurrence this method
+    // had just armed. Report `pending` with the next target instead, so the row
+    // and the phone agree and the alarm keeps ringing on schedule.
     final repeatDays = await IdMapper.getRepeatDays(settings.id);
     final intervalWeeks = await IdMapper.getIntervalWeeks(settings.id) ?? 1;
     final anchorDateStr = await IdMapper.getAnchorDate(settings.id);
     final anchorDate = anchorDateStr != null ? DateTime.tryParse(anchorDateStr) : null;
-    if (repeatDays.isNotEmpty || (intervalWeeks > 1 && anchorDate != null)) {
-      final nextTime = getNextOccurrence(
+    final isRecurring =
+        repeatDays.isNotEmpty || (intervalWeeks > 1 && anchorDate != null);
+
+    DateTime? nextTime;
+    if (isRecurring) {
+      nextTime = getNextOccurrence(
         settings.dateTime,
         repeatDays,
         intervalWeeks: intervalWeeks,
         anchorDate: anchorDate,
       );
-      final nextSettings = settings.copyWith(dateTime: nextTime);
-      await Alarm.set(alarmSettings: nextSettings);
+      await Alarm.set(
+        alarmSettings: settings.copyWith(dateTime: nextTime),
+      );
+    }
+
+    if (uuid != null && !uuid.startsWith('local_')) {
+      // Queue before attempting delivery: if this report fails, or the app is
+      // backgrounded or killed mid-request, it survives in the outbox and is
+      // retried on the next flush (app start and every reconcile).
+      await enqueueStateReport(
+        uuid,
+        isRecurring ? 'pending' : 'dismissed',
+        targetTime: isRecurring ? nextTime!.toUtc().toIso8601String() : null,
+      );
     }
   }
 
