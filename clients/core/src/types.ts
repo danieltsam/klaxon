@@ -124,6 +124,11 @@ export interface UpdateAlarmInput {
 export interface Health {
   status: "ok";
   timestamp: string;
+  /** Present on the deployed backend; older builds omit it. */
+  delivery_health?: {
+    ok: boolean;
+    reasons: string[];
+  };
 }
 
 export interface DeviceStatus {

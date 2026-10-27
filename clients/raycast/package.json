@@ -51,6 +51,12 @@
       "title": "Device Status",
       "description": "Check phone battery, charging state, and last ping age.",
       "mode": "view"
+    },
+    {
+      "name": "test-connection",
+      "title": "Test Connection",
+      "description": "Check the configured backend and show what it returns.",
+      "mode": "view"
     }
   ],
   "preferences": [
