@@ -28,6 +28,7 @@ import {
   formatMissedReason,
   formatRelative,
   formatStatus,
+  normalizeBaseUrl,
   RemoteAlarmClient,
   RemoteAlarmError,
   toLocalDate,
@@ -263,11 +264,17 @@ export function ErrorEmptyView({
   } else if (error instanceof Error) {
     message = error.message;
   }
+  let shownUrl = backendUrl;
+  try {
+    shownUrl = normalizeBaseUrl(backendUrl);
+  } catch {
+    // Keep the raw value so the user can see what is wrong with it.
+  }
   return (
     <List.EmptyView
       icon={{ source: Icon.Warning, tintColor: Color.Red }}
       title="Backend unreachable"
-      description={`${message} Check the Backend URL preference: ${backendUrl}`}
+      description={`${message} Backend URL: ${shownUrl}`}
       actions={
         <ActionPanel>
           {onTest && (

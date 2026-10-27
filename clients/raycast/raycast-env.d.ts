@@ -28,6 +28,8 @@ declare namespace Preferences {
   export type EditAlarm = ExtensionPreferences & {}
   /** Preferences accessible in the `device-status` command */
   export type DeviceStatus = ExtensionPreferences & {}
+  /** Preferences accessible in the `test-connection` command */
+  export type TestConnection = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
@@ -44,5 +46,7 @@ declare namespace Arguments {
 }
   /** Arguments passed to the `device-status` command */
   export type DeviceStatus = {}
+  /** Arguments passed to the `test-connection` command */
+  export type TestConnection = {}
 }
 
