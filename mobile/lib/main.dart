@@ -44,6 +44,11 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 @visibleForTesting
 Future<void> Function(String token)? registerTokenForTest;
 
+/// Injection seam for tests; production deletes remotely through
+/// [BackendClient.deleteRemoteAlarm].
+@visibleForTesting
+Future<void> Function(String uuid)? deleteRemoteAlarmForTest;
+
 /// Register (or re-register) this device's FCM token with the backend.
 ///
 /// Called on cold start and on every [FirebaseMessaging.onTokenRefresh], so a
@@ -55,6 +60,32 @@ Future<void> registerToken(String token) async {
     return;
   }
   await BackendClient.registerDeviceToken(token);
+}
+
+/// Shows a transient bottom toast. A new toast pre-empts the current one: the
+/// previous toast is dismissed immediately and never queued, so the visible
+/// message always matches the action the user just took.
+void showToast(BuildContext context, String message) {
+  final messenger = ScaffoldMessenger.of(context);
+  // Drop whatever toast is on screen first. Without this, `showSnackBar`
+  // queues the new message behind the old one, so the UI shows stale,
+  // out-of-sync confirmations.
+  messenger.removeCurrentSnackBar();
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(
+        message,
+        style: const TextStyle(fontSize: 13, color: Color(0xFFF7F8F8)),
+      ),
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: const Color(0xFF16181B),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(color: Color(0xFF26282E)),
+      ),
+      duration: const Duration(seconds: 3),
+    ),
+  );
 }
 
 @pragma('vm:entry-point')
@@ -950,15 +981,18 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     await _loadAllAlarms();
   }
 
-  Future<void> _deleteAlarmItem(_AlarmItem item) async {
+  Future<void> _deleteAlarmItem(_AlarmItem item, {bool announce = true}) async {
     await HapticService.playPreset(PresetHapticStyle.heavyLatch);
     await Alarm.stop(item.id);
     if (item.uuid != null && !item.uuid!.startsWith('local_')) {
-      await BackendClient.deleteRemoteAlarm(item.uuid!);
+      final deleteRemote = deleteRemoteAlarmForTest ?? BackendClient.deleteRemoteAlarm;
+      await deleteRemote(item.uuid!);
     }
     await IdMapper.removeMapping(item.id);
-    _showToast('alarm deleted');
-    _loadAllAlarms();
+    if (announce) {
+      _showToast('alarm deleted');
+      _loadAllAlarms();
+    }
   }
 
   // ── Bulk multi-select ────────────────────────────────────────────────
@@ -998,15 +1032,20 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     if (ids.isEmpty) return;
     await HapticService.playPreset();
     final itemsToDelete = _allAlarms.where((a) => ids.contains(a.id)).toList();
-    for (final item in itemsToDelete) {
-      await _deleteAlarmItem(item);
-    }
+    // Issue every removal at once. Awaiting them one-by-one serialised the
+    // whole selection behind each alarm's network round-trip, which is the
+    // "stare at the screen between each delete" the owner reported. The whole
+    // batch is awaited as one, then the list refreshes once.
+    await Future.wait(
+      itemsToDelete.map((item) => _deleteAlarmItem(item, announce: false)),
+    );
     if (!mounted) return;
     setState(() {
       _isMultiSelectMode = false;
       _selectedAlarmIds.clear();
     });
     _showToast('${itemsToDelete.length} alarm${itemsToDelete.length == 1 ? '' : 's'} deleted');
+    _loadAllAlarms();
   }
 
   Future<void> _bulkDuplicateSelected() async {
@@ -1080,18 +1119,24 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           anchorDate: item.anchorDate,
           soundTone: item.soundTone,
           rampSeconds: item.rampSeconds,
-        ).then((remoteId) {
+        ).then((remoteId) async {
           if (remoteId != null && remoteId != newUuid) {
-            IdMapper.saveMapping(
-              intId,
-              remoteId,
+            // Same canonical re-key as the Arm flow: without it the duplicated
+            // alarm is echoed back under the canonical id and the provisional
+            // copy is pruned a moment later, showing a duplicate.
+            await AlarmService.adoptRemoteId(
+              localIntId: intId,
+              remoteUuid: remoteId,
               label: newTitle,
               description: item.description,
               targetTime: item.dateTime,
+              repeatDays: item.repeatDays.isNotEmpty ? item.repeatDays : null,
+              intervalWeeks: item.intervalWeeks,
+              anchorDateIso: item.anchorDate,
               soundTone: item.soundTone,
               rampSeconds: item.rampSeconds,
-              repeatDays: item.repeatDays,
             );
+            _loadAllAlarms();
           }
         });
       }
@@ -2255,21 +2300,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
   void _showToast(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: const TextStyle(fontSize: 13, color: Color(0xFFF7F8F8)),
-        ),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: const Color(0xFF16181B),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: const BorderSide(color: Color(0xFF26282E)),
-        ),
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    showToast(context, message);
   }
 
   // ALARM DETAIL & ADJUSTMENTS MODAL
@@ -3587,19 +3618,24 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             anchorDate: recurrenceAnchor,
                             soundTone: selectedTone,
                             rampSeconds: selectedRampSeconds,
-                          ).then((remoteId) {
+                          ).then((remoteId) async {
                             if (remoteId != null && remoteId != localFallbackUuid) {
-                              // Update mapping: same local intId, new backend uuid
-                              IdMapper.saveMapping(
-                                intId,
-                                remoteId,
+                              // Re-key the armed alarm to the backend's canonical
+                              // id so the FCM CREATE echo (and the reconcile) find
+                              // it already armed instead of inserting a duplicate.
+                              await AlarmService.adoptRemoteId(
+                                localIntId: intId,
+                                remoteUuid: remoteId,
                                 label: title,
                                 description: desc,
                                 targetTime: finalTarget,
+                                repeatDays: selectedDays.isNotEmpty ? selectedDays : null,
+                                intervalWeeks: selectedIntervalWeeks,
+                                anchorDateIso: recurrenceAnchor,
                                 soundTone: selectedTone,
                                 rampSeconds: selectedRampSeconds,
-                                repeatDays: selectedDays,
                               );
+                              _loadAllAlarms();
                             }
                           });
                         },
