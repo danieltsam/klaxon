@@ -3671,7 +3671,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         ),
                         child: const Center(
                           child: Text(
-                            'A',
+                            'K',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
@@ -3682,7 +3682,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       ),
                       const SizedBox(width: 8),
                       const Text(
-                        'alarmcore / mobile',
+                        'klaxon / mobile',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
