@@ -8,16 +8,16 @@ import {
   getPreferenceValues,
   Icon,
   List,
+  openExtensionPreferences,
   showToast,
   Toast,
 } from "@raycast/api";
-import { useFetch } from "@raycast/utils";
+import { usePromise } from "@raycast/utils";
 import { useMemo } from "react";
 import type {
   Alarm,
   DeviceStatus,
   FcmDispatch,
-  Settings,
   SoundTone,
   Weekday,
 } from "@remotealarm/core";
@@ -64,15 +64,11 @@ export function useClient(): RemoteAlarmClient {
 }
 
 export function useSettings(client: RemoteAlarmClient) {
-  return useFetch<Settings>(async () => client.getSettings(), {
-    execute: true,
-  });
+  return usePromise(() => client.getSettings());
 }
 
 export function useDevices(client: RemoteAlarmClient) {
-  return useFetch<DeviceStatus[]>(async () => client.listDevices(), {
-    execute: true,
-  });
+  return usePromise(() => client.listDevices());
 }
 
 export function parseSqliteUtc(value: string): Date {
@@ -129,6 +125,17 @@ export function summarizeDevices(devices?: DeviceStatus[]): DeviceSummary {
     charging: latest.is_charging,
     ageMs,
   };
+}
+
+/**
+ * `@raycast/api` 2.9 removed `FormValidation`; `useForm` wants a predicate that
+ * returns an error string. An undefined export compiles but throws at render,
+ * which is exactly how the create command broke.
+ */
+export function requiredField(value: unknown): string | undefined {
+  if (value === undefined || value === null) return "Required";
+  if (typeof value === "string" && value.trim() === "") return "Required";
+  return undefined;
 }
 
 export function formatRecurrence(days?: Weekday[]): string {
@@ -261,7 +268,10 @@ export function ErrorEmptyView({
       description={`${message} Check the Backend URL preference: ${backendUrl}`}
       actions={
         <ActionPanel>
-          <Action.OpenPreferences title="Open Preferences" />
+          <Action
+            title="Open Preferences"
+            onAction={openExtensionPreferences}
+          />
         </ActionPanel>
       }
     />
@@ -301,7 +311,7 @@ export function showDispatchToast(
 }
 
 export function showWarning(message: string) {
-  return showToast({ title: "Klaxon", message, style: Toast.Style.Warning });
+  return showToast({ title: "Klaxon", message, style: Toast.Style.Failure });
 }
 
 export async function toggleAlarmState(
@@ -458,6 +468,14 @@ export function AlarmDetail({
         </List.Item.Detail.Metadata>
       }
     />
+  );
+}
+
+function isSameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
   );
 }
 

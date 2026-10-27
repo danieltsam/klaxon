@@ -63,3 +63,7 @@ jobs:
           cache-dependency-path: clients/package-lock.json
       - run: npm ci
       - run: npm test
+      # ray build compiles with esbuild and does not type-check, so a missing or
+      # renamed API export only fails at render time inside Raycast.
+      - name: raycast typecheck
+        run: npm run typecheck -w klaxon

@@ -6,9 +6,8 @@ import {
   Icon,
   List,
 } from "@raycast/api";
-import { useFetch } from "@raycast/utils";
-import type { DeviceStatus } from "@remotealarm/core";
-import { ErrorEmptyView, useClient } from "./lib";
+import { usePromise } from "@raycast/utils";
+import { ErrorEmptyView, formatAge, parseSqliteUtc, useClient } from "./lib";
 
 export default function DeviceStatusCommand() {
   const client = useClient();
@@ -18,9 +17,7 @@ export default function DeviceStatusCommand() {
     isLoading,
     error,
     revalidate,
-  } = useFetch<DeviceStatus[]>(async () => client.listDevices(), {
-    execute: true,
-  });
+  } = usePromise(() => client.listDevices());
 
   if (error && !isLoading) {
     return (
