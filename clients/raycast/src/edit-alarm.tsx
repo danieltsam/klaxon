@@ -87,7 +87,8 @@ function EditAlarmForm({ alarm }: EditAlarmProps) {
           label: formValues.label,
           targetTime: formValues.datetime ?? new Date(),
           description: formValues.description || undefined,
-          repeat_days: daysFromRecurrenceValue(formValues.recurrence),
+          // An empty array clears recurrence; undefined would be omitted.
+          repeat_days: daysFromRecurrenceValue(formValues.recurrence) ?? [],
           sound_tone: formValues.tone as SoundTone,
           ramp_seconds: Number(formValues.ramp),
           // Sent unconditionally so a fortnightly alarm can be made weekly.

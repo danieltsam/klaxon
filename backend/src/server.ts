@@ -638,11 +638,23 @@ app.delete<{
     return reply.status(404).send({ error: 'Alarm not found' });
   }
 
-  AlarmRepo.cancel(id);
-
-  // Broadcast cancel event
+  // Tell the phone first. Marking the row cancelled before the dispatch means a
+  // CANCEL that never reaches the phone leaves it ringing with no live row and
+  // a healthy system, which is the same silent failure the missed work exists
+  // to stop. If nothing was reached, keep the alarm as it was and say so.
   const dispatchResult = await sendFcmDataMessage('CANCEL', { id });
   AlarmRepo.recordDispatch(id, dispatchResult.sent, dispatchResult.failed);
+
+  // sent === 0 with failed === 0 means no device is registered: there is no
+  // phone to ring, so cancelling is still correct. A real failure is failed > 0.
+  if (dispatchResult.sent === 0 && dispatchResult.failed > 0) {
+    return reply.status(502).send({
+      error: 'The phone was not reached, so the alarm was not cancelled. Try again.',
+      fcm_dispatch: dispatchResult
+    });
+  }
+
+  AlarmRepo.cancel(id);
 
   await mirrorSafely({ ...existing, status: 'canceled' });
 
@@ -665,11 +677,19 @@ app.post<{
     return reply.status(404).send({ error: 'Alarm not found' });
   }
 
-  AlarmRepo.updateStatus(id, 'dismissed');
-
-  // Broadcast remote silence/dismiss event to phone
+  // Dispatch first. A DISMISS that never reaches the phone must not mark the
+  // row resolved: the phone keeps ringing while every surface says it stopped.
   const dispatchResult = await sendFcmDataMessage('DISMISS', { id });
   AlarmRepo.recordDispatch(id, dispatchResult.sent, dispatchResult.failed);
+
+  if (dispatchResult.sent === 0 && dispatchResult.failed > 0) {
+    return reply.status(502).send({
+      error: 'The phone was not reached, so the alarm is still ringing.',
+      fcm_dispatch: dispatchResult
+    });
+  }
+
+  AlarmRepo.updateStatus(id, 'dismissed');
 
   await mirrorSafely({ ...existing, status: 'dismissed' });
 

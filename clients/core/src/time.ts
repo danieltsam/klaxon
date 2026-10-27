@@ -101,7 +101,7 @@ const WEEKDAY_NAMES: Record<string, Weekday> = {
   sunday: 7,
 };
 
-const CONNECTORS = new Set(["at", "in"]);
+const CONNECTORS = new Set(["at", "in", "on"]);
 
 /** Month name (short and full) -> 1-based calendar month (spec §6.4). */
 const MONTH_NAMES: Record<string, number> = {
@@ -530,6 +530,48 @@ function parseDayNumber(token: string): number | null {
   return day;
 }
 
+/** Days in a 1-based month, for a given year (Feb 29 depends on it). */
+function daysInMonth(month: number, year: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+/**
+ * Refuse a calendar date that does not exist. The date builders use
+ * `setMonth`, which rolls 31 April into 1 May and Feb 30 into March, so an
+ * impossible date used to resolve to a plausible wrong day. Scanning the token
+ * stream before the ladder means the refusal cannot be swallowed by a
+ * speculative parse that finds some shorter, valid pair.
+ */
+function assertRealDates(toks: string[], now: Date): void {
+  const year = now.getFullYear();
+  const check = (day: number, month: number, token?: string): void => {
+    if (month < 1 || month > 12) return;
+    if (day > daysInMonth(month, year)) {
+      throw new TimeParseError(
+        `"${token ?? `${day}/${month}`}" is not a real date in ${year}.`,
+        token,
+        "unparseable"
+      );
+    }
+  };
+
+  for (let i = 0; i < toks.length; i++) {
+    const monthAfter = MONTH_NAMES[toks[i]];
+    if (monthAfter) {
+      const next = toks[i + 1];
+      const day = next ? parseDayNumber(next) : null;
+      if (day !== null) check(day, monthAfter, `${toks[i]} ${next}`);
+    }
+    const monthBefore = MONTH_NAMES[toks[i + 1]];
+    if (monthBefore) {
+      const day = parseDayNumber(toks[i]);
+      if (day !== null) check(day, monthBefore, `${toks[i]} ${toks[i + 1]}`);
+    }
+    const numeric = parseNumericDate(toks[i]);
+    if (numeric) check(numeric.day, numeric.month, toks[i]);
+  }
+}
+
 /**
  * Read a `<d>/<m>` numeric date (spec §6.5). The reading is day/month when
  * unambiguous: a first field over 12 must be the day, a second field over 12
@@ -909,6 +951,25 @@ function tryParseExpression(
         }
       }
     }
+
+    // Clock → recurrence: `7am every mon`, `2pm daily`, `7am weekends`. Without
+    // this the prefix `7am` parses alone and the recurrence words become the
+    // label, silently demoting a weekly alarm to one-time.
+    if (clock) {
+      let j = clock.next;
+      while (j < toks.length && CONNECTORS.has(toks[j])) j++;
+      if (j < toks.length) {
+        const trailingRepeat = matchRecurrencePrefix(toks, j);
+        if (trailingRepeat && trailingRepeat.next === toks.length) {
+          return finalize(
+            buildClockTime(ctx, null, trailingRepeat.repeatDays, clock.hours, clock.minutes),
+            trailingRepeat.repeatDays,
+            ctx.now,
+            trailingRepeat.interval
+          );
+        }
+      }
+    }
   }
 
   // Duration form: only ever standalone (no day/recurrence qualifier). The
@@ -939,9 +1000,36 @@ function tryParseExpression(
   // Day period as a clock (spec §6.2): `afternoon`, `this morning`,
   // `tomorrow noon`. Never `bare`, so it always passes the trap guard above.
   const period = parseDayPeriod(toks, i);
-  if (period && period.next === toks.length) {
-    const targetTime = buildClockTime(ctx, qualifier, repeatDays, period.hours, period.minutes);
-    return finalize(targetTime, repeatDays, ctx.now, interval);
+  if (period) {
+    let j = period.next;
+    while (j < toks.length && CONNECTORS.has(toks[j])) j++;
+
+    if (j === toks.length) {
+      const targetTime = buildClockTime(ctx, qualifier, repeatDays, period.hours, period.minutes);
+      return finalize(targetTime, repeatDays, ctx.now, interval);
+    }
+
+    // `noon tomorrow`, `evening friday`: a period followed by a day qualifier.
+    const trailingDay = matchDayQualifier(toks, j);
+    if (trailingDay && trailingDay.next === toks.length) {
+      return finalize(
+        buildClockTime(ctx, trailingDay.qualifier, repeatDays, period.hours, period.minutes),
+        repeatDays,
+        ctx.now,
+        interval
+      );
+    }
+
+    // `noon every day`.
+    const trailingRepeat = matchRecurrencePrefix(toks, j);
+    if (trailingRepeat && trailingRepeat.next === toks.length) {
+      return finalize(
+        buildClockTime(ctx, null, trailingRepeat.repeatDays, period.hours, period.minutes),
+        trailingRepeat.repeatDays,
+        ctx.now,
+        trailingRepeat.interval
+      );
+    }
   }
 
   return null;
@@ -1028,6 +1116,7 @@ export function parseTime(input: string, now?: Date): ParsedTime {
   }
 
   const inputToks = inputRaw.map(normalizeToken);
+  assertRealDates(inputToks, nowDate);
   const metadata = extractMetadata(inputRaw, inputToks);
   const raw = metadata.raw;
   const toks = metadata.toks;
@@ -1235,6 +1324,7 @@ export function parseLeadingTime(
   if (inputRaw.length === 0) return null;
 
   const inputToks = inputRaw.map(normalizeToken);
+  assertRealDates(inputToks, nowDate);
   const metadata = extractMetadata(inputRaw, inputToks);
   const raw = metadata.raw;
   const toks = metadata.toks;

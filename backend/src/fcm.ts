@@ -16,6 +16,14 @@ export function isFirebaseReady(): boolean {
 }
 
 export function initFirebase() {
+  // The suite must never reach Google. A fake token otherwise triggers a real
+  // send, a two-second timeout per test, and token pruning that mutates the
+  // state under test. Under test, stay in mock mode.
+  if (process.env.NODE_ENV === 'test') {
+    isFirebaseInitialized = false;
+    return;
+  }
+
   if (admin.apps.length > 0) {
     isFirebaseInitialized = true;
     return;

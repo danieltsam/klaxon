@@ -884,7 +884,7 @@
     function renderDashboard() {
       const filteredList = getFilteredAlarms();
       const missedAlarms = allAlarms
-        .filter(a => a.status === 'missed' && isKnownMissedReason(a.missed_reason) && matchesSearch(a))
+        .filter(a => a.status === 'missed' && matchesSearch(a))
         .sort((a, b) => new Date(b.missed_at || 0) - new Date(a.missed_at || 0));
 
       document.getElementById('alarms-count-badge').textContent = filteredList.length;
@@ -1278,25 +1278,35 @@
       const targetIso = new Date(`${date}T${time}:00`).toISOString();
       const repeatDaysStr = editSelectedDays.length > 0 ? editSelectedDays.sort().join(',') : null;
 
+      // PATCH in place. The old delete-then-create lost the alarm entirely
+      // when the create was rejected, and silently re-armed disabled or
+      // snoozed alarms because a create always writes status 'pending'.
       try {
-        await fetch(`/api/alarms/${id}`, { method: 'DELETE' });
-        await fetch('/api/alarms', {
-          method: 'POST',
+        const res = await fetch(`/api/alarms/${id}`, {
+          method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             target_time: targetIso,
             label: title,
             description: desc,
-            repeat_days: repeatDaysStr,
+            // An empty string clears recurrence; null would be a no-op.
+            repeat_days: repeatDaysStr ?? '',
             sound_tone: tone,
             ramp_seconds: ramp,
             recurrence_interval_weeks: editingIntervalWeeks
           })
         });
 
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(`could not update: ${err.error || res.status}`);
+          return;
+        }
+
         closeAlarmDetail();
         await loadAlarms();
       } catch (err) {
+        alert('could not update: network error');
         console.error('Update failed:', err);
       }
     });

@@ -782,3 +782,24 @@ describe("RemoteAlarmClient — backend URL normalisation", () => {
     );
   });
 });
+
+describe("RemoteAlarmClient — parsed fields on update", () => {
+  it("carries an interval and metadata named in `when`", async () => {
+    const calls: Call[] = [];
+    const client = new RemoteAlarmClient({
+      baseUrl: "http://h:3000",
+      fetch: ((input: unknown, init?: RequestInit) => {
+        calls.push({ url: String(input), init: init ?? {} });
+        return Promise.resolve(
+          jsonResponse(200, { id: "a1", target_time: "x", label: "Gym", status: "pending" })
+        );
+      }) as unknown as FetchLike,
+    });
+
+    await client.updateAlarm("a1", { when: "every 2 weeks 7am" });
+    assert.equal(JSON.parse(calls[0].init.body as string).recurrence_interval_weeks, 2);
+
+    await client.updateAlarm("a1", { when: "chime 7am" });
+    assert.equal(JSON.parse(calls[1].init.body as string).sound_tone, "chime");
+  });
+});

@@ -21,10 +21,14 @@ export async function reconcile(mirror: GcalMirror): Promise<ReconcileResult> {
   if (!mirror.isConfigured()) return result;
 
   const active = AlarmRepo.getAll('active');
+  // Every non-cancelled row keeps its event. A missed or dismissed alarm is
+  // history the owner looks for, and the sweep annotates the missed event —
+  // deleting it 15 minutes later erased exactly that record.
+  const kept = AlarmRepo.getAll('all');
 
   // Alarms whose id we cannot map are skipped, not fatal.
   const expected = new Map<string, string>(); // eventId -> alarmId
-  for (const alarm of active) {
+  for (const alarm of kept) {
     try {
       expected.set(deriveEventId(alarm.id), alarm.id);
     } catch {
