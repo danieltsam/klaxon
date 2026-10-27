@@ -124,11 +124,11 @@ function validateSoundTone(tone: unknown): void {
 function describeFetchError(err: unknown): string {
   if (err instanceof Error) {
     if (err.name === "TimeoutError" || err.name === "AbortError") {
-      return "Request to Remote Alarm backend timed out.";
+      return "Request to Klaxon backend timed out.";
     }
-    return `Could not reach Remote Alarm backend: ${err.message}`;
+    return `Could not reach Klaxon backend: ${err.message}`;
   }
-  return `Could not reach Remote Alarm backend: ${String(err)}`;
+  return `Could not reach Klaxon backend: ${String(err)}`;
 }
 
 /** Read the server's own message: `{ error }` first, then Fastify's `{ message }`. */
@@ -253,7 +253,7 @@ export class RemoteAlarmClient {
     if (!response.ok) {
       const serverMessage = extractServerMessage(payload);
       const message =
-        serverMessage ?? `Remote Alarm request failed with status ${response.status}.`;
+        serverMessage ?? `Klaxon request failed with status ${response.status}.`;
       throw this.mapHttpError(response.status, message, serverMessage);
     }
 

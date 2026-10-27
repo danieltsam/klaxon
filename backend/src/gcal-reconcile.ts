@@ -9,9 +9,9 @@ export interface ReconcileResult {
 }
 
 /**
- * Repair drift between active alarms and the Remote Alarms calendar.
+ * Repair drift between active alarms and the Klaxon calendar.
  *
- * Remote Alarm is the single source of truth: events with no matching active
+ * Klaxon is the single source of truth: events with no matching active
  * alarm are deleted, and active alarms with no event are created (spec §9.3).
  * A full list is used deliberately rather than syncToken — a personal
  * calendar is a single cheap call (spec §9.4).

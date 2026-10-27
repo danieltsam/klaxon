@@ -10,7 +10,7 @@
 export const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.app.created';
 
 export const DEFAULT_TOKEN_PATH = './google-oauth-token.json';
-export const DEFAULT_CALENDAR_SUMMARY = 'Remote Alarms';
+export const DEFAULT_CALENDAR_SUMMARY = 'Klaxon';
 
 export interface GcalConfig {
   clientId: string;

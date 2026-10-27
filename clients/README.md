@@ -1,6 +1,6 @@
-# Remote Alarm clients
+# Klaxon clients
 
-Headless clients for the Remote Alarm backend, sharing one logic core:
+Headless clients for the Klaxon backend, sharing one logic core:
 
 ```
 clients/
