@@ -36,11 +36,21 @@ import {
 export const SOUND_TONES: SoundTone[] = ["alarm", "chime", "digital"];
 export const RAMP_OPTIONS = [0, 15, 30, 60];
 
-export const RECURRENCE_OPTIONS: { label: string; key: string; days: Weekday[] }[] = [
+export const RECURRENCE_OPTIONS: {
+  label: string;
+  key: string;
+  days: Weekday[];
+}[] = [
   { label: "One-time", key: "once", days: [] },
   { label: "Daily", key: "daily", days: [1, 2, 3, 4, 5, 6, 7] },
   { label: "Weekdays", key: "weekdays", days: [1, 2, 3, 4, 5] },
   { label: "Weekends", key: "weekends", days: [6, 7] },
+];
+
+/** The backend stores weekly (1) or fortnightly (2) recurrence only. */
+export const INTERVAL_OPTIONS: { label: string; value: string }[] = [
+  { label: "Every week", value: "1" },
+  { label: "Every 2 weeks", value: "2" },
 ];
 
 const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -49,7 +59,7 @@ export function useClient(): RemoteAlarmClient {
   const prefs = getPreferenceValues<Preferences>();
   return useMemo(
     () => new RemoteAlarmClient({ baseUrl: prefs.backendUrl }),
-    [prefs.backendUrl]
+    [prefs.backendUrl],
   );
 }
 
@@ -108,7 +118,9 @@ export function summarizeDevices(devices?: DeviceStatus[]): DeviceSummary {
     return aTime > bTime ? a : b;
   });
   const updated = parseSqliteUtc(latest.updated_at);
-  const ageMs = Number.isNaN(updated.getTime()) ? Infinity : Date.now() - updated.getTime();
+  const ageMs = Number.isNaN(updated.getTime())
+    ? Infinity
+    : Date.now() - updated.getTime();
   return {
     devices,
     noDevices: false,
@@ -127,10 +139,25 @@ export function formatRecurrence(days?: Weekday[]): string {
   return days.map((d) => WEEKDAY_NAMES[d - 1]).join(", ");
 }
 
+/**
+ * A fortnightly alarm keeps its weekday set and adds an interval; showing only
+ * the day would read as weekly, which is the wrong promise to make.
+ */
+export function formatRecurrenceWithInterval(
+  days: Weekday[] | undefined,
+  intervalWeeks?: number,
+): string {
+  const base = formatRecurrence(days);
+  if (intervalWeeks !== 2) return base;
+  return days && days.length > 0 ? `${base} · every 2 weeks` : "Every 2 weeks";
+}
+
 export function recurrenceValueFromDays(days?: Weekday[]): string {
   if (!days || days.length === 0) return "once";
   const match = RECURRENCE_OPTIONS.find(
-    (opt) => opt.days.length === days.length && opt.days.every((d, i) => d === days[i])
+    (opt) =>
+      opt.days.length === days.length &&
+      opt.days.every((d, i) => d === days[i]),
   );
   return match ? match.key : `custom:${days.join(",")}`;
 }
@@ -148,7 +175,10 @@ export function daysFromRecurrenceValue(value: string): Weekday[] | undefined {
   return match && match.days.length > 0 ? match.days : undefined;
 }
 
-export function iconForStatus(status: Alarm["status"]): { source: Icon; tintColor?: Color } {
+export function iconForStatus(status: Alarm["status"]): {
+  source: Icon;
+  tintColor?: Color;
+} {
   switch (status) {
     case "ringing":
       return { source: Icon.Bell, tintColor: Color.Red };
@@ -187,15 +217,38 @@ export function alarmAccessories(alarm: Alarm, now: Date) {
   }
   if (alarm.repeat_days && alarm.repeat_days.length > 0) {
     return [
-      { icon: Icon.Calendar, text: formatRecurrence(alarm.repeat_days), tooltip: "Recurrence" },
-      { icon: Icon.Clock, text: formatClock(local), tooltip: formatLocal(local) },
+      {
+        icon: Icon.Calendar,
+        text: formatRecurrenceWithInterval(
+          alarm.repeat_days,
+          alarm.recurrence_interval_weeks,
+        ),
+        tooltip: "Recurrence",
+      },
+      {
+        icon: Icon.Clock,
+        text: formatClock(local),
+        tooltip: formatLocal(local),
+      },
     ];
   }
-  return [{ icon: Icon.Clock, text: formatRelative(now, local), tooltip: formatLocal(local) }];
+  return [
+    {
+      icon: Icon.Clock,
+      text: formatRelative(now, local),
+      tooltip: formatLocal(local),
+    },
+  ];
 }
 
-export function ErrorEmptyView({ error, backendUrl }: { error: unknown; backendUrl: string }) {
-  let message = "Could not reach the Remote Alarm backend.";
+export function ErrorEmptyView({
+  error,
+  backendUrl,
+}: {
+  error: unknown;
+  backendUrl: string;
+}) {
+  let message = "Could not reach the Klaxon backend.";
   if (error instanceof RemoteAlarmError) {
     message = error.message;
   } else if (error instanceof Error) {
@@ -227,13 +280,14 @@ export function NoAlarmsEmptyView() {
 
 export function showDispatchToast(
   result: { alarm: Alarm; dispatch?: FcmDispatch },
-  action: string
+  action: string,
 ) {
   const { alarm, dispatch } = result;
   let message = `${action}: ${alarm.label}`;
   if (dispatch) {
     if (dispatch.sent === 0) {
-      message += " · Saved, but no devices are registered — this alarm won't ring.";
+      message +=
+        " · Saved, but no devices are registered — this alarm won't ring.";
     } else {
       message += ` · command sent to ${dispatch.sent} device${dispatch.sent === 1 ? "" : "s"}`;
       if (dispatch.failed > 0) {
@@ -243,18 +297,23 @@ export function showDispatchToast(
   } else {
     message += " · no dispatch report";
   }
-  return showToast({ title: "Remote Alarm", message });
+  return showToast({ title: "Klaxon", message });
 }
 
 export function showWarning(message: string) {
-  return showToast({ title: "Remote Alarm", message, style: Toast.Style.Warning });
+  return showToast({ title: "Klaxon", message, style: Toast.Style.Warning });
 }
 
-export async function toggleAlarmState(client: RemoteAlarmClient, alarm: Alarm) {
+export async function toggleAlarmState(
+  client: RemoteAlarmClient,
+  alarm: Alarm,
+) {
   if (alarm.status === "missed") {
     // A missed alarm's time is in the past, so enabling it would arm a stale
     // alarm. It must be rescheduled instead; never treat it as live.
-    await showWarning("This alarm was missed. Set a new time to reschedule it.");
+    await showWarning(
+      "This alarm was missed. Set a new time to reschedule it.",
+    );
     return;
   }
   const next = alarm.status === "disabled" ? "pending" : "disabled";
@@ -265,7 +324,7 @@ export async function toggleAlarmState(client: RemoteAlarmClient, alarm: Alarm) 
 export async function cancelAlarmWithConfirm(
   client: RemoteAlarmClient,
   alarm: Alarm,
-  confirm: boolean
+  confirm: boolean,
 ) {
   if (confirm) {
     const ok = await confirmAlert({
@@ -289,7 +348,7 @@ export async function silenceAlarm(client: RemoteAlarmClient, alarm: Alarm) {
 
 export async function copyAlarmId(alarm: Alarm) {
   await Clipboard.copy(alarm.id);
-  await showToast({ title: "Remote Alarm", message: `Copied ID ${alarm.id}` });
+  await showToast({ title: "Klaxon", message: `Copied ID ${alarm.id}` });
 }
 
 export function DeviceStatusAccessory({ summary }: { summary: DeviceSummary }) {
@@ -304,7 +363,8 @@ export function DeviceStatusAccessory({ summary }: { summary: DeviceSummary }) {
   }
   const batteryText =
     summary.battery === null ? "—%" : `${Math.round(summary.battery)}%`;
-  const ageText = summary.ageMs === null ? "—" : `${formatAge(summary.ageMs)} ago`;
+  const ageText =
+    summary.ageMs === null ? "—" : `${formatAge(summary.ageMs)} ago`;
   return (
     <List.Item
       title={summary.charging ? "Phone charging" : "Phone battery"}
@@ -347,7 +407,10 @@ export function AlarmDetail({
           />
           <List.Item.Detail.Metadata.Label
             title="Recurrence"
-            text={formatRecurrence(alarm.repeat_days)}
+            text={formatRecurrenceWithInterval(
+              alarm.repeat_days,
+              alarm.recurrence_interval_weeks,
+            )}
           />
           <List.Item.Detail.Metadata.Label
             title="Tone"
@@ -371,7 +434,9 @@ export function AlarmDetail({
               <List.Item.Detail.Metadata.Label
                 title="Reason"
                 text={
-                  alarm.missed_reason ? formatMissedReason(alarm.missed_reason) : "—"
+                  alarm.missed_reason
+                    ? formatMissedReason(alarm.missed_reason)
+                    : "—"
                 }
               />
             </>
@@ -426,7 +491,8 @@ export function groupAlarms(alarms: Alarm[], now: Date) {
     }
   }
 
-  const byTime = (a: Alarm, b: Alarm) => toLocalDate(a).getTime() - toLocalDate(b).getTime();
+  const byTime = (a: Alarm, b: Alarm) =>
+    toLocalDate(a).getTime() - toLocalDate(b).getTime();
   return {
     ringing: ringing.sort(byTime),
     missed: missed.sort(byTime),

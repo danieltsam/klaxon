@@ -12,6 +12,7 @@ import type { SoundTone } from "@remotealarm/core";
 import {
   daysFromRecurrenceValue,
   formatAge,
+  INTERVAL_OPTIONS,
   RAMP_OPTIONS,
   RECURRENCE_OPTIONS,
   showDispatchToast,
@@ -28,6 +29,7 @@ interface CreateAlarmValues {
   description: string;
   datetime: Date | null;
   recurrence: string;
+  interval: string;
   tone: string;
   ramp: string;
 }
@@ -46,6 +48,7 @@ export default function CreateAlarmCommand() {
       description: "",
       datetime: new Date(),
       recurrence: "once",
+      interval: "1",
       tone: settings?.sound_tone ?? "alarm",
       ramp: String(settings?.ramp_seconds ?? 30),
     },
@@ -53,18 +56,23 @@ export default function CreateAlarmCommand() {
       label: FormValidation.Required,
       datetime: FormValidation.Required,
       recurrence: FormValidation.Required,
+      interval: FormValidation.Required,
       tone: FormValidation.Required,
       ramp: FormValidation.Required,
     },
     onSubmit: async (formValues) => {
       try {
+        const repeatDays = daysFromRecurrenceValue(formValues.recurrence);
         const result = await client.createAlarm({
           label: formValues.label,
           targetTime: formValues.datetime ?? new Date(),
           description: formValues.description || undefined,
-          repeat_days: daysFromRecurrenceValue(formValues.recurrence),
+          repeat_days: repeatDays,
           sound_tone: formValues.tone as SoundTone,
           ramp_seconds: Number(formValues.ramp),
+          // A one-time alarm has no cadence to stretch.
+          recurrence_interval_weeks:
+            repeatDays && formValues.interval === "2" ? 2 : undefined,
         });
         await showDispatchToast(result, "Created");
         if (summary.noDevices) {
@@ -75,7 +83,7 @@ export default function CreateAlarmCommand() {
         pop();
       } catch (err) {
         await showToast({
-          title: "Remote Alarm",
+          title: "Klaxon",
           message: err instanceof Error ? err.message : String(err),
           style: Toast.Style.Failure,
         });
@@ -116,6 +124,15 @@ export default function CreateAlarmCommand() {
           <Form.Dropdown.Item key={opt.key} value={opt.key} title={opt.label} />
         ))}
       </Form.Dropdown>
+      <Form.Dropdown title="Interval" {...itemProps.interval}>
+        {INTERVAL_OPTIONS.map((opt) => (
+          <Form.Dropdown.Item
+            key={opt.value}
+            value={opt.value}
+            title={opt.label}
+          />
+        ))}
+      </Form.Dropdown>
       <Form.Dropdown title="Tone" {...itemProps.tone}>
         {SOUND_TONES.map((tone) => (
           <Form.Dropdown.Item key={tone} value={tone} title={tone} />
@@ -123,7 +140,11 @@ export default function CreateAlarmCommand() {
       </Form.Dropdown>
       <Form.Dropdown title="Ramp" {...itemProps.ramp}>
         {RAMP_OPTIONS.map((ramp) => (
-          <Form.Dropdown.Item key={ramp} value={String(ramp)} title={`${ramp}s`} />
+          <Form.Dropdown.Item
+            key={ramp}
+            value={String(ramp)}
+            title={`${ramp}s`}
+          />
         ))}
       </Form.Dropdown>
       {summary.noDevices && (

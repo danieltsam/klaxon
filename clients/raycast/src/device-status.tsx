@@ -8,13 +8,7 @@ import {
 } from "@raycast/api";
 import { useFetch } from "@raycast/utils";
 import type { DeviceStatus } from "@remotealarm/core";
-import {
-  ErrorEmptyView,
-  formatAge,
-  parseSqliteUtc,
-  summarizeDevices,
-  useClient,
-} from "./lib";
+import { ErrorEmptyView, useClient } from "./lib";
 
 export default function DeviceStatusCommand() {
   const client = useClient();
@@ -24,12 +18,13 @@ export default function DeviceStatusCommand() {
     isLoading,
     error,
     revalidate,
-  } = useFetch<DeviceStatus[]>(async () => client.listDevices(), { execute: true });
-  const summary = summarizeDevices(devices);
+  } = useFetch<DeviceStatus[]>(async () => client.listDevices(), {
+    execute: true,
+  });
 
   if (error && !isLoading) {
     return (
-      <List isLoading={isLoading} navigationTitle="Remote Alarm">
+      <List isLoading={isLoading} navigationTitle="Klaxon">
         <ErrorEmptyView error={error} backendUrl={prefs.backendUrl} />
       </List>
     );
@@ -50,7 +45,9 @@ export default function DeviceStatusCommand() {
       ) : (
         devices.map((device) => {
           const updated = parseSqliteUtc(device.updated_at);
-          const ageMs = Number.isNaN(updated.getTime()) ? null : Date.now() - updated.getTime();
+          const ageMs = Number.isNaN(updated.getTime())
+            ? null
+            : Date.now() - updated.getTime();
           const stale = ageMs !== null && ageMs > 24 * 60 * 60 * 1000;
           return (
             <List.Item

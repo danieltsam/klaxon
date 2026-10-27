@@ -4,6 +4,7 @@ import {
   Color,
   getPreferenceValues,
   Icon,
+  Keyboard,
   List,
 } from "@raycast/api";
 import { useFetch } from "@raycast/utils";
@@ -37,7 +38,9 @@ export default function ListAlarmsCommand() {
     isLoading: alarmsLoading,
     error: alarmsError,
     revalidate,
-  } = useFetch<Alarm[]>(async () => client.listAlarms("active"), { execute: true });
+  } = useFetch<Alarm[]>(async () => client.listAlarms("active"), {
+    execute: true,
+  });
 
   // `missed` is excluded from `view=active` by design — the phone must never
   // treat one as something to arm — and included in `view=all`. Read it
@@ -47,7 +50,9 @@ export default function ListAlarmsCommand() {
     data: allAlarms,
     isLoading: allAlarmsLoading,
     revalidate: revalidateAll,
-  } = useFetch<Alarm[]>(async () => client.listAlarms("all"), { execute: true });
+  } = useFetch<Alarm[]>(async () => client.listAlarms("all"), {
+    execute: true,
+  });
 
   const {
     data: devices,
@@ -67,7 +72,9 @@ export default function ListAlarmsCommand() {
 
   const now = new Date();
   const summary = summarizeDevices(devices);
-  const missedAlarms = (allAlarms ?? []).filter((alarm) => alarm.status === "missed");
+  const missedAlarms = (allAlarms ?? []).filter(
+    (alarm) => alarm.status === "missed",
+  );
   // The active fetch already excludes missed, so this is a merge, not a dedupe.
   const groups = groupAlarms([...(alarms ?? []), ...missedAlarms], now);
   const isLoading = alarmsLoading || allAlarmsLoading || devicesLoading;
@@ -84,7 +91,7 @@ export default function ListAlarmsCommand() {
 
   if (error && !isLoading) {
     return (
-      <List isLoading={isLoading} navigationTitle="Remote Alarm">
+      <List isLoading={isLoading} navigationTitle="Klaxon">
         <ErrorEmptyView error={error} backendUrl={prefs.backendUrl} />
       </List>
     );
@@ -95,7 +102,7 @@ export default function ListAlarmsCommand() {
       isLoading={isLoading}
       isShowingDetail={!(!isLoading && !hasAlarms)}
       searchBarPlaceholder="Search alarms…"
-      navigationTitle="Remote Alarm"
+      navigationTitle="Klaxon"
     >
       <DeviceStatusAccessory summary={summary} />
       {!isLoading && !hasAlarms ? (
@@ -176,7 +183,10 @@ export default function ListAlarmsCommand() {
               />
             ))}
           </List.Section>
-          <List.Section title="Recurring" subtitle={`${groups.recurring.length}`}>
+          <List.Section
+            title="Recurring"
+            subtitle={`${groups.recurring.length}`}
+          >
             {groups.recurring.map((alarm) => (
               <AlarmItem
                 key={alarm.id}
@@ -262,7 +272,7 @@ function AlarmItem({
           <Action
             title="Refresh"
             icon={Icon.ArrowClockwise}
-            shortcut={{ modifiers: ["cmd"], key: "r" }}
+            shortcut={Keyboard.Shortcut.Common.Refresh}
             onAction={onChange}
           />
         </ActionPanel>
