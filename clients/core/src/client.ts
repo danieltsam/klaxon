@@ -82,8 +82,7 @@ function asNumber(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
 }
 
-/** SQLite integers can arrive as numbers or digit strings; both mean the same. */
-function asInteger(value: unknown): number | undefined {
+/** SQLite integers can arrive as numbers or digit strings; both mean the same. */function asInteger(value: unknown): number | undefined {
   if (typeof value === "number") return Number.isInteger(value) ? value : undefined;
   if (typeof value === "string" && value.trim() !== "") {
     const parsed = Number(value);
@@ -195,6 +194,40 @@ export function normalizeAlarm(payload: Record<string, unknown>): Alarm {
   return alarm;
 }
 
+/**
+ * A backend URL typed as `baymax:8001` is a host and port, but `fetch` parses
+ * it as a URL with the scheme "baymax" and throws "Failed to parse URL". Accept
+ * the bare form by assuming http, keep an explicit scheme, and drop trailing
+ * slashes. Anything that still will not parse is refused with a message naming
+ * the expected shape.
+ */
+export function normalizeBaseUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed === "") {
+    throw new RemoteAlarmError("A backend URL is required, for example http://baymax:8001.");
+  }
+
+  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)
+    ? trimmed
+    : `http://${trimmed}`;
+  const withoutSlash = withScheme.replace(/\/+$/, "");
+
+  let parsed: URL;
+  try {
+    parsed = new URL(withoutSlash);
+  } catch {
+    throw new RemoteAlarmError(
+      `Invalid backend URL "${raw}". Use a host and port, for example http://baymax:8001.`
+    );
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new RemoteAlarmError(
+      `Unsupported backend URL "${raw}": only http and https are supported.`
+    );
+  }
+  return withoutSlash;
+}
+
 export class RemoteAlarmClient {
   private readonly baseUrl: string;
   private readonly timeouts: TimeoutConfig;
@@ -202,8 +235,7 @@ export class RemoteAlarmClient {
   private readonly now: () => Date;
 
   constructor(config: RemoteAlarmClientConfig) {
-    // Strip trailing slash(es) once, at construction.
-    this.baseUrl = config.baseUrl.replace(/\/+$/, "");
+    this.baseUrl = normalizeBaseUrl(config.baseUrl);
     this.timeouts = { ...DEFAULT_TIMEOUTS, ...(config.timeouts ?? {}) };
     this.fetchImpl = config.fetch ?? ((input, init) => fetch(input, init));
     this.now = config.now ?? (() => new Date());

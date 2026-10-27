@@ -6,6 +6,9 @@ import {
   Icon,
   Keyboard,
   List,
+  openExtensionPreferences,
+  showToast,
+  Toast,
 } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 import { useEffect } from "react";
@@ -85,10 +88,30 @@ export default function ListAlarmsCommand() {
     groups.upcoming.length > 0 ||
     groups.recurring.length > 0;
 
+  async function testConnection() {
+    try {
+      const health = await client.health();
+      await showToast({
+        title: "Klaxon",
+        message: `Backend ok · ${health.status}`,
+      });
+    } catch (err) {
+      await showToast({
+        title: "Klaxon",
+        message: err instanceof Error ? err.message : String(err),
+        style: Toast.Style.Failure,
+      });
+    }
+  }
+
   if (error && !isLoading) {
     return (
       <List isLoading={isLoading} navigationTitle="Klaxon">
-        <ErrorEmptyView error={error} backendUrl={prefs.backendUrl} />
+        <ErrorEmptyView
+          error={error}
+          backendUrl={prefs.backendUrl}
+          onTest={testConnection}
+        />
       </List>
     );
   }
@@ -118,6 +141,16 @@ export default function ListAlarmsCommand() {
                   title="Create Alarm"
                   icon={Icon.Plus}
                   target={<CreateAlarmCommand />}
+                />
+                <Action
+                  title="Test Connection"
+                  icon={Icon.Globe}
+                  onAction={testConnection}
+                />
+                <Action
+                  title="Open Preferences"
+                  icon={Icon.Gear}
+                  onAction={openExtensionPreferences}
                 />
               </ActionPanel>
             }

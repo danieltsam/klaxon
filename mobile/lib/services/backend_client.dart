@@ -6,33 +6,39 @@ class BackendClient {
   static const String _defaultUrl = 'http://127.0.0.1:3000'; // Works with adb reverse or local
   static const String _prefBackendUrlKey = 'backend_server_url';
 
+  /// `baymax:8001` is a host and port, but `Uri.parse` reads "baymax" as the
+  /// scheme. Assume http when no scheme is given, and drop trailing slashes.
+  static String normalizeBaseUrl(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return trimmed;
+    final hasScheme = RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://').hasMatch(trimmed);
+    final withScheme = hasScheme ? trimmed : 'http://$trimmed';
+    return withScheme.replaceFirst(RegExp(r'/+$'), '');
+  }
+
   static Future<String> getBaseUrl() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_prefBackendUrlKey) ?? _defaultUrl;
+    return normalizeBaseUrl(prefs.getString(_prefBackendUrlKey) ?? _defaultUrl);
   }
 
   static Future<void> setBaseUrl(String url) async {
     final prefs = await SharedPreferences.getInstance();
-    // Strip trailing slash if present
-    final cleanUrl = url.trim().endsWith('/') ? url.trim().substring(0, url.trim().length - 1) : url.trim();
+    final cleanUrl = normalizeBaseUrl(url);
+    if (cleanUrl.isEmpty) return;
     await prefs.setString(_prefBackendUrlKey, cleanUrl);
   }
 
   /// Check if the backend is reachable (GET /api/health or GET /api/settings fallback)
   static Future<bool> checkHealth([String? testUrl]) async {
     try {
-      final baseUrl = testUrl != null
-          ? (testUrl.trim().endsWith('/') ? testUrl.trim().substring(0, testUrl.trim().length - 1) : testUrl.trim())
-          : await getBaseUrl();
+      final baseUrl = testUrl != null ? normalizeBaseUrl(testUrl) : await getBaseUrl();
       final uri = Uri.parse('$baseUrl/api/health');
       final response = await http.get(uri).timeout(const Duration(seconds: 4));
       if (response.statusCode == 200) return true;
     } catch (_) {}
 
     try {
-      final baseUrl = testUrl != null
-          ? (testUrl.trim().endsWith('/') ? testUrl.trim().substring(0, testUrl.trim().length - 1) : testUrl.trim())
-          : await getBaseUrl();
+      final baseUrl = testUrl != null ? normalizeBaseUrl(testUrl) : await getBaseUrl();
       final uri = Uri.parse('$baseUrl/api/settings');
       final response = await http.get(uri).timeout(const Duration(seconds: 4));
       return response.statusCode == 200;

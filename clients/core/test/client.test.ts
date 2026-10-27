@@ -744,3 +744,41 @@ describe("RemoteAlarmClient — interval on update", () => {
     assert.equal("recurrence_interval_weeks" in JSON.parse(calls[1].init.body as string), false);
   });
 });
+
+describe("RemoteAlarmClient — backend URL normalisation", () => {
+  it("assumes http for a bare host and port", async () => {
+    const calls: Call[] = [];
+    const client = new RemoteAlarmClient({
+      baseUrl: "baymax:8001",
+      fetch: ((input: unknown, init?: RequestInit) => {
+        calls.push({ url: String(input), init: init ?? {} });
+        return Promise.resolve(jsonResponse(200, { status: "ok", timestamp: "x" }));
+      }) as unknown as FetchLike,
+    });
+
+    await client.health();
+    assert.equal(calls[0].url, "http://baymax:8001/api/health");
+  });
+
+  it("keeps an explicit https scheme and strips trailing slashes", async () => {
+    const calls: Call[] = [];
+    const client = new RemoteAlarmClient({
+      baseUrl: "  https://klaxon.example:8443/  ",
+      fetch: ((input: unknown, init?: RequestInit) => {
+        calls.push({ url: String(input), init: init ?? {} });
+        return Promise.resolve(jsonResponse(200, { status: "ok", timestamp: "x" }));
+      }) as unknown as FetchLike,
+    });
+
+    await client.health();
+    assert.equal(calls[0].url, "https://klaxon.example:8443/api/health");
+  });
+
+  it("refuses an empty URL and a scheme the client cannot speak", () => {
+    assert.throws(() => new RemoteAlarmClient({ baseUrl: "   " }), RemoteAlarmError);
+    assert.throws(
+      () => new RemoteAlarmClient({ baseUrl: "ftp://host:21" }),
+      /only http and https/
+    );
+  });
+});
