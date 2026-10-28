@@ -957,8 +957,21 @@ class AlarmService {
     if (todayCandidate.isAfter(now)) {
       return todayCandidate;
     }
-    return todayCandidate.add(const Duration(days: 1));
+    return addCalendarDays(todayCandidate, 1);
   }
+
+  /// Adds whole calendar days, keeping the local wall clock.
+  ///
+  /// `Duration(days: n)` is a fixed 24-hour span, so across a DST boundary it
+  /// moves the time of day by an hour. Calendar construction does not.
+  static DateTime addCalendarDays(DateTime from, int days) => DateTime(
+        from.year,
+        from.month,
+        from.day + days,
+        from.hour,
+        from.minute,
+        from.second,
+      );
 
   static DateTime getNextOccurrence(
     DateTime targetTime,
@@ -985,12 +998,12 @@ class AlarmService {
       );
       // Up to ~2 years ahead before falling back to the next interval step
       for (int k = 0; k <= 60; k++) {
-        final candidate = anchor.add(Duration(days: 7 * intervalWeeks * k));
+        final candidate = addCalendarDays(anchor, 7 * intervalWeeks * k);
         if (candidate.isAfter(now)) {
           return candidate;
         }
       }
-      return anchor.add(Duration(days: 7 * intervalWeeks));
+      return addCalendarDays(anchor, 7 * intervalWeeks);
     }
 
     for (int dayOffset = 0; dayOffset <= 7; dayOffset++) {

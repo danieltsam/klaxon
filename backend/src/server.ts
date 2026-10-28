@@ -14,6 +14,15 @@ import { evaluateDeliveryHealth, shouldSendAlert, sendWebhookAlert, healthchecks
 
 dotenv.config();
 
+/**
+ * ISO-8601 with an explicit zone. A timestamp without one is parsed as the
+ * server's local time, so the same request means a different instant depending
+ * on where the backend runs. Refusing it turns a silent shift into a 400.
+ */
+function hasExplicitZone(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/.test(value);
+}
+
 const app = fastify({ logger: true });
 
 // Empty-tolerant JSON parser. Fastify's default rejects an empty body when a
@@ -489,6 +498,12 @@ app.post<{
     });
   }
 
+  if (!hasExplicitZone(target_time)) {
+    return reply.status(400).send({
+      error: 'Invalid target_time: include a timezone (Z or an offset such as +10:00).'
+    });
+  }
+
   // Validate target_time format
   const dateObj = new Date(target_time);
   if (isNaN(dateObj.getTime())) {
@@ -562,19 +577,29 @@ app.post<{
   // instant and label. Duplicates are not harmless: the phone keeps one alarm
   // per instant, so the second silently replaces the first, and cancelling it
   // leaves nothing armed. That is how the 2026-10-27 06:30 alarm was lost.
-  const duplicate = db.prepare(`
+  const atInstant = db.prepare(`
     SELECT * FROM alarms
     WHERE target_time = ?
-      AND LOWER(TRIM(label)) = LOWER(TRIM(?))
       AND status IN ('pending', 'snoozed', 'ringing')
-    LIMIT 1
-  `).get(effectiveTargetIso, label.trim()) as AlarmRecord | undefined;
+  `).all(effectiveTargetIso) as AlarmRecord[];
 
+  // A retry of the same intent is idempotent.
+  const duplicate = atInstant.find(
+    (alarm) => alarm.label.trim().toLowerCase() === label.trim().toLowerCase()
+  );
   if (duplicate) {
     return reply.status(200).send({
       ...duplicate,
       deduplicated: true,
       fcm_dispatch: { sent: 0, failed: 0 }
+    });
+  }
+
+  // A different alarm at the same instant cannot be honoured: the phone keeps
+  // one per instant, so it would silently replace the first. Refuse loudly.
+  if (atInstant.length > 0) {
+    return reply.status(409).send({
+      error: `An alarm already exists at that time ("${atInstant[0].label}"). The phone can only hold one alarm per instant.`
     });
   }
 
@@ -728,6 +753,11 @@ app.patch<{
   const updates: Partial<AlarmRecord> = {};
 
   if (target_time !== undefined) {
+    if (!hasExplicitZone(target_time)) {
+      return reply.status(400).send({
+        error: 'Invalid target_time: include a timezone (Z or an offset such as +10:00).'
+      });
+    }
     const dateObj = new Date(target_time);
     if (isNaN(dateObj.getTime())) {
       return reply.status(400).send({ error: 'Invalid target_time: must be a valid ISO 8601 UTC timestamp.' });
@@ -930,6 +960,12 @@ app.post<{
   const existing = AlarmRepo.getById(id);
   if (!existing) {
     return reply.status(404).send({ error: 'Alarm not found' });
+  }
+
+  if (target_time !== undefined && target_time !== null && !hasExplicitZone(target_time)) {
+    return reply.status(400).send({
+      error: 'Invalid target_time: include a timezone (Z or an offset such as +10:00).'
+    });
   }
 
   AlarmRepo.updateStatus(id, status);
