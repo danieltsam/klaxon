@@ -101,10 +101,21 @@ class _RingScreenState extends State<RingScreen> with TickerProviderStateMixin {
     if (_isProcessing) return;
     setState(() => _isProcessing = true);
 
-    await AlarmService.dismissAlarm(widget.alarmSettings);
-
-    if (mounted) {
-      Navigator.of(context).pop();
+    try {
+      await AlarmService.dismissAlarm(widget.alarmSettings);
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      // Never leave the ring screen with disabled buttons over a live alarm.
+      // ignore: avoid_print
+      print('[RingScreen] dismiss failed: $e');
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('could not dismiss — try again')),
+        );
+      }
     }
   }
 
@@ -112,10 +123,20 @@ class _RingScreenState extends State<RingScreen> with TickerProviderStateMixin {
     if (_isProcessing) return;
     setState(() => _isProcessing = true);
 
-    await AlarmService.snoozeAlarm(widget.alarmSettings);
-
-    if (mounted) {
-      Navigator.of(context).pop();
+    try {
+      await AlarmService.snoozeAlarm(widget.alarmSettings);
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print('[RingScreen] snooze failed: $e');
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('could not snooze — try again')),
+        );
+      }
     }
   }
 

@@ -63,9 +63,10 @@ export default function CreateAlarmCommand() {
         ramp: requiredField,
       },
       onSubmit: async (formValues) => {
-        try {
-          const repeatDays = daysFromRecurrenceValue(formValues.recurrence);
-          const result = await client.createAlarm({
+        const repeatDays = daysFromRecurrenceValue(formValues.recurrence);
+        // Close immediately; feedback follows as a toast.
+        const request = client
+          .createAlarm({
             label: formValues.label,
             targetTime: formValues.datetime ?? new Date(),
             description: formValues.description || undefined,
@@ -75,21 +76,26 @@ export default function CreateAlarmCommand() {
             // A one-time alarm has no cadence to stretch.
             recurrence_interval_weeks:
               repeatDays && formValues.fortnightly ? 2 : undefined,
+          })
+          .then(async (result) => {
+            await showDispatchToast(result, "Created");
+            if (summary.noDevices) {
+              await showWarning(
+                "No devices registered — this alarm won't ring.",
+              );
+            } else if (summary.stale) {
+              await showWarning("Phone last pinged over 24 hours ago.");
+            }
+          })
+          .catch(async (err) => {
+            await showToast({
+              title: "Klaxon",
+              message: err instanceof Error ? err.message : String(err),
+              style: Toast.Style.Failure,
+            });
           });
-          await showDispatchToast(result, "Created");
-          if (summary.noDevices) {
-            await showWarning("No devices registered — this alarm won't ring.");
-          } else if (summary.stale) {
-            await showWarning("Phone last pinged over 24 hours ago.");
-          }
-          pop();
-        } catch (err) {
-          await showToast({
-            title: "Klaxon",
-            message: err instanceof Error ? err.message : String(err),
-            style: Toast.Style.Failure,
-          });
-        }
+        pop();
+        void request;
       },
     });
 
