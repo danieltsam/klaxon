@@ -120,7 +120,7 @@ describe('Fortnightly Recurrence (recurrence_interval_weeks)', () => {
         method: 'POST',
         url: '/api/alarms',
         payload: {
-          target_time: futureFortnightlyTarget,
+          target_time: new Date(Date.parse(futureFortnightlyTarget) + 60_000).toISOString(),
           label: 'Fortnightly FCM',
           recurrence_interval_weeks: 2,
           repeat_days: [3]
@@ -171,7 +171,7 @@ describe('Fortnightly Recurrence (recurrence_interval_weeks)', () => {
       method: 'POST',
       url: '/api/alarms',
       payload: {
-        target_time: futureFortnightlyTarget,
+        target_time: new Date(Date.parse(futureFortnightlyTarget) + 120_000).toISOString(),
         label: 'Fortnightly Get',
         recurrence_interval_weeks: 2,
         repeat_days: [3]
