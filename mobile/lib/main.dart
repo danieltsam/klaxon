@@ -47,7 +47,7 @@ Future<void> Function(String token)? registerTokenForTest;
 /// Injection seam for tests; production deletes remotely through
 /// [BackendClient.deleteRemoteAlarm].
 @visibleForTesting
-Future<void> Function(String uuid)? deleteRemoteAlarmForTest;
+Future<bool> Function(String uuid)? deleteRemoteAlarmForTest;
 
 /// Register (or re-register) this device's FCM token with the backend.
 ///
@@ -983,11 +983,20 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
 
   Future<void> _deleteAlarmItem(_AlarmItem item, {bool announce = true}) async {
     await HapticService.playPreset(PresetHapticStyle.heavyLatch);
-    await Alarm.stop(item.id);
+
+    // Delete on the backend first. Removing the local copy when the request
+    // failed made the next reconcile pull the alarm straight back, with a
+    // "deleted" toast in between.
     if (item.uuid != null && !item.uuid!.startsWith('local_')) {
       final deleteRemote = deleteRemoteAlarmForTest ?? BackendClient.deleteRemoteAlarm;
-      await deleteRemote(item.uuid!);
+      final ok = await deleteRemote(item.uuid!);
+      if (!ok) {
+        if (announce) _showToast('could not delete: backend unreachable');
+        return;
+      }
     }
+
+    await Alarm.stop(item.id);
     await IdMapper.removeMapping(item.id);
     if (announce) {
       _showToast('alarm deleted');

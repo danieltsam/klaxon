@@ -197,6 +197,30 @@ void main() {
     });
   });
 
+  group('outbox identity', () {
+    test('a newer queued state survives a stale flush', () async {
+      const uuid = 'outbox-race-uuid';
+      final older = PendingAlarmState(
+        uuid: uuid,
+        status: 'dismissed',
+        queuedAt: DateTime(2026, 1, 1),
+      );
+      await AlarmStateOutbox.put(older);
+      await AlarmStateOutbox.put(PendingAlarmState(
+        uuid: uuid,
+        status: 'disabled',
+        queuedAt: DateTime(2026, 1, 2),
+      ));
+
+      await AlarmStateOutbox.removeIfCurrent(older);
+
+      final remaining = await AlarmStateOutbox.all();
+      expect(remaining, hasLength(1));
+      expect(remaining.single.status, 'disabled',
+          reason: 'the stale success must not delete the newer report');
+    });
+  });
+
   group('syncWithBackend dismissal self-heal', () {
     test('pushes a corrected dismissal when the server still shows ringing',
         () async {

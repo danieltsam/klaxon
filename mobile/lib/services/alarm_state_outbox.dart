@@ -106,6 +106,43 @@ class AlarmStateOutbox {
     }
   }
 
+  /// Removes [state] only when it is still the stored entry.
+  ///
+  /// A flush can take seconds, and a newer report for the same uuid may be
+  /// queued while it runs. Removing by uuid alone deleted that newer report,
+  /// so the device's latest state was never sent.
+  static Future<void> removeIfCurrent(PendingAlarmState state) async {
+    final entries = await all();
+    final before = entries.length;
+    entries.removeWhere(
+      (e) => e.uuid == state.uuid && e.queuedAt == state.queuedAt,
+    );
+    if (entries.length != before) {
+      await _save(entries);
+    }
+  }
+
+  /// Records a failed delivery for [state] if it is still the stored entry.
+  static Future<void> recordFailureIfCurrent(PendingAlarmState state) async {
+    final entries = await all();
+    var changed = false;
+    final kept = <PendingAlarmState>[];
+    for (final entry in entries) {
+      if (entry.uuid != state.uuid || entry.queuedAt != state.queuedAt) {
+        kept.add(entry);
+        continue;
+      }
+      changed = true;
+      final next = entry.attempts + 1;
+      if (next < maxAttempts) {
+        kept.add(entry.withAttempts(next));
+      }
+    }
+    if (changed) {
+      await _save(kept);
+    }
+  }
+
   /// Records a failed delivery for [uuid], dropping the entry once it has
   /// reached [maxAttempts].
   static Future<void> recordFailure(String uuid) async {

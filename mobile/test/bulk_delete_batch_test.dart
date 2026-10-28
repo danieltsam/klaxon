@@ -105,7 +105,7 @@ void main() {
       started.add(uuid);
       final gate = Completer<void>();
       gates[uuid] = gate;
-      return gate.future;
+      return gate.future.then((_) => true);
     };
 
     await tester.tap(find.text('delete (2)'));

@@ -124,14 +124,14 @@ class AlarmService {
         final accepted =
             await _sendState(entry.uuid, entry.status, entry.targetTime);
         if (accepted) {
-          await AlarmStateOutbox.remove(entry.uuid);
+          await AlarmStateOutbox.removeIfCurrent(entry);
         } else {
-          await AlarmStateOutbox.recordFailure(entry.uuid);
+          await AlarmStateOutbox.recordFailureIfCurrent(entry);
         }
       } catch (e) {
         // ignore: avoid_print
         print('[AlarmService] flushPendingStateReports error: $e');
-        await AlarmStateOutbox.recordFailure(entry.uuid);
+        await AlarmStateOutbox.recordFailureIfCurrent(entry);
       }
     }
   }
