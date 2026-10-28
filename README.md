@@ -33,6 +33,27 @@ I could not find an existing free service that does this as surprising as this s
 
 Everything runs on my private Tailscale network. I don't have to expose any port to the internet.
 
+## Run it
+
+```bash
+# 1. Firebase credentials for delivery
+cp /path/to/service-account.json data/service-account.json
+
+# 2. Backend config. Compose reads the ROOT .env, not backend/.env.
+cp backend/.env.example .env
+
+# 3. Build and start
+docker compose up -d --build
+```
+
+- Dashboard: `http://<host>:8001`
+- Health: `GET /api/health` (delivery state is inside `delivery_health`)
+- Phone and clients use that same URL. There is no authentication, so keep it on a private network.
+- After a pull: `git pull --ff-only && docker compose up -d --build`.
+- Tests: `./run_tests.sh`.
+
+The Google Calendar mirror is optional. It needs an OAuth client, a `GCAL_TIMEZONE`, and a token in `data/google-oauth-token.json`; the token expires every 7 days on a Testing consent screen. After copying a fresh token, **restart the container**, because the token file is read once at startup.
+
 ### Phones without Google Play services
 
 FCM depends on Google Play services. If a phone does not have them, this project cannot deliver alarms to that phone reliably. 

@@ -104,8 +104,11 @@ export default function QuickCreateCommand() {
         }
         const meta = parsed.alarm ?? {};
 
-        try {
-          const result = await client.createAlarm({
+        // Close immediately. The create waits on FCM dispatch and the calendar
+        // mirror (~1s), and holding the window open for that reads as a hang.
+        // The outcome arrives as a toast when the request resolves.
+        const request = client
+          .createAlarm({
             label,
             targetTime: parsed.targetTime,
             repeat_days:
@@ -118,21 +121,26 @@ export default function QuickCreateCommand() {
             recurrence_interval_weeks: parsed.interval
               ? (parsed.interval.count as 1 | 2)
               : undefined,
+          })
+          .then(async (result) => {
+            await showDispatchToast(result, "Created");
+            if (summary.noDevices) {
+              await showWarning(
+                "No devices registered — this alarm won't ring.",
+              );
+            } else if (summary.stale) {
+              await showWarning("Phone last pinged over 24 hours ago.");
+            }
+          })
+          .catch(async (err) => {
+            await showToast({
+              title: "Klaxon",
+              message: err instanceof Error ? err.message : String(err),
+              style: Toast.Style.Failure,
+            });
           });
-          await showDispatchToast(result, "Created");
-          if (summary.noDevices) {
-            await showWarning("No devices registered — this alarm won't ring.");
-          } else if (summary.stale) {
-            await showWarning("Phone last pinged over 24 hours ago.");
-          }
-          pop();
-        } catch (err) {
-          await showToast({
-            title: "Klaxon",
-            message: err instanceof Error ? err.message : String(err),
-            style: Toast.Style.Failure,
-          });
-        }
+        pop();
+        void request;
       },
     });
 
