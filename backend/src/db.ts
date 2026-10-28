@@ -192,10 +192,12 @@ export const AlarmRepo = {
     // prove the sweep's guess wrong, so the failure fields must not linger on a
     // row that is no longer a failure. `missed` is never set through this path —
     // `markMissed` is its only writer — so clearing here is always safe.
+    // `cancel` is terminal. A delayed phone report for an alarm the owner
+    // cancelled must not resurrect it as ringing/snoozed/pending.
     const result = db.prepare(`
       UPDATE alarms
       SET status = ?, missed_at = NULL, missed_reason = NULL
-      WHERE id = ?
+      WHERE id = ? AND status != 'canceled'
     `).run(status, id);
     return result.changes > 0;
   },

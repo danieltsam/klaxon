@@ -400,3 +400,12 @@ describe('Missed alarms: sweep, reason, report, calendar', () => {
     });
   });
 });
+
+describe('a cancelled alarm is terminal', () => {
+  it('ignores a late status report for a cancelled alarm', () => {
+    const alarm = insertAlarm();
+    AlarmRepo.cancel(alarm.id);
+    AlarmRepo.updateStatus(alarm.id, 'ringing');
+    assert.strictEqual(AlarmRepo.getById(alarm.id)!.status, 'canceled');
+  });
+});
