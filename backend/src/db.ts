@@ -40,6 +40,7 @@ export interface AlarmRecord {
   last_dispatch_sent?: number | null;   // outcome of the most recent FCM dispatch
   last_dispatch_failed?: number | null; // outcome of the most recent FCM dispatch
   last_dispatch_at?: string | null;     // when that dispatch happened
+  skipped_from?: string | null;         // occurrence consumed by a skip; earlier than target_time
 }
 
 export interface DeviceRecord {  token: string;
@@ -98,7 +99,8 @@ db.exec(`
     recurrence_anchor_date TEXT DEFAULT NULL,
     sound_tone TEXT DEFAULT 'alarm',
     ramp_seconds INTEGER DEFAULT 30,
-    created_at TEXT DEFAULT (datetime('now'))
+    created_at TEXT DEFAULT (datetime('now')),
+    skipped_from TEXT DEFAULT NULL
   );
 
   CREATE TABLE IF NOT EXISTS devices (
@@ -131,7 +133,8 @@ const migrations = [
   { name: 'add_missed_reason',              sql: 'ALTER TABLE alarms ADD COLUMN missed_reason TEXT DEFAULT NULL' },
   { name: 'add_last_dispatch_sent',         sql: 'ALTER TABLE alarms ADD COLUMN last_dispatch_sent INTEGER DEFAULT NULL' },
   { name: 'add_last_dispatch_failed',       sql: 'ALTER TABLE alarms ADD COLUMN last_dispatch_failed INTEGER DEFAULT NULL' },
-  { name: 'add_last_dispatch_at',           sql: 'ALTER TABLE alarms ADD COLUMN last_dispatch_at TEXT DEFAULT NULL' }
+  { name: 'add_last_dispatch_at',           sql: 'ALTER TABLE alarms ADD COLUMN last_dispatch_at TEXT DEFAULT NULL' },
+  { name: 'add_skipped_from',               sql: 'ALTER TABLE alarms ADD COLUMN skipped_from TEXT DEFAULT NULL' }
 ];
 
 for (const migration of migrations) {
@@ -203,11 +206,29 @@ export const AlarmRepo = {
   },
 
   updateTargetTime(id: string, targetTime: string): boolean {
+    // Moving the target consumes any pending skip: the marker names an
+    // occurrence that is no longer the one being moved past (design §5.1).
     const result = db.prepare(`
       UPDATE alarms
-      SET target_time = ?
+      SET target_time = ?,
+          skipped_from = NULL
       WHERE id = ?
     `).run(targetTime, id);
+    return result.changes > 0;
+  },
+
+  /**
+   * Move the alarm to `targetTime` and record (or clear) the occurrence a skip
+   * consumed, in one statement so the pair can never drift (design §5.2).
+   * This is the only writer that sets `skipped_from`.
+   */
+  setSkip(id: string, skippedFrom: string | null, targetTime: string): boolean {
+    const result = db.prepare(`
+      UPDATE alarms
+      SET target_time = ?,
+          skipped_from = ?
+      WHERE id = ?
+    `).run(targetTime, skippedFrom, id);
     return result.changes > 0;
   },
 
@@ -296,7 +317,8 @@ export const AlarmRepo = {
           sound_tone = @sound_tone,
           ramp_seconds = @ramp_seconds,
           recurrence_interval_weeks = @recurrence_interval_weeks,
-          recurrence_anchor_date = @recurrence_anchor_date
+          recurrence_anchor_date = @recurrence_anchor_date,
+          skipped_from = @skipped_from
       WHERE id = @id
     `).run({
       id,
@@ -308,7 +330,8 @@ export const AlarmRepo = {
       sound_tone: merged.sound_tone || 'alarm',
       ramp_seconds: merged.ramp_seconds ?? 30,
       recurrence_interval_weeks: merged.recurrence_interval_weeks ?? 1,
-      recurrence_anchor_date: merged.recurrence_anchor_date || null
+      recurrence_anchor_date: merged.recurrence_anchor_date || null,
+      skipped_from: merged.skipped_from ?? null
     });
     return result.changes > 0;
   },

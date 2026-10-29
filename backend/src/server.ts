@@ -11,6 +11,7 @@ import { createGcalTransport } from './gcal-google.js';
 import { resolveGcalConfig } from './gcal-config.js';
 import { reconcile } from './gcal-reconcile.js';
 import { evaluateDeliveryHealth, shouldSendAlert, sendWebhookAlert, healthchecksUrl, type DeliveryHealth, type WebhookKind } from './alerts.js';
+import { isRecurring as isRecurringPattern, stepOccurrence, firstOccurrenceAfter, type Pattern } from './recurrence.js';
 
 dotenv.config();
 
@@ -477,6 +478,59 @@ app.get('/api/calendar.ics', async (_request, reply) => {
     .send(icsBody);
 });
 
+/**
+ * The recurrence pattern a row carries, parsed from its stored columns.
+ */
+function patternFor(alarm: AlarmRecord): Pattern {
+  const repeatDays = (alarm.repeat_days || '')
+    .split(',')
+    .map((s) => parseInt(s.trim(), 10))
+    .filter((d) => d >= 1 && d <= 7);
+  return { repeatDays, intervalWeeks: alarm.recurrence_interval_weeks ?? 1 };
+}
+
+/**
+ * Resolve the caller's UTC offset in minutes east of UTC. Accepts integers
+ * within ±840; anything else falls back to the server's own offset, then UTC
+ * (design §5.5). A fixed offset means no DST handling, which is stated rather
+ * than guessed at.
+ */
+function resolveUtcOffsetMinutes(value: unknown): number {
+  if (typeof value === 'number' && Number.isInteger(value) && Math.abs(value) <= 840) {
+    return value;
+  }
+  const serverOffset = -new Date().getTimezoneOffset();
+  if (Number.isInteger(serverOffset) && Math.abs(serverOffset) <= 840) {
+    return serverOffset;
+  }
+  return 0;
+}
+
+/**
+ * The field set the create path sends. Exported so the skip and undo paths
+ * cannot drift from it: copying the `pending` transition's builder would drop
+ * the interval and the anchor, and `buildFcmData` would then send an empty
+ * anchor that makes a fortnightly alarm weekly on the phone.
+ */
+export function buildCreatePayload(alarm: AlarmRecord): FcmPayload {
+  const payload: FcmPayload = {
+    id: alarm.id,
+    target_time: alarm.target_time,
+    label: alarm.label,
+    sound_tone: alarm.sound_tone || 'alarm',
+    ramp_seconds: alarm.ramp_seconds ?? 30,
+    recurrence_interval_weeks: alarm.recurrence_interval_weeks ?? 1,
+    recurrence_anchor_date: alarm.recurrence_anchor_date
+  };
+  if (alarm.description) {
+    payload.description = alarm.description;
+  }
+  if (alarm.repeat_days) {
+    payload.repeat_days = alarm.repeat_days;
+  }
+  return payload;
+}
+
 // 2. POST /api/alarms: Create new alarm and broadcast FCM CREATE
 app.post<{
   Body: {
@@ -625,21 +679,7 @@ app.post<{
   AlarmRepo.create(newAlarm);
 
   // Send FCM Data Message
-  const fcmPayload: FcmPayload = {
-    id: newAlarm.id,
-    target_time: newAlarm.target_time,
-    label: newAlarm.label,
-    sound_tone: normalizedTone,
-    ramp_seconds: normalizedRamp,
-    recurrence_interval_weeks: normalizedInterval,
-    recurrence_anchor_date: normalizedAnchorDate
-  };
-  if (newAlarm.description) {
-    fcmPayload.description = newAlarm.description;
-  }
-  if (repeatDaysStr) {
-    fcmPayload.repeat_days = repeatDaysStr;
-  }
+  const fcmPayload: FcmPayload = buildCreatePayload(newAlarm);
 
   const dispatchResult = await sendFcmDataMessage('CREATE', fcmPayload);
   AlarmRepo.recordDispatch(newAlarm.id, dispatchResult.sent, dispatchResult.failed);
@@ -726,7 +766,140 @@ app.post<{
   });
 });
 
-// 3c. PATCH /api/alarms/:id: Update alarm fields and broadcast FCM CREATE
+// 3c. POST /api/alarms/:id/skip: Skip exactly the next occurrence of a recurring alarm.
+// Dispatch-first, like cancel/silence: a skip the phone never hears about must not
+// be recorded, or the row moves while the phone still rings the skipped morning.
+app.post<{
+  Params: { id: string };
+  Body: { utc_offset_minutes?: number };
+}>('/api/alarms/:id/skip', async (request, reply) => {
+  const { id } = request.params;
+  const existing = AlarmRepo.getById(id);
+
+  if (!existing) {
+    return reply.status(404).send({ error: 'Alarm not found' });
+  }
+
+  const pattern = patternFor(existing);
+  if (!isRecurringPattern(pattern.repeatDays, pattern.intervalWeeks, existing.recurrence_anchor_date)) {
+    return reply.status(409).send({
+      error: 'This alarm is not recurring, so there is no next occurrence to skip.'
+    });
+  }
+
+  if (existing.status !== 'pending') {
+    return reply.status(409).send({
+      error: `Only a pending alarm can be skipped (this one is ${existing.status}).`
+    });
+  }
+
+  const pendingSkipMs = existing.skipped_from
+    ? new Date(existing.skipped_from).getTime()
+    : null;
+  if (pendingSkipMs !== null && pendingSkipMs > Date.now()) {
+    return reply.status(409).send({
+      error: 'The next occurrence has already been skipped. Undo that skip first.'
+    });
+  }
+
+  const offset = resolveUtcOffsetMinutes(request.body?.utc_offset_minutes);
+  const skipped = firstOccurrenceAfter(new Date(existing.target_time), pattern, offset, new Date());
+  const next = stepOccurrence(skipped, pattern, offset);
+  const nextTarget = next.toISOString();
+
+  const dispatchResult = await sendFcmDataMessage(
+    'CREATE',
+    buildCreatePayload({ ...existing, target_time: nextTarget })
+  );
+  AlarmRepo.recordDispatch(id, dispatchResult.sent, dispatchResult.failed);
+
+  // sent === 0 with failed === 0 means no device is registered: there is nothing
+  // to ring, so the skip is still correct. A real failure is failed > 0.
+  if (dispatchResult.sent === 0 && dispatchResult.failed > 0) {
+    return reply.status(502).send({
+      error: 'The phone was not reached, so the alarm was not skipped. Try again.',
+      fcm_dispatch: dispatchResult
+    });
+  }
+
+  AlarmRepo.setSkip(id, skipped.toISOString(), nextTarget);
+  const updated = AlarmRepo.getById(id)!;
+
+  await mirrorSafely(updated);
+
+  return reply.send({
+    success: true,
+    id,
+    status: updated.status,
+    target_time: updated.target_time,
+    skipped_from: updated.skipped_from ?? null,
+    fcm_dispatch: dispatchResult
+  });
+});
+
+// 3d. POST /api/alarms/:id/unskip: undo a pending skip while the instant is still ahead.
+// Same dispatch-first ordering as skip: if the phone cannot be reached, the row
+// must stay in the skipped state rather than claim a schedule the phone lacks.
+app.post<{
+  Params: { id: string };
+}>('/api/alarms/:id/unskip', async (request, reply) => {
+  const { id } = request.params;
+  const existing = AlarmRepo.getById(id);
+
+  if (!existing) {
+    return reply.status(404).send({ error: 'Alarm not found' });
+  }
+
+  if (!existing.skipped_from) {
+    return reply.status(409).send({
+      error: 'There is no skipped occurrence to restore.'
+    });
+  }
+
+  const skippedMs = new Date(existing.skipped_from).getTime();
+  if (isNaN(skippedMs) || skippedMs <= Date.now()) {
+    return reply.status(409).send({
+      error: 'The skipped occurrence has already passed, so it cannot be restored.'
+    });
+  }
+
+  if (existing.status !== 'pending') {
+    return reply.status(409).send({
+      error: `Only a pending alarm can have its skip undone (this one is ${existing.status}).`
+    });
+  }
+
+  const restoredTarget = existing.skipped_from;
+
+  const dispatchResult = await sendFcmDataMessage(
+    'CREATE',
+    buildCreatePayload({ ...existing, target_time: restoredTarget })
+  );
+  AlarmRepo.recordDispatch(id, dispatchResult.sent, dispatchResult.failed);
+
+  if (dispatchResult.sent === 0 && dispatchResult.failed > 0) {
+    return reply.status(502).send({
+      error: 'The phone was not reached, so the skip was not undone. Try again.',
+      fcm_dispatch: dispatchResult
+    });
+  }
+
+  AlarmRepo.setSkip(id, null, restoredTarget);
+  const updated = AlarmRepo.getById(id)!;
+
+  await mirrorSafely(updated);
+
+  return reply.send({
+    success: true,
+    id,
+    status: updated.status,
+    target_time: updated.target_time,
+    skipped_from: null,
+    fcm_dispatch: dispatchResult
+  });
+});
+
+// 3e. PATCH /api/alarms/:id: Update alarm fields and broadcast FCM CREATE
 app.patch<{
   Params: { id: string };
   Body: {
@@ -860,6 +1033,10 @@ app.patch<{
       updates.recurrence_anchor_date = effectiveTarget.slice(0, 10);
     }
   }
+
+  // An edit wins over a pending skip (design §5.1, §6): the marker names an
+  // occurrence that the new schedule may no longer contain, so it is cleared.
+  updates.skipped_from = null;
 
   AlarmRepo.update(id, updates);
   const updated = AlarmRepo.getById(id)!;
