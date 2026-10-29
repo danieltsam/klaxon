@@ -534,6 +534,8 @@
           </div>
         </div>
 
+        <div id="skip-state-line" class="hidden pt-4 border-t border-app-border text-xs"></div>
+
         <div class="flex items-center justify-between pt-4 border-t border-app-border">
           <button type="button" onclick="deleteCurrentAlarm()" class="text-xs text-app-danger hover:text-white transition-colors lowercase">
             delete alarm
@@ -1208,6 +1210,125 @@
       }
     }
 
+    const SKIP_DAY_NAMES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const SKIP_MONTH_NAMES = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+    function formatSkipStamp(isoStr) {
+      const d = new Date(isoStr);
+      let time;
+      if (appSettings.time_format === '12h') {
+        let h = d.getHours();
+        const m = String(d.getMinutes()).padStart(2, '0');
+        const ampm = h >= 12 ? 'pm' : 'am';
+        h = h % 12 || 12;
+        time = `${h}:${m}${ampm}`;
+      } else {
+        time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      }
+      return `${SKIP_DAY_NAMES[d.getDay()]} ${d.getDate()} ${SKIP_MONTH_NAMES[d.getMonth()]}, ${time}`;
+    }
+
+    // Only recurring alarms can skip: repeat_days, or a multi-week interval
+    // with an anchor. The server enforces the same rule.
+    function isSkipEligible(alarm) {
+      if (!alarm || alarm.status !== 'pending') return false;
+      const days = alarm.repeat_days ? String(alarm.repeat_days).split(',').filter(d => d.trim()) : [];
+      const interval = Number(alarm.recurrence_interval_weeks) || 1;
+      return days.length > 0 || (interval > 1 && !!alarm.recurrence_anchor_date);
+    }
+
+    // A past skipped_from has expired: the occurrence has rung or been edited away.
+    function hasPendingSkip(alarm) {
+      return !!(alarm && alarm.skipped_from && new Date(alarm.skipped_from) > new Date());
+    }
+
+    function renderSkipLine(alarm) {
+      const line = document.getElementById('skip-state-line');
+      if (!line) return;
+
+      if (hasPendingSkip(alarm)) {
+        line.innerHTML = `
+          <div class="flex items-start justify-between gap-3">
+            <div class="space-y-1">
+              <div class="text-app-muted">skipped ${formatSkipStamp(alarm.skipped_from)} · back ${formatSkipStamp(alarm.target_time)}</div>
+              <div class="text-[11px] text-app-dim">alarm stays on, just not for that morning.</div>
+            </div>
+            <button type="button" onclick="unskipCurrentAlarm()" class="shrink-0 text-xs text-app-accent hover:text-white transition-colors lowercase">undo</button>
+          </div>`;
+        line.classList.remove('hidden');
+      } else if (isSkipEligible(alarm)) {
+        line.innerHTML = `
+          <div class="flex items-center justify-between gap-3">
+            <div class="text-[11px] text-app-dim">skip just the next ring, the pattern carries on.</div>
+            <button type="button" id="skip-next-btn" onclick="skipCurrentAlarm()" class="shrink-0 text-xs text-app-accent hover:text-white transition-colors lowercase">skip next occurrence</button>
+          </div>`;
+        line.classList.remove('hidden');
+      } else {
+        line.innerHTML = '';
+        line.classList.add('hidden');
+      }
+    }
+
+    function applyEditTargetFields(isoStr) {
+      const dt = new Date(isoStr);
+      const hh = String(dt.getHours()).padStart(2, '0');
+      const min = String(dt.getMinutes()).padStart(2, '0');
+      const yyyy = dt.getFullYear();
+      const mm = String(dt.getMonth() + 1).padStart(2, '0');
+      const dd = String(dt.getDate()).padStart(2, '0');
+      document.getElementById('edit-alarm-time').value = `${hh}:${min}`;
+      document.getElementById('edit-alarm-date').value = `${yyyy}-${mm}-${dd}`;
+    }
+
+    // Keep the cached row in step with the response before reloading the list,
+    // so the open modal does not keep offering a second skip.
+    async function applySkipResponse(res, failureLabel) {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`${failureLabel}: ${err.error || res.status}`);
+        return;
+      }
+
+      const data = await res.json().catch(() => ({}));
+      const alarm = allAlarms.find(a => a.id === document.getElementById('edit-alarm-id').value);
+      if (alarm && data.target_time) {
+        alarm.target_time = data.target_time;
+        alarm.skipped_from = data.skipped_from ?? null;
+        if (data.status) alarm.status = data.status;
+        renderSkipLine(alarm);
+        applyEditTargetFields(alarm.target_time);
+      }
+      await loadAlarms();
+    }
+
+    async function skipCurrentAlarm() {
+      const id = document.getElementById('edit-alarm-id').value;
+      if (!id) return;
+      try {
+        const res = await fetch(`/api/alarms/${id}/skip`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ utc_offset_minutes: -new Date().getTimezoneOffset() })
+        });
+        await applySkipResponse(res, 'could not skip');
+      } catch (err) {
+        alert('could not skip: network error');
+        console.error('Skip failed:', err);
+      }
+    }
+
+    async function unskipCurrentAlarm() {
+      const id = document.getElementById('edit-alarm-id').value;
+      if (!id) return;
+      try {
+        const res = await fetch(`/api/alarms/${id}/unskip`, { method: 'POST' });
+        await applySkipResponse(res, 'could not undo skip');
+      } catch (err) {
+        alert('could not undo skip: network error');
+        console.error('Unskip failed:', err);
+      }
+    }
+
     window.openAlarmDetail = function(id) {
       const alarm = allAlarms.find(a => a.id === id);
       if (!alarm) return;
@@ -1216,15 +1337,7 @@
       document.getElementById('edit-alarm-title').value = alarm.label;
       document.getElementById('edit-alarm-desc').value = alarm.description || '';
 
-      const dt = new Date(alarm.target_time);
-      const hh = String(dt.getHours()).padStart(2, '0');
-      const min = String(dt.getMinutes()).padStart(2, '0');
-      const yyyy = dt.getFullYear();
-      const mm = String(dt.getMonth() + 1).padStart(2, '0');
-      const dd = String(dt.getDate()).padStart(2, '0');
-
-      document.getElementById('edit-alarm-time').value = `${hh}:${min}`;
-      document.getElementById('edit-alarm-date').value = `${yyyy}-${mm}-${dd}`;
+      applyEditTargetFields(alarm.target_time);
       document.getElementById('edit-alarm-tone').value = alarm.sound_tone || 'alarm';
       document.getElementById('edit-alarm-ramp').value = String(alarm.ramp_seconds ?? 15);
 
@@ -1232,6 +1345,7 @@
       editingIntervalWeeks = alarm.recurrence_interval_weeks || 1;
       updateEditDayButtons();
 
+      renderSkipLine(alarm);
       document.getElementById('alarm-detail-modal').classList.remove('hidden');
     };
 
