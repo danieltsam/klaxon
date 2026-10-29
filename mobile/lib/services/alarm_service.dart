@@ -873,6 +873,70 @@ class AlarmService {
     return newSettings;
   }
 
+  /// Whether the next occurrence of this alarm can be skipped.
+  ///
+  /// Mirrors the server's rule: the alarm must be enabled, unsnoozed and
+  /// `pending`, no skip may already be pending, and the schedule must recur
+  /// (repeat days, or an interval with an anchor).
+  static bool isSkipEligible({
+    required bool isEnabled,
+    required bool isSnoozed,
+    required List<int> repeatDays,
+    required int intervalWeeks,
+    String? anchorDate,
+    required String status,
+    String? skippedFrom,
+    DateTime? mockNow,
+  }) {
+    final now = mockNow ?? DateTime.now();
+    if (status != 'pending' || !isEnabled || isSnoozed) return false;
+
+    final skipped = skippedFrom == null ? null : DateTime.tryParse(skippedFrom);
+    if (skipped != null && skipped.isAfter(now)) return false;
+
+    return repeatDays.isNotEmpty || (intervalWeeks > 1 && anchorDate != null);
+  }
+
+  static const List<String> _skipDayNames = [
+    'mon',
+    'tue',
+    'wed',
+    'thu',
+    'fri',
+    'sat',
+    'sun',
+  ];
+
+  static const List<String> _skipMonthNames = [
+    'jan',
+    'feb',
+    'mar',
+    'apr',
+    'may',
+    'jun',
+    'jul',
+    'aug',
+    'sep',
+    'oct',
+    'nov',
+    'dec',
+  ];
+
+  /// A subdued one-line summary: `skipped fri 30 oct, 9:00am · back mon 2 nov,
+  /// 9:00am`.
+  static String skipLineLabel(DateTime skippedFrom, DateTime next) {
+    String stamp(DateTime dt) {
+      final day = _skipDayNames[dt.weekday - 1];
+      final month = _skipMonthNames[dt.month - 1];
+      final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+      final minute = dt.minute.toString().padLeft(2, '0');
+      final meridiem = dt.hour < 12 ? 'am' : 'pm';
+      return '$day ${dt.day} $month, $hour12:$minute$meridiem';
+    }
+
+    return 'skipped ${stamp(skippedFrom)} · back ${stamp(next)}';
+  }
+
   /// Decides the moment to actually arm an alarm, returning `null` when a
   /// one-time alarm is too stale to arm at all (§8.1).
   ///
@@ -881,7 +945,8 @@ class AlarmService {
   ///   arms a 00:01 alarm for a minute later;
   /// - a one-time alarm inside the window is armed for its intended moment, so
   ///   a brief hiccup still rings a few minutes late;
-  /// - a future alarm is returned unchanged;
+  /// - a future alarm is returned unchanged, recurring or not: the server's
+  ///   target is authoritative, which is what lets a pushed skip stick;
   /// - recurring alarms (daily, weekdays, fortnightly) are never refused: a
   ///   stale stored time is normal for a repeating schedule, so they advance
   ///   via [getNextOccurrence] exactly as before.
@@ -896,10 +961,11 @@ class AlarmService {
     final isRecurring = (repeatDays != null && repeatDays.isNotEmpty) ||
         (intervalWeeks > 1 && anchorDate != null);
 
+    if (targetTime.isAfter(now)) {
+      return targetTime;
+    }
+
     if (!isRecurring) {
-      if (targetTime.isAfter(now)) {
-        return targetTime;
-      }
       if (now.difference(targetTime) <= staleAlarmGraceWindow) {
         // Inside the grace window: arm for the intended moment and accept a
         // few minutes' lateness.

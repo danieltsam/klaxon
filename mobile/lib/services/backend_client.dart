@@ -269,6 +269,52 @@ class BackendClient {
     }
   }
 
+  /// Skip the next occurrence of a recurring alarm (POST /api/alarms/:id/skip)
+  static Future<Map<String, dynamic>?> skipRemoteAlarm(
+    String uuid,
+    int utcOffsetMinutes,
+  ) async {
+    try {
+      final baseUrl = await getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/alarms/$uuid/skip');
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'utc_offset_minutes': utcOffsetMinutes}),
+      ).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) {
+        return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+      }
+      return null;
+    } catch (e) {
+      // ignore: avoid_print
+      print('[BackendClient] skipRemoteAlarm error: $e');
+      return null;
+    }
+  }
+
+  /// Undo a pending skip (POST /api/alarms/:id/unskip)
+  static Future<Map<String, dynamic>?> unskipRemoteAlarm(String uuid) async {
+    try {
+      final baseUrl = await getBaseUrl();
+      final uri = Uri.parse('$baseUrl/api/alarms/$uuid/unskip');
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) {
+        return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+      }
+      return null;
+    } catch (e) {
+      // ignore: avoid_print
+      print('[BackendClient] unskipRemoteAlarm error: $e');
+      return null;
+    }
+  }
+
   /// Fetch active remote alarms from backend for bidirectional sync
   static Future<List<Map<String, dynamic>>?> fetchActiveAlarms() async {
     try {

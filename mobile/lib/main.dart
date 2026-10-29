@@ -171,6 +171,9 @@ class _AlarmItem {
   String status = 'pending';
   DateTime? missedAt;
   String? missedReason;
+  /// The occurrence consumed by the most recent skip, as the backend's UTC ISO
+  /// string. Only shown while it is still in the future.
+  String? skippedFrom;
 
   _AlarmItem({
     required this.id,
@@ -896,6 +899,9 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           item.missedAt = DateTime.tryParse(missedAtStr)?.toLocal();
         }
         item.missedReason = remote['missed_reason']?.toString();
+        final skippedFromStr = remote['skipped_from']?.toString();
+        item.skippedFrom =
+            (skippedFromStr != null && skippedFromStr.isNotEmpty) ? skippedFromStr : null;
       }
     }
 
@@ -2335,6 +2341,23 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         return StatefulBuilder(
           builder: (builderContext, setModalState) {
             final formattedTime = _formatTime(selectedTime);
+            final skippedInstant = item.skippedFrom == null
+                ? null
+                : DateTime.tryParse(item.skippedFrom!)?.toLocal();
+            final hasPendingSkip =
+                skippedInstant != null && skippedInstant.isAfter(DateTime.now());
+            final skipControlsVisible = item.status == 'pending' &&
+                item.isEnabled &&
+                !item.isSnoozed;
+            final skipEligible = AlarmService.isSkipEligible(
+              isEnabled: item.isEnabled,
+              isSnoozed: item.isSnoozed,
+              repeatDays: repeatDays,
+              intervalWeeks: intervalWeeks,
+              anchorDate: anchorDate,
+              status: item.status,
+              skippedFrom: item.skippedFrom,
+            );
 
             return Padding(
               padding: EdgeInsets.only(
@@ -2566,6 +2589,98 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       ),
 
                     const SizedBox(height: 24),
+
+                    if (skipControlsVisible && hasPendingSkip)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              AlarmService.skipLineLabel(skippedInstant, item.dateTime),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF8A8F98),
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFF5E6AD2),
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              minimumSize: const Size(0, 32),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            onPressed: () async {
+                              final uuid = item.uuid;
+                              if (uuid == null || uuid.startsWith('local_')) {
+                                _showToast('could not undo skip: backend unreachable');
+                                return;
+                              }
+                              final result = await BackendClient.unskipRemoteAlarm(uuid);
+                              if (result == null) {
+                                _showToast('could not undo skip: backend unreachable');
+                                return;
+                              }
+                              final restored =
+                                  DateTime.tryParse(result['target_time']?.toString() ?? '');
+                              if (!builderContext.mounted) return;
+                              setModalState(() {
+                                if (restored != null) {
+                                  selectedTime = restored.toLocal();
+                                  item.dateTime = selectedTime;
+                                }
+                                item.skippedFrom = null;
+                              });
+                              unawaited(AlarmService.syncWithBackend());
+                            },
+                            child: const Text('undo', style: TextStyle(fontSize: 12)),
+                          ),
+                        ],
+                      )
+                    else if (skipControlsVisible && skipEligible)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF8A8F98),
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(0, 32),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          onPressed: () async {
+                            final uuid = item.uuid;
+                            if (uuid == null || uuid.startsWith('local_')) {
+                              _showToast('could not skip: backend unreachable');
+                              return;
+                            }
+                            final result = await BackendClient.skipRemoteAlarm(
+                              uuid,
+                              DateTime.now().timeZoneOffset.inMinutes,
+                            );
+                            if (result == null) {
+                              _showToast('could not skip: backend unreachable');
+                              return;
+                            }
+                            final newTarget =
+                                DateTime.tryParse(result['target_time']?.toString() ?? '');
+                            final skipped = result['skipped_from']?.toString();
+                            if (!builderContext.mounted) return;
+                            setModalState(() {
+                              if (newTarget != null) {
+                                selectedTime = newTarget.toLocal();
+                                item.dateTime = selectedTime;
+                              }
+                              item.skippedFrom =
+                                  (skipped != null && skipped.isNotEmpty) ? skipped : null;
+                            });
+                            unawaited(AlarmService.syncWithBackend());
+                          },
+                          child: const Text(
+                            'skip next occurrence',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 12),
 
                     // Actions Row (Save + Delete)
                     Row(
