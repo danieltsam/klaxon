@@ -526,6 +526,81 @@ describe("RemoteAlarmClient — write endpoints", () => {
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal("target_time" in body, false);
   });
+
+  it("POSTs to skip with the caller's utc offset and returns the advanced alarm", async () => {
+    const { fn, calls } = recordingFetch(
+      jsonResponse(200, {
+        success: true,
+        id: "x",
+        status: "pending",
+        target_time: "2026-11-01T23:00:00.000Z",
+        skipped_from: "2026-10-29T23:00:00.000Z",
+        fcm_dispatch: { sent: 1, failed: 0 },
+      })
+    );
+    const client = new RemoteAlarmClient({ baseUrl: "http://h:3000", fetch: fn });
+    const result = await client.skipAlarm("x");
+
+    assert.equal(calls[0].url, "http://h:3000/api/alarms/x/skip");
+    assert.equal(calls[0].init.method, "POST");
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.equal(body.utc_offset_minutes, -new Date().getTimezoneOffset());
+    assert.equal(result.alarm.target_time, "2026-11-01T23:00:00.000Z");
+    assert.equal(result.alarm.skipped_from, "2026-10-29T23:00:00.000Z");
+    assert.deepEqual(result.dispatch, { sent: 1, failed: 0 });
+  });
+
+  it("POSTs to unskip and returns the restored alarm with skipped_from cleared", async () => {
+    const { fn, calls } = recordingFetch(
+      jsonResponse(200, {
+        success: true,
+        id: "x",
+        status: "pending",
+        target_time: "2026-10-29T23:00:00.000Z",
+        skipped_from: null,
+        fcm_dispatch: { sent: 1, failed: 0 },
+      })
+    );
+    const client = new RemoteAlarmClient({ baseUrl: "http://h:3000", fetch: fn });
+    const result = await client.unskipAlarm("x");
+
+    assert.equal(calls[0].url, "http://h:3000/api/alarms/x/unskip");
+    assert.equal(calls[0].init.method, "POST");
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.equal(body.utc_offset_minutes, -new Date().getTimezoneOffset());
+    assert.equal(result.alarm.target_time, "2026-10-29T23:00:00.000Z");
+    assert.equal(result.alarm.skipped_from, null);
+  });
+
+  it("maps a skip 409 to RemoteAlarmError with the server message", async () => {
+    const serverMessage = "Alarm is not recurring, so there is no next occurrence to skip.";
+    const { fn } = recordingFetch(jsonResponse(409, { error: serverMessage }));
+    const client = new RemoteAlarmClient({ baseUrl: "http://h:3000", fetch: fn });
+
+    await assert.rejects(client.skipAlarm("x"), (err: unknown) => {
+      assert.ok(err instanceof RemoteAlarmError);
+      assert.equal(err instanceof RemoteAlarmNotFoundError, false);
+      assert.equal(err.status, 409);
+      assert.equal(err.serverMessage, serverMessage);
+      assert.equal(err.message, serverMessage);
+      return true;
+    });
+  });
+});
+
+describe("RemoteAlarmClient — skipped_from normalisation", () => {
+  it("keeps a skipped instant, a null and an absent marker distinct", () => {
+    const base = { id: "a", target_time: "2026-10-27T20:30:00.000Z", label: "Gym", status: "pending" };
+
+    const skipped = normalizeAlarm({ ...base, skipped_from: "2026-10-30T23:00:00.000Z" });
+    assert.equal(skipped.skipped_from, "2026-10-30T23:00:00.000Z");
+
+    const cleared = normalizeAlarm({ ...base, skipped_from: null });
+    assert.equal(cleared.skipped_from, null);
+
+    const absent = normalizeAlarm({ ...base });
+    assert.equal(absent.skipped_from, undefined);
+  });
 });
 
 describe("RemoteAlarmClient — baseUrl normalization", () => {

@@ -20,6 +20,8 @@ import { UsageError } from "./errors.js";
 export const COMMAND_NAMES: ReadonlySet<string> = new Set([
   "list",
   "silence",
+  "skip",
+  "unskip",
   "kill",
   "enable",
   "disable",
@@ -204,6 +206,8 @@ Usage:
   alarm <when> <label> [flags]        Create an alarm
   alarm list [--all|--history]        List alarms (default: active)
   alarm silence <id>                  Silence a ringing alarm
+  alarm skip <id>                     Skip the next occurrence of a recurring alarm
+  alarm unskip <id>                   Undo a pending skip
   alarm kill <id> [--yes]             Cancel an alarm (DELETE)
   alarm enable <id>                   Re-enable a disabled alarm
   alarm disable <id>                  Disable an alarm
@@ -245,6 +249,18 @@ export function commandHelp(command: string): string {
 
   Silences a ringing alarm (POST /api/alarms/:id/silence).
   Prints the server-confirmed alarm and its resolved local time.`;
+    case "skip":
+      return `Usage: alarm skip <id>
+
+  Skips exactly the next occurrence of a recurring alarm
+  (POST /api/alarms/:id/skip). The alarm rings at the occurrence after that.
+  Prints the server-confirmed alarm and its resolved local time.
+  Reversible with \`alarm unskip <id>\` until the skipped time passes.`;
+    case "unskip":
+      return `Usage: alarm unskip <id>
+
+  Undoes a pending skip (POST /api/alarms/:id/unskip): the alarm goes back to
+  ringing at the occurrence that was skipped.`;
     case "kill":
       return `Usage: alarm kill <id> [--yes]
 

@@ -185,6 +185,12 @@ export function normalizeAlarm(payload: Record<string, unknown>): Alarm {
   const createdAt = asString(payload.created_at);
   if (createdAt !== undefined) alarm.created_at = createdAt;
 
+  if (typeof payload.skipped_from === "string") {
+    alarm.skipped_from = payload.skipped_from;
+  } else if (payload.skipped_from === null) {
+    alarm.skipped_from = null;
+  }
+
   const missedAt = asString(payload.missed_at);
   if (missedAt !== undefined) alarm.missed_at = missedAt;
 
@@ -455,6 +461,32 @@ export class RemoteAlarmClient {
       "POST",
       `/api/alarms/${encodeURIComponent(id)}/silence`,
       this.timeouts.write
+    );
+    return this.toMutationResult(raw);
+  }
+
+  /**
+   * Skip exactly the next occurrence and arm the one after it. The offset lets
+   * the backend step through the caller's wall clock; it is minutes east of UTC.
+   * Reversible with `unskipAlarm` until the skipped instant passes.
+   */
+  async skipAlarm(id: string): Promise<AlarmMutationResult> {
+    const raw = await this.request<Record<string, unknown>>(
+      "POST",
+      `/api/alarms/${encodeURIComponent(id)}/skip`,
+      this.timeouts.write,
+      { utc_offset_minutes: -new Date().getTimezoneOffset() }
+    );
+    return this.toMutationResult(raw);
+  }
+
+  /** Undo a pending skip, restoring the skipped instant as the target. */
+  async unskipAlarm(id: string): Promise<AlarmMutationResult> {
+    const raw = await this.request<Record<string, unknown>>(
+      "POST",
+      `/api/alarms/${encodeURIComponent(id)}/unskip`,
+      this.timeouts.write,
+      { utc_offset_minutes: -new Date().getTimezoneOffset() }
     );
     return this.toMutationResult(raw);
   }

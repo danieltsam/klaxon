@@ -23,6 +23,22 @@ export async function silenceCommand(ctx: CommandContext): Promise<void> {
   emitMutation(ctx, "silenced", result, alarm);
 }
 
+export async function skipCommand(ctx: CommandContext): Promise<void> {
+  rejectFlags(ctx.values, MUTATION_FLAGS, "skip");
+  const id = requireId(ctx.positionals, "skip");
+  const result = await ctx.client.skipAlarm(id);
+  const alarm = await confirmAlarm(ctx.client, result);
+  emitMutation(ctx, "skipped", result, alarm);
+}
+
+export async function unskipCommand(ctx: CommandContext): Promise<void> {
+  rejectFlags(ctx.values, MUTATION_FLAGS, "unskip");
+  const id = requireId(ctx.positionals, "unskip");
+  const result = await ctx.client.unskipAlarm(id);
+  const alarm = await confirmAlarm(ctx.client, result);
+  emitMutation(ctx, "unskipped", result, alarm);
+}
+
 export async function enableCommand(ctx: CommandContext): Promise<void> {
   rejectFlags(ctx.values, MUTATION_FLAGS, "enable");
   const id = requireId(ctx.positionals, "enable");

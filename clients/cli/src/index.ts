@@ -17,6 +17,8 @@ import {
   enableCommand,
   killCommand,
   silenceCommand,
+  skipCommand,
+  unskipCommand,
 } from "./commands/mutate.js";
 import { statusCommand } from "./commands/status.js";
 import {
@@ -106,6 +108,12 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
         return 0;
       case "silence":
         await silenceCommand(ctx(positionals.slice(1)));
+        return 0;
+      case "skip":
+        await skipCommand(ctx(positionals.slice(1)));
+        return 0;
+      case "unskip":
+        await unskipCommand(ctx(positionals.slice(1)));
         return 0;
       case "kill":
         await killCommand(ctx(positionals.slice(1)));

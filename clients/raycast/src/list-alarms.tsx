@@ -13,6 +13,7 @@ import {
 import { usePromise } from "@raycast/utils";
 import { useEffect } from "react";
 import type { Alarm } from "@remotealarm/core";
+import { formatAlarm } from "@remotealarm/core";
 import CreateAlarmCommand from "./create-alarm";
 import { EditAlarm } from "./edit-alarm";
 import {
@@ -264,6 +265,26 @@ function AlarmItem({
               }}
             />
           )}
+          {canSkip(alarm, now) && (
+            <Action
+              title="Skip Next Occurrence"
+              icon={Icon.Forward}
+              onAction={async () => {
+                await skipNextOccurrence(client, alarm);
+                onChange();
+              }}
+            />
+          )}
+          {skipPending(alarm, now) && (
+            <Action
+              title="Undo Skip"
+              icon={Icon.Undo}
+              onAction={async () => {
+                await undoSkip(client, alarm);
+                onChange();
+              }}
+            />
+          )}
           {alarm.status !== "missed" && (
             <Action
               title={alarm.status === "disabled" ? "Enable" : "Disable"}
@@ -304,4 +325,65 @@ function AlarmItem({
       }
     />
   );
+}
+
+/** Recurring means a weekday set, or a fortnightly cadence with an anchor. */
+function isRecurring(alarm: Alarm): boolean {
+  const days = alarm.repeat_days ?? [];
+  const fortnightly =
+    (alarm.recurrence_interval_weeks ?? 1) > 1 &&
+    alarm.recurrence_anchor_date !== null &&
+    alarm.recurrence_anchor_date !== undefined;
+  return days.length > 0 || fortnightly;
+}
+
+/** A skip is pending only while the instant it consumed is still ahead. */
+function skipPending(alarm: Alarm, now: Date): boolean {
+  if (typeof alarm.skipped_from !== "string") return false;
+  const skippedFrom = new Date(alarm.skipped_from);
+  return (
+    !Number.isNaN(skippedFrom.getTime()) &&
+    skippedFrom.getTime() > now.getTime()
+  );
+}
+
+function canSkip(alarm: Alarm, now: Date): boolean {
+  return (
+    alarm.status === "pending" && isRecurring(alarm) && !skipPending(alarm, now)
+  );
+}
+
+async function skipNextOccurrence(
+  client: ReturnType<typeof useClient>,
+  alarm: Alarm,
+) {
+  try {
+    const result = await client.skipAlarm(alarm.id);
+    await showToast({
+      title: "Klaxon",
+      message: `skipped · next ${formatAlarm(result.alarm)}`,
+    });
+  } catch (err) {
+    await showToast({
+      title: "Klaxon",
+      message: err instanceof Error ? err.message : String(err),
+      style: Toast.Style.Failure,
+    });
+  }
+}
+
+async function undoSkip(client: ReturnType<typeof useClient>, alarm: Alarm) {
+  try {
+    const result = await client.unskipAlarm(alarm.id);
+    await showToast({
+      title: "Klaxon",
+      message: `unskipped · back to ${formatAlarm(result.alarm)}`,
+    });
+  } catch (err) {
+    await showToast({
+      title: "Klaxon",
+      message: err instanceof Error ? err.message : String(err),
+      style: Toast.Style.Failure,
+    });
+  }
 }

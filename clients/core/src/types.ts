@@ -50,6 +50,11 @@ export interface Alarm {
   recurrence_interval_weeks?: number;
   /** ISO date "YYYY-MM-DD" the fortnightly cadence is anchored to; null when weekly. */
   recurrence_anchor_date?: string | null;
+  /**
+   * ISO-8601 UTC — the occurrence a skip consumed. Present while a skip is
+   * pending; `null` once cleared. Only meaningful while it is in the future.
+   */
+  skipped_from?: string | null;
   created_at?: string;
   /** ISO-8601 UTC — when the alarm was declared missed. */
   missed_at?: string;
