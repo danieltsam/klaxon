@@ -443,3 +443,22 @@ describe('browser port — clock with an anchor after it', () => {
     assert.throws(() => NLTime.parseLeadingTime('31 apr 7am dentist', now), /not a real date/);
   });
 });
+
+describe('browser port — dot clock separator', () => {
+  const now = new Date(2026, 9, 27, 10, 0, 0, 0);
+
+  it('reads 6.45pm as 18:45', () => {
+    const split = NLTime.parseLeadingTime('6.45pm gym', now);
+    assert.ok(split);
+    assert.equal(split.rest, 'gym');
+    assert.equal(split.parsed.targetTime.getHours(), 18);
+    assert.equal(split.parsed.targetTime.getMinutes(), 45);
+  });
+
+  it('reads a bare 6.45 as 06:45', () => {
+    const split = NLTime.parseLeadingTime('6.45 gym', now);
+    assert.ok(split);
+    assert.equal(split.parsed.targetTime.getHours(), 6);
+    assert.equal(split.parsed.targetTime.getMinutes(), 45);
+  });
+});

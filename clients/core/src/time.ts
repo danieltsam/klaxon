@@ -59,7 +59,10 @@ const WEEKENDS: Weekday[] = [6, 7];
  * keeps the original text.
  */
 function normalizeToken(token: string): string {
-  return token.toLowerCase().replace(/\./g, "");
+  const lower = token.toLowerCase();
+  // `p.m.` and `a.m.` are the only tokens whose periods are decoration. A dot
+  // inside `6.45` is a clock separator and must survive.
+  return /^[ap]\.?m\.?$/.test(lower) ? lower.replace(/\./g, "") : lower;
 }
 
 /** Spoken counts in offsets, e.g. `in two days`. */
@@ -438,6 +441,18 @@ function parseClock(toks: string[], i: number): Clock | null {
 
   // 7:30am / 07:00 / 19:00 / 7:30
   match = /^(\d{1,2}):(\d{2})(am|pm)?$/.exec(first);
+  if (match) {
+    let meridiem = match[3];
+    let next = i + 1;
+    if (!meridiem && next < toks.length && (toks[next] === "am" || toks[next] === "pm")) {
+      meridiem = toks[next];
+      next++;
+    }
+    return makeClock(parseInt(match[1], 10), parseInt(match[2], 10), meridiem, next, false);
+  }
+
+  // 6.45 / 6.45pm / 06.45 (dot separator, the AU way of writing a clock)
+  match = /^(\d{1,2})\.(\d{2})(am|pm)?$/.exec(first);
   if (match) {
     let meridiem = match[3];
     let next = i + 1;

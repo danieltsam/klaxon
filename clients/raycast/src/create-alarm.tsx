@@ -65,6 +65,11 @@ export default function CreateAlarmCommand() {
       onSubmit: async (formValues) => {
         const repeatDays = daysFromRecurrenceValue(formValues.recurrence);
         // Close immediately; feedback follows as a toast.
+        const toast = await showToast({
+          style: Toast.Style.Animated,
+          title: "Klaxon",
+          message: "Creating…",
+        });
         const request = client
           .createAlarm({
             label: formValues.label,
@@ -88,11 +93,10 @@ export default function CreateAlarmCommand() {
             }
           })
           .catch(async (err) => {
-            await showToast({
-              title: "Klaxon",
-              message: err instanceof Error ? err.message : String(err),
-              style: Toast.Style.Failure,
-            });
+            toast.style = Toast.Style.Failure;
+            toast.title = "Could not create";
+            toast.message = err instanceof Error ? err.message : String(err);
+            await toast.show();
           });
         pop();
         void request;
