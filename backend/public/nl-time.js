@@ -408,6 +408,18 @@
         return makeClock(parseInt(match[1], 10), parseInt(match[2], 10), meridiem, next, false);
       }
 
+      // 6.45 / 6.45pm (dot separator)
+      var dotMatch = /^(\d{1,2})\.(\d{2})(am|pm)?$/.exec(first);
+      if (dotMatch) {
+        var dotMeridiem = dotMatch[3];
+        var dotNext = i + 1;
+        if (!dotMeridiem && dotNext < toks.length && (toks[dotNext] === "am" || toks[dotNext] === "pm")) {
+          dotMeridiem = toks[dotNext];
+          dotNext++;
+        }
+        return makeClock(parseInt(dotMatch[1], 10), parseInt(dotMatch[2], 10), dotMeridiem, dotNext, false);
+      }
+
       // Bare hour: `7` -> 07:00, `19` -> 19:00, optionally followed by am/pm.
       match = /^(\d{1,2})$/.exec(first);
       if (match) {
@@ -1079,7 +1091,8 @@
       }
 
       var inputToks = inputRaw.map(function (t) {
-        return t.toLowerCase().replace(/\./g, "");
+        var lower = t.toLowerCase();
+        return /^[ap]\.?m\.?$/.test(lower) ? lower.replace(/\./g, "") : lower;
       });
       var metadata = extractMetadata(inputRaw, inputToks);
       var raw = metadata.raw;
@@ -1283,7 +1296,8 @@
       if (inputRaw.length === 0) return null;
 
       var inputToks = inputRaw.map(function (t) {
-        return t.toLowerCase().replace(/\./g, "");
+        var lower = t.toLowerCase();
+        return /^[ap]\.?m\.?$/.test(lower) ? lower.replace(/\./g, "") : lower;
       });
       var metadata = extractMetadata(inputRaw, inputToks);
       var raw = metadata.raw;

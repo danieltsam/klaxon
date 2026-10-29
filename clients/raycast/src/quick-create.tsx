@@ -107,6 +107,11 @@ export default function QuickCreateCommand() {
         // Close immediately. The create waits on FCM dispatch and the calendar
         // mirror (~1s), and holding the window open for that reads as a hang.
         // The outcome arrives as a toast when the request resolves.
+        const toast = await showToast({
+          style: Toast.Style.Animated,
+          title: "Klaxon",
+          message: "Creating…",
+        });
         const request = client
           .createAlarm({
             label,
@@ -133,11 +138,10 @@ export default function QuickCreateCommand() {
             }
           })
           .catch(async (err) => {
-            await showToast({
-              title: "Klaxon",
-              message: err instanceof Error ? err.message : String(err),
-              style: Toast.Style.Failure,
-            });
+            toast.style = Toast.Style.Failure;
+            toast.title = "Could not create";
+            toast.message = err instanceof Error ? err.message : String(err);
+            await toast.show();
           });
         pop();
         void request;

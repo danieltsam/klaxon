@@ -307,26 +307,29 @@ export function NoAlarmsEmptyView() {
   );
 }
 
+/** What actually happened to the dispatch, in one clause. */
+export function dispatchDetail(result: {
+  alarm: Alarm;
+  dispatch?: FcmDispatch;
+}): string {
+  const { dispatch } = result;
+  if (!dispatch) return "no dispatch report";
+  if (dispatch.sent === 0) {
+    return "saved, but no devices are registered — this alarm won't ring";
+  }
+  let detail = `sent to ${dispatch.sent} device${dispatch.sent === 1 ? "" : "s"}`;
+  if (dispatch.failed > 0) detail += ` (${dispatch.failed} failed)`;
+  return detail;
+}
+
 export function showDispatchToast(
   result: { alarm: Alarm; dispatch?: FcmDispatch },
   action: string,
 ) {
-  const { alarm, dispatch } = result;
-  let message = `${action}: ${alarm.label}`;
-  if (dispatch) {
-    if (dispatch.sent === 0) {
-      message +=
-        " · Saved, but no devices are registered — this alarm won't ring.";
-    } else {
-      message += ` · command sent to ${dispatch.sent} device${dispatch.sent === 1 ? "" : "s"}`;
-      if (dispatch.failed > 0) {
-        message += ` (${dispatch.failed} failed)`;
-      }
-    }
-  } else {
-    message += " · no dispatch report";
-  }
-  return showToast({ title: "Klaxon", message });
+  return showToast({
+    title: "Klaxon",
+    message: `${action}: ${result.alarm.label} · ${dispatchDetail(result)}`,
+  });
 }
 
 /** Play a tone through the Mac so the name means something. */
