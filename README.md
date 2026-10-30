@@ -22,8 +22,25 @@ I could not find an existing free service that does this as surprising as this s
 
 - Sets real alarms on an Android phone. They use the full screen and override silent mode.
 - Lets me set, change, snooze, and cancel alarms from my workstation.
+- Lets me skip just the next occurrence of a recurring alarm, from any surface, without touching
+  the schedule.
 - Runs a web dashboard and exposes an API to CRUD alarms.
 - I mostly use the API and write my own scripts, including a Raycast extension.
+
+### Skipping one occurrence
+
+A weekday alarm can skip the coming morning and keep the rest of the week.
+
+- `POST /api/alarms/:id/skip` advances the alarm one occurrence and records the consumed time in
+  `skipped_from`. Send `{"utc_offset_minutes": 600}` (minutes east of UTC) so the weekday maths
+  runs on your wall clock; omit it and the backend's own offset is used.
+- `POST /api/alarms/:id/unskip` puts it back, while the skipped time is still ahead.
+- `alarm skip <id>` and `alarm unskip <id>` do the same from the CLI; Raycast has both actions.
+- Only a pending recurring alarm is eligible. A one-off alarm has no next occurrence to skip.
+
+The row moves immediately and the phone arms the new time when the message lands. `fcm_dispatch` in
+the response reports `sent`/`failed`, not delivery: a phone that is off or force-stopped picks the
+change up on its next reconcile, exactly as it does for cancel and disable.
 
 ## How it works
 

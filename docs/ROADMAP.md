@@ -52,6 +52,16 @@ This document tracks implemented features and future enhancements for Klaxon.
   `INTERVAL` RRULE.
 - **Known gap:** the ICS feed does not emit `INTERVAL`.
 
+### 1.10 Skip the Next Occurrence
+- **One-shot skip:** a pending recurring alarm can skip exactly its next occurrence
+  (`POST /api/alarms/:id/skip`), keeping the rest of the schedule. The consumed instant is recorded
+  in `skipped_from` and `POST /api/alarms/:id/unskip` restores it until that time passes.
+- **Every surface:** the dashboard's alarm modal, the phone's edit sheet, `alarm skip <id>`, and
+  Raycast actions. The phone re-arms the new time when the push lands; no new FCM action was added.
+- **Timezone:** the endpoint takes `utc_offset_minutes` (minutes east of UTC) because the backend
+  stores no per-alarm timezone and its other weekday maths is UTC.
+- **Not available at the ring:** dismissing a recurring alarm already consumes that occurrence.
+
 ---
  
 ## 2. Future Backlog (Roadmap)

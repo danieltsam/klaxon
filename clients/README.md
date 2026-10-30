@@ -71,4 +71,8 @@ permanent liability.
 - `fcm_dispatch` is an explicitly untrusted, separate field. It is never a
   success boolean: a missing report is "no dispatch report", and `sent > 0` is
   not proof of delivery. Reachability is asserted from `GET /api/devices`.
+- `skipAlarm(id)` / `unskipAlarm(id)` send the caller's `utc_offset_minutes`
+  (`-new Date().getTimezoneOffset()`) because the backend has no per-alarm
+  timezone and would otherwise do the weekday maths in UTC. `skipped_from` on
+  `Alarm` is only meaningful while it is in the future.
 - No authentication (accepted risk — the backend has none).
