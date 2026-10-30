@@ -222,13 +222,30 @@ export const AlarmRepo = {
    * consumed, in one statement so the pair can never drift (design §5.2).
    * This is the only writer that sets `skipped_from`.
    */
-  setSkip(id: string, skippedFrom: string | null, targetTime: string): boolean {
+  /**
+   * Write a skip (or undo one) only if the row still carries the target the
+   * caller read. Two surfaces pressing skip within the same second both read
+   * the same pre-skip target and both dispatch; without this guard both would
+   * report success and the loser would overwrite a row it no longer matches.
+   * Returns false when the row moved, so the caller can tell the user to reload.
+   */
+  setSkip(
+    id: string,
+    expectedTargetTime: string,
+    skippedFrom: string | null,
+    targetTime: string
+  ): boolean {
     const result = db.prepare(`
       UPDATE alarms
-      SET target_time = ?,
-          skipped_from = ?
-      WHERE id = ?
-    `).run(targetTime, skippedFrom, id);
+      SET target_time = @target_time,
+          skipped_from = @skipped_from
+      WHERE id = @id AND target_time = @expected_target_time
+    `).run({
+      id,
+      expected_target_time: expectedTargetTime,
+      skipped_from: skippedFrom,
+      target_time: targetTime,
+    });
     return result.changes > 0;
   },
 

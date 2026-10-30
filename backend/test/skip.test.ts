@@ -105,6 +105,54 @@ describe('skip and unskip next occurrence', () => {
     assert.strictEqual(AlarmRepo.getById(created.id)!.target_time, targetAfterFirst);
   });
 
+  it('lets only one of two concurrent skips through', async () => {
+    const target = futureTarget(180);
+    const created = await createAlarm(
+      { target_time: target.toISOString(), repeat_days: '1,2,3,4,5,6,7' },
+      'SkipTest concurrent'
+    );
+
+    // Two surfaces pressing skip at once must not both report success. Both
+    // read the same pre-skip target and both dispatch; only the first write may
+    // land, and the loser is told to reload.
+    const [first, second] = await Promise.all([
+      skip(created.id),
+      skip(created.id),
+    ]);
+
+    const codes = [first.statusCode, second.statusCode].sort();
+    assert.deepStrictEqual(codes, [200, 409]);
+
+    const row = AlarmRepo.getById(created.id)!;
+    assert.strictEqual(
+      new Date(row.target_time).getTime(),
+      target.getTime() + 86_400_000,
+      'the alarm must advance exactly once'
+    );
+    assert.strictEqual(new Date(row.skipped_from!).getTime(), target.getTime());
+  });
+
+  it('refuses a stale write so two skips cannot both land', async () => {
+    const created = await createAlarm(
+      { target_time: futureTarget(240).toISOString(), repeat_days: '1,2,3,4,5,6,7' },
+      'SkipTest stale write'
+    );
+    const skipped = new Date(Date.now() + 5 * 86_400_000).toISOString();
+    const next = new Date(Date.now() + 6 * 86_400_000).toISOString();
+
+    // The first writer wins on the target it read; a second request that read
+    // the same pre-skip target must not overwrite the row it no longer matches.
+    assert.strictEqual(AlarmRepo.setSkip(created.id, created.target_time, skipped, next), true);
+    assert.strictEqual(
+      AlarmRepo.setSkip(created.id, created.target_time, skipped, next),
+      false
+    );
+
+    const row = AlarmRepo.getById(created.id)!;
+    assert.strictEqual(row.target_time, next);
+    assert.strictEqual(row.skipped_from, skipped);
+  });
+
   it('rolls a past target to the next future occurrence', async () => {
     const created = await createAlarm(
       { target_time: futureTarget(180).toISOString(), repeat_days: '1,2,3,4,5,6,7' },
@@ -318,6 +366,30 @@ describe('skip and unskip next occurrence', () => {
     assert.strictEqual(data.skipped_from, null);
     assert.strictEqual(data.target_time, targetAfterSkip);
     assert.strictEqual(AlarmRepo.getById(created.id)!.skipped_from, null);
+  });
+
+  it('a schedule edit wins over a pending skip', async () => {
+    const target = futureTarget(960);
+    const created = await createAlarm(
+      { target_time: target.toISOString(), repeat_days: '1,2,3,4,5' },
+      'SkipTest edit wins'
+    );
+    const skipped = await skip(created.id);
+    assert.strictEqual(skipped.statusCode, 200);
+
+    // Not just a label: an edit that moves the schedule must own the row, so
+    // the phone arms the edit rather than the pattern the skip advanced.
+    const editedTarget = futureTarget(1440);
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/alarms/${created.id}`,
+      payload: { target_time: editedTarget.toISOString(), repeat_days: '6,7' },
+    });
+    assert.strictEqual(res.statusCode, 200);
+    const data = JSON.parse(res.body);
+    assert.strictEqual(data.skipped_from, null);
+    assert.strictEqual(new Date(data.target_time).getTime(), editedTarget.getTime());
+    assert.strictEqual(data.repeat_days, '6,7');
   });
 
   it('a pending state write that moves the target clears the skip', async () => {

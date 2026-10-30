@@ -822,7 +822,14 @@ app.post<{
     });
   }
 
-  AlarmRepo.setSkip(id, skipped.toISOString(), nextTarget);
+  // The row must still carry the target this request read. A concurrent skip
+  // that already moved it makes this write a no-op rather than a second
+  // "success" for an occurrence the first request consumed.
+  if (!AlarmRepo.setSkip(id, existing.target_time, skipped.toISOString(), nextTarget)) {
+    return reply.status(409).send({
+      error: 'The alarm changed while the skip was being applied. Reload it and try again.'
+    });
+  }
   const updated = AlarmRepo.getById(id)!;
 
   await mirrorSafely(updated);
@@ -884,7 +891,11 @@ app.post<{
     });
   }
 
-  AlarmRepo.setSkip(id, null, restoredTarget);
+  if (!AlarmRepo.setSkip(id, existing.target_time, null, restoredTarget)) {
+    return reply.status(409).send({
+      error: 'The alarm changed while the skip was being undone. Reload it and try again.'
+    });
+  }
   const updated = AlarmRepo.getById(id)!;
 
   await mirrorSafely(updated);
