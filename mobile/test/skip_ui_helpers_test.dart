@@ -36,6 +36,6 @@ void main() {
 
   test('the skip line names what was skipped and when it is back', () {
     final label = AlarmService.skipLineLabel(DateTime(2026, 10, 30, 9), DateTime(2026, 11, 2, 9));
-    expect(label, 'skipped fri 30 oct, 9:00am · back mon 2 nov, 9:00am');
+    expect(label, 'skipped fri 30 oct · back mon 2 nov, 9:00am');
   });
 }

@@ -922,19 +922,23 @@ class AlarmService {
     'dec',
   ];
 
-  /// A subdued one-line summary: `skipped fri 30 oct, 9:00am · back mon 2 nov,
-  /// 9:00am`.
+  /// A compact one-line summary for the detail sheet's existing relative-time
+  /// line: `skipped fri 30 oct · back mon 2 nov, 9:00am`. The skipped side
+  /// omits the time because the large time display above already shows it; the
+  /// back side keeps the full date and time so the user knows exactly when the
+  /// alarm returns.
   static String skipLineLabel(DateTime skippedFrom, DateTime next) {
-    String stamp(DateTime dt) {
+    String dateStamp(DateTime dt) {
       final day = _skipDayNames[dt.weekday - 1];
       final month = _skipMonthNames[dt.month - 1];
-      final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-      final minute = dt.minute.toString().padLeft(2, '0');
-      final meridiem = dt.hour < 12 ? 'am' : 'pm';
-      return '$day ${dt.day} $month, $hour12:$minute$meridiem';
+      return '$day ${dt.day} $month';
     }
 
-    return 'skipped ${stamp(skippedFrom)} · back ${stamp(next)}';
+    final hour12 = next.hour % 12 == 0 ? 12 : next.hour % 12;
+    final minute = next.minute.toString().padLeft(2, '0');
+    final meridiem = next.hour < 12 ? 'am' : 'pm';
+
+    return 'skipped ${dateStamp(skippedFrom)} · back ${dateStamp(next)}, $hour12:$minute$meridiem';
   }
 
   /// Decides the moment to actually arm an alarm, returning `null` when a

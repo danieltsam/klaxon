@@ -2383,17 +2383,89 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                     ),
                     const SizedBox(height: 16),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'alarm details & adjustments',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFFF7F8F8),
-                            letterSpacing: -0.2,
+                        const Expanded(
+                          child: Text(
+                            'alarm details & adjustments',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFFF7F8F8),
+                              letterSpacing: -0.2,
+                            ),
                           ),
                         ),
+                        if (skipControlsVisible && hasPendingSkip)
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFF5E6AD2),
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              minimumSize: const Size(0, 32),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            onPressed: () async {
+                              final uuid = item.uuid;
+                              if (uuid == null || uuid.startsWith('local_')) {
+                                _showToast('could not undo skip: backend unreachable');
+                                return;
+                              }
+                              final result = await BackendClient.unskipRemoteAlarm(uuid);
+                              if (result == null) {
+                                _showToast('could not undo skip: backend unreachable');
+                                return;
+                              }
+                              final restored =
+                                  DateTime.tryParse(result['target_time']?.toString() ?? '');
+                              if (!builderContext.mounted) return;
+                              setModalState(() {
+                                if (restored != null) {
+                                  selectedTime = restored.toLocal();
+                                  item.dateTime = selectedTime;
+                                }
+                                item.skippedFrom = null;
+                              });
+                              unawaited(AlarmService.syncWithBackend());
+                            },
+                            child: const Text('undo', style: TextStyle(fontSize: 12)),
+                          )
+                        else if (skipControlsVisible && skipEligible)
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFF8A8F98),
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              minimumSize: const Size(0, 32),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            onPressed: () async {
+                              final uuid = item.uuid;
+                              if (uuid == null || uuid.startsWith('local_')) {
+                                _showToast('could not skip: backend unreachable');
+                                return;
+                              }
+                              final result = await BackendClient.skipRemoteAlarm(
+                                uuid,
+                                DateTime.now().timeZoneOffset.inMinutes,
+                              );
+                              if (result == null) {
+                                _showToast('could not skip: backend unreachable');
+                                return;
+                              }
+                              final newTarget =
+                                  DateTime.tryParse(result['target_time']?.toString() ?? '');
+                              final skipped = result['skipped_from']?.toString();
+                              if (!builderContext.mounted) return;
+                              setModalState(() {
+                                if (newTarget != null) {
+                                  selectedTime = newTarget.toLocal();
+                                  item.dateTime = selectedTime;
+                                }
+                                item.skippedFrom =
+                                    (skipped != null && skipped.isNotEmpty) ? skipped : null;
+                              });
+                              unawaited(AlarmService.syncWithBackend());
+                            },
+                            child: const Text('skip', style: TextStyle(fontSize: 12)),
+                          ),
                         IconButton(
                           icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF8A8F98)),
                           onPressed: () => Navigator.pop(bottomSheetContext),
@@ -2446,16 +2518,18 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    _getRelativeCountdown(AlarmService.computeFutureOccurrence(
-                                      selectedTime,
-                                      repeatDays: repeatDays,
-                                      intervalWeeks: intervalWeeks,
-                                      anchorDate: anchorDate != null ? DateTime.tryParse(anchorDate ?? '') : null,
-                                    )),
-                                    style: const TextStyle(
+                                    hasPendingSkip
+                                        ? AlarmService.skipLineLabel(skippedInstant, item.dateTime)
+                                        : _getRelativeCountdown(AlarmService.computeFutureOccurrence(
+                                            selectedTime,
+                                            repeatDays: repeatDays,
+                                            intervalWeeks: intervalWeeks,
+                                            anchorDate: anchorDate != null ? DateTime.tryParse(anchorDate ?? '') : null,
+                                          )),
+                                    style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w500,
-                                      color: Color(0xFF5E6AD2),
+                                      color: hasPendingSkip ? const Color(0xFF8A8F98) : const Color(0xFF5E6AD2),
                                     ),
                                   ),
                                 ],
@@ -2588,99 +2662,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         ),
                       ),
 
-                    const SizedBox(height: 24),
-
-                    if (skipControlsVisible && hasPendingSkip)
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              AlarmService.skipLineLabel(skippedInstant, item.dateTime),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF8A8F98),
-                              ),
-                            ),
-                          ),
-                          TextButton(
-                            style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF5E6AD2),
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                              minimumSize: const Size(0, 32),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            onPressed: () async {
-                              final uuid = item.uuid;
-                              if (uuid == null || uuid.startsWith('local_')) {
-                                _showToast('could not undo skip: backend unreachable');
-                                return;
-                              }
-                              final result = await BackendClient.unskipRemoteAlarm(uuid);
-                              if (result == null) {
-                                _showToast('could not undo skip: backend unreachable');
-                                return;
-                              }
-                              final restored =
-                                  DateTime.tryParse(result['target_time']?.toString() ?? '');
-                              if (!builderContext.mounted) return;
-                              setModalState(() {
-                                if (restored != null) {
-                                  selectedTime = restored.toLocal();
-                                  item.dateTime = selectedTime;
-                                }
-                                item.skippedFrom = null;
-                              });
-                              unawaited(AlarmService.syncWithBackend());
-                            },
-                            child: const Text('undo', style: TextStyle(fontSize: 12)),
-                          ),
-                        ],
-                      )
-                    else if (skipControlsVisible && skipEligible)
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton(
-                          style: TextButton.styleFrom(
-                            foregroundColor: const Color(0xFF8A8F98),
-                            padding: EdgeInsets.zero,
-                            minimumSize: const Size(0, 32),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          onPressed: () async {
-                            final uuid = item.uuid;
-                            if (uuid == null || uuid.startsWith('local_')) {
-                              _showToast('could not skip: backend unreachable');
-                              return;
-                            }
-                            final result = await BackendClient.skipRemoteAlarm(
-                              uuid,
-                              DateTime.now().timeZoneOffset.inMinutes,
-                            );
-                            if (result == null) {
-                              _showToast('could not skip: backend unreachable');
-                              return;
-                            }
-                            final newTarget =
-                                DateTime.tryParse(result['target_time']?.toString() ?? '');
-                            final skipped = result['skipped_from']?.toString();
-                            if (!builderContext.mounted) return;
-                            setModalState(() {
-                              if (newTarget != null) {
-                                selectedTime = newTarget.toLocal();
-                                item.dateTime = selectedTime;
-                              }
-                              item.skippedFrom =
-                                  (skipped != null && skipped.isNotEmpty) ? skipped : null;
-                            });
-                            unawaited(AlarmService.syncWithBackend());
-                          },
-                          child: const Text(
-                            'skip next occurrence',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
 
                     // Actions Row (Save + Delete)
                     Row(
