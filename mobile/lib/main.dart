@@ -2386,7 +2386,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       children: [
                         const Expanded(
                           child: Text(
-                            'alarm details & adjustments',
+                            'alarm details',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
@@ -2426,7 +2426,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                               });
                               unawaited(AlarmService.syncWithBackend());
                             },
-                            child: const Text('undo', style: TextStyle(fontSize: 12)),
+                            child: const Text('undo skip', style: TextStyle(fontSize: 12)),
                           )
                         else if (skipControlsVisible && skipEligible)
                           TextButton(
@@ -2464,7 +2464,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                               });
                               unawaited(AlarmService.syncWithBackend());
                             },
-                            child: const Text('skip', style: TextStyle(fontSize: 12)),
+                            child: const Text('skip next occurrence', style: TextStyle(fontSize: 12)),
                           ),
                         IconButton(
                           icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF8A8F98)),
