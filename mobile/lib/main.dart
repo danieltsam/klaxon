@@ -2415,6 +2415,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                 _showToast('could not undo skip: backend unreachable');
                                 return;
                               }
+                              HapticService.selectionClick();
                               final previousTarget = item.dateTime;
                               final previousSkipped = item.skippedFrom;
                               final restore = DateTime.tryParse(previousSkipped ?? '');
@@ -2470,6 +2471,9 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                 _showToast('could not skip: backend unreachable');
                                 return;
                               }
+                              // Confirm the tap before the round trip, so the
+                              // pause on a slow link does not feel like a miss.
+                              HapticService.playPreset();
                               // The consumed occurrence is the one on screen, so
                               // show the skip immediately and let the server's
                               // answer correct the next ring time when it lands.
