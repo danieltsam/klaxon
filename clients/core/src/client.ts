@@ -234,6 +234,17 @@ export function normalizeBaseUrl(raw: string): string {
   return withoutSlash;
 }
 
+/**
+ * Minutes east of UTC for this machine.
+ *
+ * `-getTimezoneOffset()` is `-0` in UTC, which JSON serialises to `0` but which
+ * strict equality treats as a different value; normalising keeps the value the
+ * server receives identical to the value callers and tests reason about.
+ */
+export function callerUtcOffsetMinutes(now: Date = new Date()): number {
+  return -now.getTimezoneOffset() || 0;
+}
+
 export class RemoteAlarmClient {
   private readonly baseUrl: string;
   private readonly timeouts: TimeoutConfig;
@@ -475,7 +486,7 @@ export class RemoteAlarmClient {
       "POST",
       `/api/alarms/${encodeURIComponent(id)}/skip`,
       this.timeouts.write,
-      { utc_offset_minutes: -new Date().getTimezoneOffset() }
+      { utc_offset_minutes: callerUtcOffsetMinutes() }
     );
     return this.toMutationResult(raw);
   }
@@ -486,7 +497,7 @@ export class RemoteAlarmClient {
       "POST",
       `/api/alarms/${encodeURIComponent(id)}/unskip`,
       this.timeouts.write,
-      { utc_offset_minutes: -new Date().getTimezoneOffset() }
+      { utc_offset_minutes: callerUtcOffsetMinutes() }
     );
     return this.toMutationResult(raw);
   }

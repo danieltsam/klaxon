@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  callerUtcOffsetMinutes,
   normalizeAlarm,
   RemoteAlarmClient,
   RemoteAlarmError,
@@ -544,7 +545,7 @@ describe("RemoteAlarmClient — write endpoints", () => {
     assert.equal(calls[0].url, "http://h:3000/api/alarms/x/skip");
     assert.equal(calls[0].init.method, "POST");
     const body = JSON.parse(calls[0].init.body as string);
-    assert.equal(body.utc_offset_minutes, -new Date().getTimezoneOffset());
+    assert.equal(body.utc_offset_minutes, callerUtcOffsetMinutes());
     assert.equal(result.alarm.target_time, "2026-11-01T23:00:00.000Z");
     assert.equal(result.alarm.skipped_from, "2026-10-29T23:00:00.000Z");
     assert.deepEqual(result.dispatch, { sent: 1, failed: 0 });
@@ -567,7 +568,7 @@ describe("RemoteAlarmClient — write endpoints", () => {
     assert.equal(calls[0].url, "http://h:3000/api/alarms/x/unskip");
     assert.equal(calls[0].init.method, "POST");
     const body = JSON.parse(calls[0].init.body as string);
-    assert.equal(body.utc_offset_minutes, -new Date().getTimezoneOffset());
+    assert.equal(body.utc_offset_minutes, callerUtcOffsetMinutes());
     assert.equal(result.alarm.target_time, "2026-10-29T23:00:00.000Z");
     assert.equal(result.alarm.skipped_from, null);
   });
