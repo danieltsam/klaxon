@@ -28,7 +28,7 @@ You need Docker, an Android phone with Google Play services, and a Firebase proj
 
 - Create a project at [console.firebase.google.com](https://console.firebase.google.com).
 - Add an Android app with the package name `com.klaxon.mobile`.
-- Download `google-services.json` and replace `mobile/android/app/google-services.json`.
+- Download `google-services.json` and save it as `mobile/android/app/google-services.json`. That path is gitignored, so a fresh clone does not carry one and the Android build needs yours.
 - Project settings, service accounts, generate new private key. Save it as `data/service-account.json`.
 
 The second file is what lets the backend push alarms to your phone. The first one is what your phone's build needs to receive them.
