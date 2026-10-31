@@ -6,6 +6,7 @@ import 'package:battery_plus/battery_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart' hide NotificationSettings;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart';
@@ -3373,68 +3374,71 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       ),
                     ),
 
-                    const SizedBox(height: 20),
+                    if (kDebugMode) ...[
+                      const SizedBox(height: 20),
 
-                    // SECTION 4: EXPERIMENTS & TACTILE ENGINE
-                    const Text(
-                      'experiments & tactile engine',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF8A8F98),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    InkWell(
-                      onTap: () {
-                        Navigator.pop(bottomSheetContext);
-                        HapticsLabModal.show(context);
-                      },
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF16181B),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFF5E6AD2).withValues(alpha: 0.4)),
+                      // SECTION 4: EXPERIMENTS & TACTILE ENGINE
+                      const Text(
+                        'experiments & tactile engine',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF8A8F98),
                         ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF5E6AD2).withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(8),
+                      ),
+                      const SizedBox(height: 12),
+
+                      InkWell(
+                        onTap: () {
+                          Navigator.pop(bottomSheetContext);
+                          HapticsLabModal.show(context);
+                        },
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF16181B),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFF5E6AD2).withValues(alpha: 0.4)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF5E6AD2).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(Icons.vibration_rounded, color: Color(0xFF717DF0), size: 18),
                               ),
-                              child: const Icon(Icons.vibration_rounded, color: Color(0xFF717DF0), size: 18),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-'haptic testing lab',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFFF7F8F8),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+  'haptic testing lab',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFFF7F8F8),
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'active: ${HapticService.armStyleTitle(HapticService.activeArmStyle)}',
-                                    style: const TextStyle(fontSize: 11, color: Color(0xFF8A8F98)),
-                                  ),
-                                ],
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'active: ${HapticService.armStyleTitle(HapticService.activeArmStyle)}',
+                                      style: const TextStyle(fontSize: 11, color: Color(0xFF8A8F98)),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            const Icon(Icons.arrow_forward_ios_rounded, size: 13, color: Color(0xFF8A8F98)),
-                          ],
+                              const Icon(Icons.arrow_forward_ios_rounded, size: 13, color: Color(0xFF8A8F98)),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
+                    ],
+
                   ],
                 ),
               ),
@@ -4142,12 +4146,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       ),
                       const SizedBox(width: 4),
 
-                      // Haptic Testing Lab
-                      IconButton(
-                        icon: const Icon(Icons.vibration_rounded, size: 18, color: Color(0xFF8A8F98)),
-                        tooltip: 'haptic testing lab',
-                        onPressed: () => HapticsLabModal.show(context),
-                      ),
+                      // Haptic Testing Lab: debug builds only.
+                      if (kDebugMode)
+                        IconButton(
+                          icon: const Icon(Icons.vibration_rounded, size: 18, color: Color(0xFF8A8F98)),
+                          tooltip: 'haptic testing lab',
+                          onPressed: () => HapticsLabModal.show(context),
+                        ),
 
                       // Settings
                       IconButton(
