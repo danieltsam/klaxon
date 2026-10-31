@@ -12,6 +12,7 @@ import 'firebase_options.dart';
 import 'screens/ring_screen.dart';
 import 'services/alarm_service.dart';
 import 'services/backend_client.dart';
+import 'services/device_identity.dart';
 import 'utils/id_mapper.dart';
 import 'utils/relative_time.dart';
 import 'utils/settings_formatter.dart';
@@ -197,6 +198,18 @@ class _SyncResult {
   _SyncResult({required this.success, this.syncedCount});
 }
 
+/// Pure filter predicate that matches the dashboard semantics.
+///
+/// Active alarms are pending, snoozed, or ringing. Everything else
+/// (including disabled and missed) is considered off. The 'all' filter
+/// always returns true.
+bool matchesAlarmFilter(String status, String filter) {
+  final active = status == 'pending' || status == 'snoozed' || status == 'ringing';
+  if (filter == 'active') return active;
+  if (filter == 'off') return !active;
+  return true;
+}
+
 class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingObserver {
   List<_AlarmItem> _allAlarms = [];
   String? _fcmToken;
@@ -223,6 +236,17 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   // Bulk multi-select mode state
   bool _isMultiSelectMode = false;
   final Set<int> _selectedAlarmIds = <int>{};
+
+  // Alarm list filter (session-only; mirrors the dashboard semantics).
+  String _alarmFilter = 'all';
+
+  // Delete-animation tracking: rows whose ids are in this set slide/fade out
+  // before the list refreshes.
+  final Set<int> _deletingAlarmIds = <int>{};
+
+  // Device/connection metadata surfaced in settings.
+  String? _deviceModel;
+  DateTime? _lastSuccessfulSync;
 
   Future<void> _previewTone(String tone) async {
     try {
@@ -301,6 +325,15 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     return SettingsFormatter.formatDate(dt, _dateFormat);
   }
 
+  String _formatRelativeAge(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff < const Duration(minutes: 1)) return 'just now';
+    if (diff < const Duration(hours: 1)) return '${diff.inMinutes}m ago';
+    if (diff < const Duration(days: 1)) return '${diff.inHours}h ago';
+    if (diff < const Duration(days: 7)) return '${diff.inDays}d ago';
+    return '${diff.inDays ~/ 7}w ago';
+  }
+
   /// Render a date as a plain ISO date string (e.g. '2026-10-07') for the
   /// fortnightly recurrence anchor.
   String _isoDate(DateTime dt) {
@@ -321,6 +354,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       // lost while the app was backgrounded) as soon as the base URL is known.
       unawaited(AlarmService.flushPendingStateReports());
       _syncWithBackend(silent: true);
+    });
+
+    // Load the real device model for telemetry/settings; never block the UI.
+    DeviceIdentity.modelName().then((model) {
+      if (mounted) setState(() => _deviceModel = model);
     });
 
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -400,7 +438,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         _fcmToken!,
         batteryLevel: level,
         isCharging: charging,
-        deviceName: 'Android Device',
+        deviceName: await DeviceIdentity.modelName(),
       );
     } catch (e) {
       // ignore: avoid_print
@@ -445,7 +483,10 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     await _loadAllAlarms();
     await _reportBatteryTelemetry();
     if (mounted) {
-      setState(() => _isSyncing = false);
+      setState(() {
+        _isSyncing = false;
+        _lastSuccessfulSync = DateTime.now();
+      });
       if (!silent) {
         _showToast('synced with backend ($count active alarms)');
       }
@@ -991,7 +1032,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     await _loadAllAlarms();
   }
 
-  Future<void> _deleteAlarmItem(_AlarmItem item, {bool announce = true}) async {
+  Future<bool> _deleteAlarmItem(_AlarmItem item, {bool announce = true}) async {
     await HapticService.playPreset(PresetHapticStyle.heavyLatch);
 
     // Delete on the backend first. Removing the local copy when the request
@@ -1002,16 +1043,33 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
       final ok = await deleteRemote(item.uuid!);
       if (!ok) {
         if (announce) _showToast('could not delete: backend unreachable');
-        return;
+        return false;
       }
     }
 
     await Alarm.stop(item.id);
     await IdMapper.removeMapping(item.id);
-    if (announce) {
-      _showToast('alarm deleted');
-      _loadAllAlarms();
+    if (announce) _showToast('alarm deleted');
+    return true;
+  }
+
+  Future<void> _deleteAlarmWithAnimation(_AlarmItem item, {bool announce = true}) async {
+    final disableAnimations = MediaQuery.of(context).disableAnimations;
+    if (disableAnimations) {
+      final ok = await _deleteAlarmItem(item, announce: announce);
+      if (ok && mounted) _loadAllAlarms();
+      return;
     }
+
+    setState(() => _deletingAlarmIds.add(item.id));
+    await Future.wait([
+      _deleteAlarmItem(item, announce: false),
+      Future.delayed(const Duration(milliseconds: 240)),
+    ]);
+    if (!mounted) return;
+    setState(() => _deletingAlarmIds.remove(item.id));
+    if (announce) _showToast('alarm deleted');
+    _loadAllAlarms();
   }
 
   // ── Bulk multi-select ────────────────────────────────────────────────
@@ -1049,17 +1107,35 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   Future<void> _bulkDeleteSelected() async {
     final ids = List<int>.from(_selectedAlarmIds);
     if (ids.isEmpty) return;
+    final disableAnimations = MediaQuery.of(context).disableAnimations;
     await HapticService.playPreset();
     final itemsToDelete = _allAlarms.where((a) => ids.contains(a.id)).toList();
-    // Issue every removal at once. Awaiting them one-by-one serialised the
-    // whole selection behind each alarm's network round-trip, which is the
-    // "stare at the screen between each delete" the owner reported. The whole
-    // batch is awaited as one, then the list refreshes once.
-    await Future.wait(
-      itemsToDelete.map((item) => _deleteAlarmItem(item, announce: false)),
-    );
+
+    if (disableAnimations) {
+      await Future.wait(
+        itemsToDelete.map((item) => _deleteAlarmItem(item, announce: false)),
+      );
+      if (!mounted) return;
+      setState(() {
+        _isMultiSelectMode = false;
+        _selectedAlarmIds.clear();
+      });
+      _showToast('${itemsToDelete.length} alarm${itemsToDelete.length == 1 ? '' : 's'} deleted');
+      _loadAllAlarms();
+      return;
+    }
+
+    // Animate every selected row out together, then refresh once.
+    setState(() => _deletingAlarmIds.addAll(ids));
+    await Future.wait([
+      Future.wait(
+        itemsToDelete.map((item) => _deleteAlarmItem(item, announce: false)),
+      ),
+      Future.delayed(const Duration(milliseconds: 240)),
+    ]);
     if (!mounted) return;
     setState(() {
+      _deletingAlarmIds.removeAll(ids);
       _isMultiSelectMode = false;
       _selectedAlarmIds.clear();
     });
@@ -2849,7 +2925,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             ),
                             onPressed: () async {
                               Navigator.pop(bottomSheetContext);
-                              await _deleteAlarmItem(item);
+                              await _deleteAlarmWithAnimation(item);
                             },
                             child: const Text('delete'),
                           ),
@@ -3268,7 +3344,10 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       ),
                       child: Column(
                         children: [
-                          _telemetryRow('phone model', 'Android Device'),
+                          _telemetryRow(
+                            'phone model',
+                            _deviceModel ?? 'Acquiring...',
+                          ),
                           const Divider(color: Color(0xFF26282E), height: 16),
                           _telemetryRow(
                             'battery',
@@ -3282,6 +3361,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             _fcmToken != null && _fcmToken!.length > 16
                                 ? '${_fcmToken!.substring(0, 8)}...${_fcmToken!.substring(_fcmToken!.length - 6)}'
                                 : 'Acquiring...',
+                          ),
+                          const Divider(color: Color(0xFF26282E), height: 16),
+                          _telemetryRow(
+                            'last synced',
+                            _lastSuccessfulSync != null
+                                ? '${_formatRelativeAge(_lastSuccessfulSync!)} · ${_formatDate(_lastSuccessfulSync!)} ${_formatTime(_lastSuccessfulSync!)} ${_lastSuccessfulSync!.timeZoneName}'
+                                : 'not yet synced',
                           ),
                         ],
                       ),
@@ -3425,6 +3511,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
         onPressed: () {
+          _previewTone(tone);
           _showToast('previewing $label audio');
         },
         child: Text(label, style: const TextStyle(fontSize: 11)),
@@ -3446,6 +3533,94 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           ),
         ),
       ],
+    );
+  }
+
+  // Compact segmented control for the alarm list filter.
+  Widget _buildFilterSegments() {
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: const Color(0xFF16181B),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF26282E)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildFilterSegment('all', 'all'),
+          _buildFilterSegment('active', 'active'),
+          _buildFilterSegment('off', 'off'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterSegment(String value, String label) {
+    final selected = _alarmFilter == value;
+    return GestureDetector(
+      onTap: () {
+        HapticService.selectionClick();
+        setState(() {
+          _alarmFilter = value;
+          // Keep selections constrained to the visible set.
+          if (_isMultiSelectMode) {
+            final visibleIds = _allAlarms
+                .where((a) =>
+                    a.status != 'missed' && matchesAlarmFilter(a.status, value))
+                .map((a) => a.id)
+                .toSet();
+            _selectedAlarmIds.retainAll(visibleIds);
+            if (_selectedAlarmIds.isEmpty) _isMultiSelectMode = false;
+          }
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF5E6AD2) : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: selected ? const Color(0xFFF7F8F8) : const Color(0xFF8A8F98),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Wraps an alarm row so it slides out and shrinks when being deleted.
+  Widget _buildDeletableAlarmRow(_AlarmItem alarm, Widget child) {
+    final isDeleting = _deletingAlarmIds.contains(alarm.id);
+    final slideOut = Directionality.of(context) == TextDirection.rtl ? -1.0 : 1.0;
+    return TweenAnimationBuilder<double>(
+      key: ValueKey('delete_anim_${alarm.id}'),
+      duration: isDeleting ? const Duration(milliseconds: 240) : Duration.zero,
+      curve: Curves.easeOut,
+      tween: Tween(begin: 1.0, end: isDeleting ? 0.0 : 1.0),
+      child: child,
+      builder: (context, value, child) {
+        if (value <= 0.0) return const SizedBox.shrink();
+        return Opacity(
+          opacity: value.clamp(0.0, 1.0),
+          child: Transform.translate(
+            offset: Offset(slideOut * MediaQuery.of(context).size.width * (1.0 - value), 0),
+            child: ClipRect(
+              child: Align(
+                alignment: Alignment.topCenter,
+                heightFactor: value.clamp(0.0, 1.0),
+                child: child,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -3863,9 +4038,11 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
         return bAt.compareTo(aAt);
       });
     final activeAlarms = filteredAlarms.where((a) => a.status != 'missed').toList();
+    final visibleActiveAlarms = activeAlarms.where((a) => matchesAlarmFilter(a.status, _alarmFilter)).toList();
 
-    // Hero alarm: earliest upcoming enabled alarm (missed alarms never qualify)
-    final enabledAlarms = activeAlarms.where((a) => a.isEnabled).toList();
+    // Hero alarm: earliest upcoming enabled alarm from the visible set
+    // (missed alarms never qualify and an 'off' filter leaves nothing here).
+    final enabledAlarms = visibleActiveAlarms.where((a) => a.isEnabled).toList();
     final upcomingHeroAlarm = enabledAlarms.isNotEmpty ? enabledAlarms.first : null;
 
     // Back (swipe-back) exits multi-select mode instead of leaving the app.
@@ -4151,10 +4328,13 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                 key: ValueKey('hero_card_${upcomingHeroAlarm.id}'),
                                 child: Padding(
                                   padding: const EdgeInsets.only(bottom: 24),
-                                  child: _BreathingHeroCard(
+                                  child: _buildHeroCardBody(
                                     alarm: upcomingHeroAlarm,
                                     onTap: () => _showAlarmDetailModal(upcomingHeroAlarm),
-                                    bodyBuilder: _buildHeroCardBody,
+                                    borderColor: const Color(0x995E6AD2),
+                                    borderWidth: 1.5,
+                                    glowAlpha: 0.15,
+                                    glowBlur: 15.0,
                                   ),
                                 ),
                               )
@@ -4188,7 +4368,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Text(
-                                '${activeAlarms.length}',
+                                '${visibleActiveAlarms.length}',
                                 style: const TextStyle(
                                   fontSize: 10,
                                   color: Color(0xFF8A8F98),
@@ -4198,13 +4378,14 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             ),
                           ],
                         ),
+                        _buildFilterSegments(),
                       ],
                     ),
 
                     const SizedBox(height: 12),
 
                     // List of active / non-missed alarms
-                    if (activeAlarms.isEmpty && missedAlarms.isEmpty)
+                    if (visibleActiveAlarms.isEmpty && missedAlarms.isEmpty)
                       Container(
                         padding: const EdgeInsets.symmetric(vertical: 40),
                         decoration: BoxDecoration(
@@ -4229,15 +4410,22 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           ),
                         ),
                       )
-                    else if (activeAlarms.isNotEmpty)
+                    else if (visibleActiveAlarms.isNotEmpty)
                       ListView.separated(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        itemCount: activeAlarms.length,
-                        separatorBuilder: (context, index) => const SizedBox(height: 10),
+                        itemCount: visibleActiveAlarms.length,
+                        separatorBuilder: (context, index) {
+                          final a = visibleActiveAlarms[index];
+                          final b = visibleActiveAlarms[index + 1];
+                          if (_deletingAlarmIds.contains(a.id) || _deletingAlarmIds.contains(b.id)) {
+                            return const SizedBox.shrink();
+                          }
+                          return const SizedBox(height: 10);
+                        },
                         itemBuilder: (context, index) {
-                          final alarm = activeAlarms[index];
-                          return _buildAlarmRowCard(alarm);
+                          final alarm = visibleActiveAlarms[index];
+                          return _buildDeletableAlarmRow(alarm, _buildAlarmRowCard(alarm));
                         },
                       ),
 
@@ -4279,10 +4467,17 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         itemCount: missedAlarms.length,
-                        separatorBuilder: (context, index) => const SizedBox(height: 10),
+                        separatorBuilder: (context, index) {
+                          final a = missedAlarms[index];
+                          final b = missedAlarms[index + 1];
+                          if (_deletingAlarmIds.contains(a.id) || _deletingAlarmIds.contains(b.id)) {
+                            return const SizedBox.shrink();
+                          }
+                          return const SizedBox(height: 10);
+                        },
                         itemBuilder: (context, index) {
                           final alarm = missedAlarms[index];
-                          return _buildMissedAlarmCard(alarm);
+                          return _buildDeletableAlarmRow(alarm, _buildMissedAlarmCard(alarm));
                         },
                       ),
                     ],
@@ -4352,8 +4547,8 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     );
   }
 
-  // Hero Upcoming Alarm Card body. The border color/width and outer glow are
-  // driven by the breathing wrapper's pulsing animation.
+  // Hero Upcoming Alarm Card body. The border and glow are fixed values
+  // supplied by the caller.
   Widget _buildHeroCardBody({
     required _AlarmItem alarm,
     required VoidCallback onTap,
@@ -5017,74 +5212,6 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
           ),
         ],
       ),
-    );
-  }
-}
-
-// Typedef for the hero card body builder: builds the card body with the
-// current pulsing border/glow values from the breathing animation.
-typedef _HeroCardBodyBuilder = Widget Function({
-  required _AlarmItem alarm,
-  required VoidCallback onTap,
-  required Color borderColor,
-  required double borderWidth,
-  required double glowAlpha,
-  required double glowBlur,
-});
-
-// Hero Upcoming Alarm Card with a breathing purple border and pulsing outer
-// glow. Wraps the card body (built by the parent state's _buildHeroCardBody)
-// and drives the border alpha (peak ~60%) plus a subtle glow pulse on a
-// 2400ms cycle.
-class _BreathingHeroCard extends StatefulWidget {
-  final _AlarmItem alarm;
-  final VoidCallback onTap;
-  final _HeroCardBodyBuilder bodyBuilder;
-
-  const _BreathingHeroCard({
-    required this.alarm,
-    required this.onTap,
-    required this.bodyBuilder,
-  });
-
-  @override
-  State<_BreathingHeroCard> createState() => _BreathingHeroCardState();
-}
-
-class _BreathingHeroCardState extends State<_BreathingHeroCard>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _breathController;
-  late final Animation<double> _breath;
-
-  @override
-  void initState() {
-    super.initState();
-    _breathController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2400),
-    )..repeat(reverse: true);
-    _breath = CurvedAnimation(
-      parent: _breathController,
-      curve: Curves.easeInOut,
-    );
-  }
-
-  @override
-  void dispose() {
-    _breathController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final alpha = (0x55 + (0x99 - 0x55) * _breath.value).toInt();
-    return widget.bodyBuilder(
-      alarm: widget.alarm,
-      onTap: widget.onTap,
-      borderColor: Color((alpha << 24) | 0x5E6AD2),
-      borderWidth: 1.5,
-      glowAlpha: 0.10 + 0.10 * _breath.value,
-      glowBlur: 14 + 4 * _breath.value,
     );
   }
 }
