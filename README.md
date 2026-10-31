@@ -2,7 +2,7 @@
 
 A self-hosted alarm clock for Android that you run from your computer.
 
-Real alarms, not notifications. They take over the screen, override silent mode and ring until you stop them. Set and manage them from a web dashboard, an HTTP API, a CLI or Raycast. I built it because reminder apps blend into the notification shade and I kept missing things.
+Real alarms, not notifications. They take over the screen, override silent mode and ring until you stop them. Set and manage them from a web dashboard, an HTTP API, a CLI or Raycast.
 
 ![Klaxon dashboard](docs/screenshots/dashboard.png)
 
@@ -11,6 +11,18 @@ Real alarms, not notifications. They take over the screen, override silent mode 
   <img src="docs/screenshots/phone-sheet.jpg" width="250" alt="Alarm details with skip next occurrence">
   <img src="docs/screenshots/phone-settings.jpg" width="250" alt="Settings with device telemetry">
 </p>
+
+## Why I made this
+
+Reminders don't work on me. They land in the notification shade with everything else and I stop noticing them. An alarm is different: it takes over the screen, ignores silent mode, and keeps ringing until I deal with it.
+
+The other half was where I set them. I wanted to do it from my laptop, ideally from Raycast, without picking up the phone. Everything I tried wanted me to unlock the phone first.
+
+## Why not something else
+
+- TickTick and Todoist can attach a reminder to a task, but their alarm behaviour sits behind a paywall.
+- notify.sh and Pushover send a notification. They cannot set a real Android alarm that takes over the screen and rings until you stop it.
+- Galarm was the closest fit. It is closed source, and API access needs an enterprise plan, so I could not hook my own scripts into it.
 
 ## What it does
 
@@ -31,7 +43,7 @@ You need Docker, an Android phone with Google Play services, and a Firebase proj
 - Download `google-services.json` and save it as `mobile/android/app/google-services.json`. That path is gitignored, so a fresh clone does not carry one and the Android build needs yours.
 - Project settings, service accounts, generate new private key. Save it as `data/service-account.json`.
 
-The second file is what lets the backend push alarms to your phone. The first one is what your phone's build needs to receive them.
+`google-services.json` is what your phone's build needs. The service account key is what lets the backend reach the phone through Firebase.
 
 **2. Backend**
 
@@ -62,17 +74,6 @@ Create an alarm on the dashboard. It appears in the phone's list within a second
 
 If the phone is on another network, put both on Tailscale and use the tailnet address. There is no login, so keep the port off the public internet.
 
-## Skipping one morning
-
-Late night, and 6:30am is not happening. Open the alarm on the phone or the dashboard and use skip next occurrence. The next one is consumed, the alarm stays on, and it rings again the morning after. Undo puts it back until that time passes.
-
-The same thing from a terminal:
-
-```bash
-alarm skip <id>
-alarm unskip <id>
-```
-
 ## The clients
 
 - Dashboard: create, edit, filter, silence a ringing alarm, copy the iCal feed. Missed alarms sit behind a count in the header, so they never shove the page around.
@@ -86,14 +87,6 @@ alarm unskip <id>
   <img src="docs/screenshots/raycast-list.jpg" width="440" alt="Alarms in Raycast">
   <img src="docs/screenshots/raycast-create.jpg" width="440" alt="Quick create in Raycast">
 </p>
-
-## When something goes wrong
-
-`GET /api/health` returns a `delivery_health` object with `ok` and `reasons`. The reasons are `no_registered_devices`, `firebase_uninitialized`, `dispatch_failed` and `alarm_missed`. The dashboard shows a banner when delivery is unverified.
-
-A dispatch is not proof of delivery, so the system reports dispatched, never delivered. If a phone never reports back after an alarm was sent, the alarm is recorded as missed with the reason, rather than quietly disappearing.
-
-Want a message somewhere else? Set `ALERT_WEBHOOK_URL` and `ALERT_WEBHOOK_KIND` to `generic`, `discord`, `slack` or `healthchecks`. Messages are throttled to one per problem per 30 minutes. `healthchecks` is a dead man's switch: the backend pings on every sweep, and the alert fires when the pings stop.
 
 ## Google Calendar (optional)
 
@@ -111,4 +104,4 @@ That runs the backend, mobile and client suites. It ends with `All Automated Tes
 
 - No authentication. Run it on a private network.
 - Push delivery needs Google Play services on the phone.
-- The backend never rings the phone. The phone holds the alarm, so a remote change lands when the push arrives or on the next sync. If the phone is offline when you dismiss, the report is queued and delivered later, and a missed record repairs itself then.
+- The backend never rings the phone. The phone holds the alarm, so a remote change lands on the push or the next sync.
