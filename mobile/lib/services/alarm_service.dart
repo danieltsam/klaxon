@@ -927,6 +927,28 @@ class AlarmService {
   /// omits the time because the large time display above already shows it; the
   /// back side keeps the full date and time so the user knows exactly when the
   /// alarm returns.
+  /// The occurrence strictly after [from], for showing a skip before the
+  /// server answers. Uses the same recurrence rules as arming, with [from] as
+  /// "now", so there is no second implementation of the pattern. Null for a
+  /// one-time alarm, which has no next occurrence to move to.
+  static DateTime? occurrenceAfter(
+    DateTime from,
+    List<int> repeatDays,
+    int intervalWeeks,
+    DateTime? anchorDate,
+  ) {
+    final isRecurring =
+        repeatDays.isNotEmpty || (intervalWeeks > 1 && anchorDate != null);
+    if (!isRecurring) return null;
+    return getNextOccurrence(
+      from,
+      repeatDays,
+      intervalWeeks: intervalWeeks,
+      anchorDate: anchorDate,
+      mockNow: from.add(const Duration(minutes: 1)),
+    );
+  }
+
   static String skipLineLabel(DateTime skippedFrom, DateTime next) {
     String dateStamp(DateTime dt) {
       final day = _skipDayNames[dt.weekday - 1];
@@ -998,10 +1020,11 @@ class AlarmService {
     DateTime? mockNow,
   }) {
     final now = mockNow ?? DateTime.now();
-    if (targetTime.isAfter(now)) {
-      return targetTime;
-    }
 
+    // A repeating alarm is anchored to its pattern, not to the date the user
+    // happened to pick. Picking a weekdays alarm at 9am on a Saturday must land
+    // on Monday, so the recurrence check comes before the future shortcut: the
+    // picked wall clock can be in the future and still be the wrong day.
     final isRecurring = (repeatDays != null && repeatDays.isNotEmpty) ||
         (intervalWeeks > 1 && anchorDate != null);
     if (isRecurring) {
@@ -1012,6 +1035,10 @@ class AlarmService {
         anchorDate: anchorDate,
         mockNow: now,
       );
+    }
+
+    if (targetTime.isAfter(now)) {
+      return targetTime;
     }
 
     // One-time alarm: if hour:minute has not passed today, schedule for today; else tomorrow.

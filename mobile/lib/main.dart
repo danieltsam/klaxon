@@ -2328,6 +2328,10 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
     String? anchorDate = item.anchorDate;
     String tone = item.soundTone;
     int ramp = item.rampSeconds;
+    // Guards double taps while a skip round-trip is in flight: the optimistic
+    // state would otherwise turn the button into its own undo before the
+    // server has answered.
+    bool skipBusy = false;
 
     showModalBottomSheet(
       context: context,
@@ -2403,14 +2407,35 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                               minimumSize: const Size(0, 32),
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
-                            onPressed: () async {
+                            onPressed: skipBusy
+                                ? null
+                                : () async {
                               final uuid = item.uuid;
                               if (uuid == null || uuid.startsWith('local_')) {
                                 _showToast('could not undo skip: backend unreachable');
                                 return;
                               }
+                              final previousTarget = item.dateTime;
+                              final previousSkipped = item.skippedFrom;
+                              final restore = DateTime.tryParse(previousSkipped ?? '');
+                              setModalState(() {
+                                skipBusy = true;
+                                if (restore != null) {
+                                  selectedTime = restore.toLocal();
+                                  item.dateTime = selectedTime;
+                                }
+                                item.skippedFrom = null;
+                              });
                               final result = await BackendClient.unskipRemoteAlarm(uuid);
                               if (result == null) {
+                                if (builderContext.mounted) {
+                                  setModalState(() {
+                                    skipBusy = false;
+                                    item.dateTime = previousTarget;
+                                    selectedTime = previousTarget;
+                                    item.skippedFrom = previousSkipped;
+                                  });
+                                }
                                 _showToast('could not undo skip: backend unreachable');
                                 return;
                               }
@@ -2418,6 +2443,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                   DateTime.tryParse(result['target_time']?.toString() ?? '');
                               if (!builderContext.mounted) return;
                               setModalState(() {
+                                skipBusy = false;
                                 if (restored != null) {
                                   selectedTime = restored.toLocal();
                                   item.dateTime = selectedTime;
@@ -2436,17 +2462,48 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                               minimumSize: const Size(0, 32),
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
-                            onPressed: () async {
+                            onPressed: skipBusy
+                                ? null
+                                : () async {
                               final uuid = item.uuid;
                               if (uuid == null || uuid.startsWith('local_')) {
                                 _showToast('could not skip: backend unreachable');
                                 return;
                               }
+                              // The consumed occurrence is the one on screen, so
+                              // show the skip immediately and let the server's
+                              // answer correct the next ring time when it lands.
+                              final previousTarget = item.dateTime;
+                              final previousSkipped = item.skippedFrom;
+                              final optimisticNext = AlarmService.occurrenceAfter(
+                                item.dateTime,
+                                item.repeatDays,
+                                item.intervalWeeks,
+                                item.anchorDate != null
+                                    ? DateTime.tryParse(item.anchorDate!)
+                                    : null,
+                              );
+                              setModalState(() {
+                                skipBusy = true;
+                                item.skippedFrom = item.dateTime.toUtc().toIso8601String();
+                                if (optimisticNext != null) {
+                                  selectedTime = optimisticNext;
+                                  item.dateTime = optimisticNext;
+                                }
+                              });
                               final result = await BackendClient.skipRemoteAlarm(
                                 uuid,
                                 DateTime.now().timeZoneOffset.inMinutes,
                               );
                               if (result == null) {
+                                if (builderContext.mounted) {
+                                  setModalState(() {
+                                    skipBusy = false;
+                                    item.dateTime = previousTarget;
+                                    selectedTime = previousTarget;
+                                    item.skippedFrom = previousSkipped;
+                                  });
+                                }
                                 _showToast('could not skip: backend unreachable');
                                 return;
                               }
@@ -2455,6 +2512,7 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                               final skipped = result['skipped_from']?.toString();
                               if (!builderContext.mounted) return;
                               setModalState(() {
+                                skipBusy = false;
                                 if (newTarget != null) {
                                   selectedTime = newTarget.toLocal();
                                   item.dateTime = selectedTime;
