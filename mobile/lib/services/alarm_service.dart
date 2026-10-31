@@ -235,6 +235,60 @@ class AlarmService {
     }
   }
 
+  /// Finds the optimistic `local_*` row that represents the same alarm as a
+  /// backend row.
+  ///
+  /// Identity is the normalised label plus the minute the alarm fires. The
+  /// backend refuses a second alarm at an occupied instant (`POST /api/alarms`
+  /// returns 409) and treats the same label at the same instant as a retry, so
+  /// on the phone a provisional row with that label and that instant *is* the
+  /// alarm the server just described. Recurrence is not part of the key: it is
+  /// normalised server-side and cannot distinguish two alarms sharing an
+  /// instant.
+  ///
+  /// Exact-minute matching keeps genuinely separate alarms apart: two alarms a
+  /// minute or more apart, or at the same instant under different labels, are
+  /// never merged.
+  static Future<int?> _findProvisionalFor({
+    required String label,
+    required DateTime targetTime,
+  }) async {
+    final wantedLabel = label.trim().toLowerCase();
+    for (final id in await IdMapper.getAllKnownIds()) {
+      final uuid = await IdMapper.getUuid(id);
+      if (uuid == null || !uuid.startsWith('local_')) continue;
+      final stored = await IdMapper.getTargetTime(id);
+      if (stored == null) continue;
+      if (stored.year != targetTime.year ||
+          stored.month != targetTime.month ||
+          stored.day != targetTime.day ||
+          stored.hour != targetTime.hour ||
+          stored.minute != targetTime.minute) {
+        continue;
+      }
+      final storedLabel = (await IdMapper.getLabel(id) ?? '').trim().toLowerCase();
+      if (storedLabel == wantedLabel) return id;
+    }
+    return null;
+  }
+
+  /// Serialises alarm-identity mutations against list rebuilds.
+  ///
+  /// A re-key touches three stores (the platform alarm, the uuid map and the
+  /// label/time maps). A list read that runs between them would paint the old
+  /// row and the new one together, or neither. [mutationsSettled] lets a
+  /// rebuild wait for the whole move instead of catching it halfway.
+  static Future<void> _mutationChain = Future<void>.value();
+
+  /// Completes once no identity mutation is half-applied.
+  static Future<void> get mutationsSettled => _mutationChain;
+
+  static Future<T> _mutate<T>(Future<T> Function() action) {
+    final next = _mutationChain.then((_) => action());
+    _mutationChain = next.then<void>((_) {}, onError: (Object _) {});
+    return next;
+  }
+
   /// Retires every local id other than [canonicalId] that still owns [uuid].
   ///
   /// A server alarm must map to exactly one local id: its canonical
@@ -352,6 +406,35 @@ class AlarmService {
         }
 
         final desc = data['description']?.toString();
+        // The push usually beats the create response: the backend answers
+        // POST /api/alarms only after it has dispatched this CREATE. So the row
+        // on screen is still keyed on the throwaway `local_*` uuid when this
+        // payload lands. Re-key that row onto the canonical id instead of
+        // inserting a canonical twin, which would leave two rows for one alarm
+        // until the response arrives. See _findProvisionalFor for the match.
+        final provisionalId = await _findProvisionalFor(
+          label: label.toString(),
+          targetTime: futureTarget,
+        );
+        if (provisionalId != null) {
+          await adoptRemoteId(
+            localIntId: provisionalId,
+            remoteUuid: uuid.toString(),
+            label: label.toString(),
+            description: desc,
+            targetTime: futureTarget,
+            repeatDays: repeatDaysList,
+            intervalWeeks: intervalWeeks,
+            anchorDateIso: anchorDateStr?.toString(),
+            soundTone: tone,
+            rampSeconds: rampSec,
+          );
+          // ignore: avoid_print
+          print('[AlarmService] Adopted provisional alarm $provisionalId as '
+              '$intId ($uuid) on CREATE echo');
+          return;
+        }
+
         // Idempotency keyed on the canonical uuid->int id: if the uuid is
         // already owned by a provisional local id, retire it before inserting
         // the canonical alarm so one user action never yields two local alarms.
@@ -466,6 +549,29 @@ class AlarmService {
           await IdMapper.setAnchorDate(intId, anchorDateStr);
         } else {
           await IdMapper.setAnchorDate(intId, null);
+        }
+
+        // A provisional row for an alarm the backend already holds is the
+        // same alarm (see _findProvisionalFor). Move it onto the canonical id
+        // before this pass writes a canonical row beside it; otherwise the row
+        // the owner is looking at doubles for the length of the reconcile.
+        final provisionalId = await _findProvisionalFor(
+          label: label,
+          targetTime: targetDate,
+        );
+        if (provisionalId != null) {
+          await adoptRemoteId(
+            localIntId: provisionalId,
+            remoteUuid: uuid,
+            label: label,
+            description: desc,
+            targetTime: targetDate,
+            repeatDays: repeatDays,
+            intervalWeeks: intervalWeeks,
+            anchorDateIso: anchorDateStr,
+            soundTone: tone,
+            rampSeconds: rampSec,
+          );
         }
 
         await IdMapper.saveMapping(
@@ -705,6 +811,32 @@ class AlarmService {
   /// the alarm already scheduled and stays idempotent. Safe whether the push
   /// beats the create response or not.
   static Future<void> adoptRemoteId({
+    required int localIntId,
+    required String remoteUuid,
+    required String label,
+    String? description,
+    required DateTime targetTime,
+    List<int>? repeatDays,
+    int intervalWeeks = 1,
+    String? anchorDateIso,
+    String? soundTone,
+    int rampSeconds = 30,
+  }) {
+    return _mutate(() => _adoptRemoteId(
+          localIntId: localIntId,
+          remoteUuid: remoteUuid,
+          label: label,
+          description: description,
+          targetTime: targetTime,
+          repeatDays: repeatDays,
+          intervalWeeks: intervalWeeks,
+          anchorDateIso: anchorDateIso,
+          soundTone: soundTone,
+          rampSeconds: rampSeconds,
+        ));
+  }
+
+  static Future<void> _adoptRemoteId({
     required int localIntId,
     required String remoteUuid,
     required String label,

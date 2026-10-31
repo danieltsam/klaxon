@@ -825,6 +825,10 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
   }
 
   Future<void> _loadAllAlarms() async {
+    // A create being re-keyed from its provisional id to the backend's
+    // canonical id must be read as a whole. Reading mid-move would paint the
+    // old row and the new one together: a duplicate for one alarm.
+    await AlarmService.mutationsSettled;
     // 1. Get active alarms from Alarm plugin
     final scheduledAlarms = await Alarm.getAlarms();
     final scheduledMap = {for (var a in scheduledAlarms) a.id: a};
