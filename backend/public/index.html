@@ -1230,11 +1230,17 @@
 
     // Only recurring alarms can skip: repeat_days, or a multi-week interval
     // with an anchor. The server enforces the same rule.
-    function isSkipEligible(alarm) {
-      if (!alarm || alarm.status !== 'pending') return false;
+    function isRecurringAlarm(alarm) {
+      if (!alarm) return false;
       const days = alarm.repeat_days ? String(alarm.repeat_days).split(',').filter(d => d.trim()) : [];
       const interval = Number(alarm.recurrence_interval_weeks) || 1;
       return days.length > 0 || (interval > 1 && !!alarm.recurrence_anchor_date);
+    }
+
+    // Structural eligibility versus "can do it right now": a disabled recurring
+    // alarm still shows the action, greyed, so it is discoverable.
+    function isSkipEligible(alarm) {
+      return !!alarm && alarm.status === 'pending' && isRecurringAlarm(alarm);
     }
 
     // A past skipped_from has expired: the occurrence has rung or been edited away.
@@ -1253,14 +1259,15 @@
               <div class="text-app-muted">skipped ${formatSkipStamp(alarm.skipped_from)} · back ${formatSkipStamp(alarm.target_time)}</div>
               <div class="text-[11px] text-app-dim">alarm stays on, just not for that morning.</div>
             </div>
-            <button type="button" onclick="unskipCurrentAlarm()" class="shrink-0 text-xs text-app-accent hover:text-white transition-colors lowercase">undo</button>
+            <button type="button" onclick="unskipCurrentAlarm()" ${alarm.status === 'pending' ? '' : 'disabled'} class="shrink-0 text-xs ${alarm.status === 'pending' ? 'text-app-accent hover:text-white' : 'text-app-dim opacity-50 cursor-not-allowed'} transition-colors lowercase">undo</button>
           </div>`;
         line.classList.remove('hidden');
-      } else if (isSkipEligible(alarm)) {
+      } else if (isRecurringAlarm(alarm)) {
+        const canSkip = isSkipEligible(alarm);
         line.innerHTML = `
           <div class="flex items-center justify-between gap-3">
             <div class="text-[11px] text-app-dim">skip just the next ring, the pattern carries on.</div>
-            <button type="button" id="skip-next-btn" onclick="skipCurrentAlarm()" class="shrink-0 text-xs text-app-accent hover:text-white transition-colors lowercase">skip next occurrence</button>
+            <button type="button" id="skip-next-btn" ${canSkip ? '' : 'disabled'} onclick="skipCurrentAlarm()" class="shrink-0 text-xs ${canSkip ? 'text-app-accent hover:text-white' : 'text-app-dim opacity-50 cursor-not-allowed'} transition-colors lowercase">skip next occurrence</button>
           </div>`;
         line.classList.remove('hidden');
       } else {

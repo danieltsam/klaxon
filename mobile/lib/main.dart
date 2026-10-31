@@ -2350,7 +2350,12 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                 : DateTime.tryParse(item.skippedFrom!)?.toLocal();
             final hasPendingSkip =
                 skippedInstant != null && skippedInstant.isAfter(DateTime.now());
-            final skipControlsVisible = item.status == 'pending' &&
+            // Recurring is structural; whether it can be done right now is
+            // separate. A disabled or snoozed alarm still shows the action,
+            // greyed out, so it is discoverable instead of vanishing.
+            final skipRecurring = repeatDays.isNotEmpty ||
+                (intervalWeeks > 1 && anchorDate != null);
+            final skipStateOk = item.status == 'pending' &&
                 item.isEnabled &&
                 !item.isSnoozed;
             final skipEligible = AlarmService.isSkipEligible(
@@ -2399,15 +2404,17 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             ),
                           ),
                         ),
-                        if (skipControlsVisible && hasPendingSkip)
+                        if (hasPendingSkip)
                           TextButton(
                             style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF5E6AD2),
+                              foregroundColor: skipStateOk
+                                  ? const Color(0xFF5E6AD2)
+                                  : const Color(0xFF4A4F58),
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                               minimumSize: const Size(0, 32),
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
-                            onPressed: skipBusy
+                            onPressed: (!skipStateOk || skipBusy)
                                 ? null
                                 : () async {
                               final uuid = item.uuid;
@@ -2455,15 +2462,17 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                             },
                             child: const Text('undo skip', style: TextStyle(fontSize: 12)),
                           )
-                        else if (skipControlsVisible && skipEligible)
+                        else if (skipRecurring)
                           TextButton(
                             style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF8A8F98),
+                              foregroundColor: skipEligible
+                                  ? const Color(0xFF8A8F98)
+                                  : const Color(0xFF4A4F58),
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                               minimumSize: const Size(0, 32),
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
-                            onPressed: skipBusy
+                            onPressed: (!skipEligible || skipBusy)
                                 ? null
                                 : () async {
                               final uuid = item.uuid;
