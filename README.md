@@ -80,6 +80,13 @@ alarm unskip <id>
 - CLI: `alarm "tomorrow 7am" gym`, `alarm list`, `alarm status`, `alarm skip <id>`.
 - Raycast: list and create alarms without leaving the keyboard.
 
+![Klaxon CLI](docs/screenshots/cli.png)
+
+<p align="center">
+  <img src="docs/screenshots/raycast-list.jpg" width="440" alt="Alarms in Raycast">
+  <img src="docs/screenshots/raycast-create.jpg" width="440" alt="Quick create in Raycast">
+</p>
+
 ## When something goes wrong
 
 `GET /api/health` returns a `delivery_health` object with `ok` and `reasons`. The reasons are `no_registered_devices`, `firebase_uninitialized`, `dispatch_failed` and `alarm_missed`. The dashboard shows a banner when delivery is unverified.
