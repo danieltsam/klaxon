@@ -2407,9 +2407,12 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         if (hasPendingSkip)
                           TextButton(
                             style: TextButton.styleFrom(
-                              foregroundColor: skipStateOk
-                                  ? const Color(0xFF5E6AD2)
-                                  : const Color(0xFF4A4F58),
+                              foregroundColor:
+                                  skipStateOk ? const Color(0xFF5E6AD2) : null,
+                              // Material replaces a disabled button's colour
+                              // with 38% white, which reads brighter than the
+                              // active state. Pin it explicitly.
+                              disabledForegroundColor: const Color(0xFF3A3F47),
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                               minimumSize: const Size(0, 32),
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -2465,9 +2468,14 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                         else if (skipRecurring)
                           TextButton(
                             style: TextButton.styleFrom(
-                              foregroundColor: skipEligible
-                                  ? const Color(0xFF8A8F98)
-                                  : const Color(0xFF4A4F58),
+                              // Accent when it can be pressed, so "active" is
+                              // obvious against the dim, inert state. Material
+                              // replaces a disabled button's colour with 38%
+                              // white, which reads brighter than active, so the
+                              // disabled colour is pinned explicitly.
+                              foregroundColor:
+                                  skipEligible ? const Color(0xFF5E6AD2) : null,
+                              disabledForegroundColor: const Color(0xFF3A3F47),
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                               minimumSize: const Size(0, 32),
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
