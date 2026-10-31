@@ -594,10 +594,7 @@ class AlarmService {
         // re-sent. (Only backend uuids reach here; `local_` alarms are absent
         // from the remote list.)
         if (await AlarmStateOutbox.hasPendingStatus(uuid, 'dismissed')) {
-          final serverAgrees = status == 'dismissed' ||
-              status == 'disabled' ||
-              status == 'canceled' ||
-              status == 'missed';
+          final serverAgrees = serverConfirmsDismissal(status);
           if (serverAgrees) {
             await AlarmStateOutbox.remove(uuid);
           } else {
@@ -1004,6 +1001,17 @@ class AlarmService {
 
     return newSettings;
   }
+
+  /// Whether the server already holds the dismissal the phone owes it.
+  ///
+  /// `missed` is deliberately absent. It is the sweep's guess that nobody
+  /// answered, and a pending dismissal from the phone is evidence that the
+  /// guess was wrong. Treating it as agreement dropped that evidence, leaving
+  /// an alarm the owner did dismiss marked missed forever.
+  static bool serverConfirmsDismissal(String status) =>
+      status == 'dismissed' ||
+      status == 'disabled' ||
+      status == 'canceled';
 
   /// Whether the next occurrence of this alarm can be skipped.
   ///
