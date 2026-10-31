@@ -76,10 +76,10 @@ jobs:
       - name: stage apk
         run: |
           mkdir -p out
-          cp mobile/build/app/outputs/flutter-apk/app-release.apk "out/remote-alarm-${GITHUB_REF_NAME}.apk"
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk "out/klaxon-${GITHUB_REF_NAME}.apk"
 
       - name: publish release
         uses: softprops/action-gh-release@v2
         with:
-          files: out/remote-alarm-*.apk
+          files: out/klaxon-*.apk
           generate_release_notes: true

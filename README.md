@@ -44,7 +44,7 @@ Open `http://localhost:8001`. Health is at `/api/health`.
 
 **3. Phone**
 
-Install the APK from the releases page, or build it:
+Install the APK from [releases](https://github.com/danieltsam/klaxon/releases/latest), or build it:
 
 ```bash
 cd mobile
