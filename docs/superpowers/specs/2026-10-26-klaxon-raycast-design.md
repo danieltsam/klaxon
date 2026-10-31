@@ -217,7 +217,7 @@ sentences use `Klaxon` where a sentence begins.
 
 - `npm run lint` clean; `npm run build` succeeds (this is the real test of the vendoring).
 - `npm test` — corpus reports 63 asserted, 0 remaining; relative-time cases pass.
-- `ray develop`, then against `http://100.72.232.98:8001`: list renders the current five alarms with correct
+- `ray develop`, then against `http://<tailnet-host>:8001`: list renders the current five alarms with correct
   groups; device status shows the phone; quick-create previews `tomorrow 6pm`; one throwaway alarm created,
   edited, cancelled; toasts say Klaxon.
 - Side-by-side with the old extension: same alarms, same groups, same copy apart from the name.

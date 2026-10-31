@@ -9,7 +9,7 @@ void main() {
 
     test('keeps an explicit scheme and strips trailing slashes', () {
       expect(BackendClient.normalizeBaseUrl(' https://klaxon.example:8443/ '), 'https://klaxon.example:8443');
-      expect(BackendClient.normalizeBaseUrl('http://100.72.232.98:8001//'), 'http://100.72.232.98:8001');
+      expect(BackendClient.normalizeBaseUrl('http://100.101.102.103:8001//'), 'http://100.101.102.103:8001');
     });
 
     test('leaves an empty value alone so the caller can refuse it', () {
