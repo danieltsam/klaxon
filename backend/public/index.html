@@ -111,6 +111,15 @@
           <input type="text" id="input-search" placeholder="search alarms…" class="rounded-md border border-app-border bg-app-surface px-3 py-1.5 text-xs text-app-main placeholder-app-dim focus:border-app-accent focus:ring-0 focus:outline-none w-44 transition-colors" />
         </div>
 
+        <!-- Missed alarms live here, in a fixed-width slot, so the header and main flow never shift. -->
+        <div id="missed-alarm-chip-slot" class="w-10 sm:w-24 shrink-0 flex items-center justify-end">
+          <button id="missed-alarm-chip" onclick="openMissedAlarmsModal()" class="invisible inline-flex items-center gap-1 sm:gap-1.5 rounded-md border border-app-border bg-app-surface px-2 sm:px-2.5 py-1.5 text-[11px] text-app-muted hover:text-app-main hover:border-app-border-accent transition-colors lowercase" title="missed alarms" aria-label="missed alarms" aria-haspopup="dialog" aria-controls="missed-alarms-modal" type="button">
+            <span class="h-1.5 w-1.5 rounded-full bg-app-danger/70"></span>
+            <span id="missed-alarm-chip-count">0</span>
+            <span class="hidden sm:inline">missed</span>
+          </button>
+        </div>
+
         <button onclick="openDeviceGuideModal()" class="flex items-center gap-2 px-3 py-1.5 rounded-md border border-app-border bg-app-surface hover:border-app-border-accent transition-colors text-xs" title="connection status" type="button">
           <span id="header-device-dot" class="h-1.5 w-1.5 rounded-full bg-app-accent"></span>
           <span id="header-device-status" class="text-app-muted text-[11px]">phone online</span>
@@ -183,18 +192,6 @@
 
           <!-- Hero upcoming alarm -->
           <div id="hero-card-container"></div>
-
-          <!-- Missed alarms -->
-          <section id="missed-alarms-section" class="hidden" data-purpose="missed-alarms-section">
-            <div class="flex items-center justify-between border-b border-app-border pb-4 mb-5">
-              <div class="flex items-center gap-2">
-                <h2 class="text-lg font-semibold tracking-tight lowercase text-app-main">missed</h2>
-                <span id="missed-alarms-count-badge" class="px-2 py-0.5 rounded-sm border border-app-danger/40 text-[11px] font-mono text-app-danger">0</span>
-              </div>
-              <p class="text-xs text-app-dim hidden sm:block">alarms we couldn't ring. kept for review.</p>
-            </div>
-            <div id="missed-alarms-list" class="space-y-3"></div>
-          </section>
 
           <!-- Your alarms -->
           <section data-purpose="your-alarms-section">
@@ -588,6 +585,23 @@
     </div>
   </div>
 
+  <!-- Missed alarms modal -->
+  <div id="missed-alarms-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 hidden" role="dialog" aria-modal="true" aria-labelledby="missed-alarms-modal-title">
+    <div class="bg-app-surface border border-app-border w-full max-w-lg rounded-xl p-6 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-app-border pb-4">
+        <div class="flex items-center gap-2">
+          <h3 id="missed-alarms-modal-title" class="text-sm font-semibold text-app-main lowercase">missed alarms</h3>
+          <span id="missed-alarms-modal-count" class="px-2 py-0.5 rounded-sm border border-app-border text-[11px] font-mono text-app-muted">0</span>
+        </div>
+        <button onclick="closeMissedAlarmsModal()" class="text-base leading-none text-app-dim hover:text-app-main transition-colors" type="button" aria-label="close missed alarms" title="close">×</button>
+      </div>
+
+      <p class="text-xs text-app-dim">alarms we couldn't ring. kept for review.</p>
+
+      <div id="missed-alarms-modal-list" class="space-y-3 max-h-[60vh] overflow-y-auto"></div>
+    </div>
+  </div>
+
   <script src="/nl-time.js"></script>
   <script>
     let allAlarms = [];
@@ -792,6 +806,36 @@
       return `in ${nonZero.join(' ')}`;
     }
 
+    // SQLite's datetime('now') is UTC but carries no zone. Parsing it raw makes
+    // Safari reject it and Chrome read it as local time, so mark it UTC first.
+    function parseServerTimestamp(value) {
+      if (!value) return null;
+      if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+      const str = String(value);
+      const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(str)
+        ? `${str.replace(' ', 'T')}Z`
+        : str;
+      const parsed = new Date(normalized);
+      return isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    // Past-facing companion to formatRelative, for "last seen" stamps.
+    function formatRelativeAge(targetIso) {
+      if (!targetIso) return '';
+      const then = new Date(targetIso);
+      if (isNaN(then.getTime())) return '';
+
+      const seconds = Math.max(0, Math.floor((Date.now() - then.getTime()) / 1000));
+      if (seconds < 60) return 'just now';
+
+      const MINUTE = 60, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
+      const unit = (value, singular, plural) => `${value} ${value === 1 ? singular : plural}`;
+
+      if (seconds < HOUR) return `${unit(Math.floor(seconds / MINUTE), 'minute', 'minutes')} ago`;
+      if (seconds < DAY) return `${unit(Math.floor(seconds / HOUR), 'hour', 'hours')} ago`;
+      return `${unit(Math.floor(seconds / DAY), 'day', 'days')} ago`;
+    }
+
     function formatRepeatDays(repeatDaysStr) {
       if (!repeatDaysStr) return 'once';
       const days = repeatDaysStr.split(',').map(s => parseInt(s.trim(), 10));
@@ -886,37 +930,12 @@
     function renderDashboard() {
       const filteredList = getFilteredAlarms();
       const missedAlarms = allAlarms
-        .filter(a => a.status === 'missed' && matchesSearch(a))
+        .filter(a => a.status === 'missed')
         .sort((a, b) => new Date(b.missed_at || 0) - new Date(a.missed_at || 0));
 
       document.getElementById('alarms-count-badge').textContent = filteredList.length;
 
-      // Render Missed Alarms Section
-      const missedSection = document.getElementById('missed-alarms-section');
-      const missedList = document.getElementById('missed-alarms-list');
-      const missedCountBadge = document.getElementById('missed-alarms-count-badge');
-      if (missedAlarms.length > 0) {
-        missedSection.classList.remove('hidden');
-        missedCountBadge.textContent = missedAlarms.length;
-        missedList.innerHTML = missedAlarms.map(alarm => {
-          const missedReasonStr = formatMissedReason(alarm.missed_reason);
-
-          return `
-            <div class="rounded-lg border border-app-danger/40 bg-app-surface p-4 flex items-center justify-between gap-4">
-              <div class="min-w-0">
-                <div class="flex items-baseline gap-3 min-w-0">
-                  <span class="text-base font-medium font-mono text-app-main">${formatTime(alarm.target_time)}</span>
-                  <span class="text-sm text-app-main truncate">${escapeHtml(alarm.label)}</span>
-                </div>
-                <div class="text-xs text-app-muted mt-1">${formatDate(alarm.target_time)}${missedReasonStr ? ` · ${missedReasonStr}` : ''}</div>
-              </div>
-            </div>
-          `;
-        }).join('');
-      } else {
-        missedSection.classList.add('hidden');
-        missedList.innerHTML = '';
-      }
+      renderMissedAlarms(missedAlarms);
 
       // Determine upcoming active hero alarm
       const activeAlarms = allAlarms.filter(a => a.status === 'pending' || a.status === 'snoozed');
@@ -1023,6 +1042,64 @@
 
       updateSelectionUI();
     }
+
+    // Missed alarms are a notification, not a page section: the chip is the
+    // only entry point and the list itself lives in the modal. The chip's slot
+    // is always in the layout, so a new or cleared alarm never moves anything.
+    function renderMissedAlarms(missedAlarms) {
+      const chip = document.getElementById('missed-alarm-chip');
+      const chipCount = document.getElementById('missed-alarm-chip-count');
+      const modalCount = document.getElementById('missed-alarms-modal-count');
+      const list = document.getElementById('missed-alarms-modal-list');
+      const modal = document.getElementById('missed-alarms-modal');
+      const count = missedAlarms.length;
+
+      if (chipCount) chipCount.textContent = count;
+      if (modalCount) modalCount.textContent = count;
+      if (chip) {
+        chip.classList.toggle('invisible', count === 0);
+        chip.disabled = count === 0;
+        chip.setAttribute('aria-hidden', count === 0 ? 'true' : 'false');
+      }
+
+      if (!list) return;
+      if (count === 0) {
+        list.innerHTML = '';
+        if (modal && !modal.classList.contains('hidden')) closeMissedAlarmsModal();
+        return;
+      }
+
+      list.innerHTML = missedAlarms.map(alarm => {
+        const missedReasonStr = formatMissedReason(alarm.missed_reason);
+
+        return `
+          <div class="rounded-lg border border-app-danger/40 bg-app-surface-2 p-4 flex items-center justify-between gap-4">
+            <div class="min-w-0">
+              <div class="flex items-baseline gap-3 min-w-0">
+                <span class="text-base font-medium font-mono text-app-main">${formatTime(alarm.target_time)}</span>
+                <span class="text-sm text-app-main truncate">${escapeHtml(alarm.label)}</span>
+              </div>
+              <div class="text-xs text-app-muted mt-1">${formatDate(alarm.target_time)}${missedReasonStr ? ` · ${missedReasonStr}` : ''}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function openMissedAlarmsModal() {
+      const modal = document.getElementById('missed-alarms-modal');
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeMissedAlarmsModal() {
+      const modal = document.getElementById('missed-alarms-modal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    // Clicking the dimmed backdrop closes it; clicks inside the panel do not.
+    document.getElementById('missed-alarms-modal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) closeMissedAlarmsModal();
+    });
 
     function handleAlarmRowClick(event, id) {
       if (event.metaKey || event.ctrlKey) {
@@ -1807,21 +1884,41 @@
         if (devList.length === 0) {
           dotEl.className = 'h-1.5 w-1.5 rounded-full bg-app-dim';
           statusEl.textContent = 'no phone';
-          infoCard.innerHTML = `<div class="text-app-dim lowercase">no phone registered yet.</div>`;
+          infoCard.innerHTML = `
+            <div class="text-app-main">no phone registered</div>
+            <div class="text-app-dim">nothing is registered, so nothing will ring.</div>
+          `;
           if (noDeviceBanner) noDeviceBanner.classList.remove('hidden');
           return;
         }
 
         if (noDeviceBanner) noDeviceBanner.classList.add('hidden');
         const dev = devList[0];
-        const battText = dev.battery_level !== null && dev.battery_level !== undefined ? `${dev.battery_level}%` : 'unknown';
+        const hasBattery = dev.battery_level !== null && dev.battery_level !== undefined;
+        const battText = hasBattery ? `${dev.battery_level}%` : 'unknown';
+        const chargingText = (dev.is_charging === true || dev.is_charging === 1)
+          ? 'charging'
+          : ((dev.is_charging === false || dev.is_charging === 0) ? 'on battery' : 'charge state unknown');
+
+        const seenAt = parseServerTimestamp(dev.updated_at);
+        const hasSeen = !!seenAt;
+        const lastSeenAbs = hasSeen ? `${formatDate(seenAt)}, ${formatTime(seenAt)}` : 'unknown';
+        const lastSeenAge = hasSeen ? formatRelativeAge(seenAt) : '';
+        const tzLabel = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown';
+        const tokenText = dev.token_masked
+          ? `<div class="text-app-dim">push token ${escapeHtml(dev.token_masked)}</div>`
+          : '';
 
         dotEl.className = 'h-1.5 w-1.5 rounded-full bg-app-accent';
         statusEl.textContent = `phone online (${battText})`;
 
         infoCard.innerHTML = `
-          <div>${escapeHtml(dev.device_name || 'android device')}</div>
-          <div class="text-app-dim">${escapeHtml(dev.device_id || 'unknown')} · last sync ${dev.updated_at || 'recent'}</div>
+          <div class="text-xs text-app-main truncate">${escapeHtml(dev.device_name || 'android device')}</div>
+          <div class="text-app-dim">battery ${battText} · ${chargingText}</div>
+          <div class="text-app-dim">last seen ${lastSeenAbs}${lastSeenAge ? ` · ${lastSeenAge}` : ''}</div>
+          <div class="text-app-dim">timezone ${escapeHtml(tzLabel)}</div>
+          ${tokenText}
+          <div class="text-[10px] text-app-dim leading-relaxed pt-1">this phone is what actually rings. the backend only knows it was in touch as of the last-seen time.</div>
         `;
       } catch (err) {
         console.error('Device telemetry error:', err);
@@ -1959,6 +2056,11 @@
       }
 
       if (e.key === 'Escape') {
+        // The missed modal can be open over selection mode, so close it first.
+        if (!document.getElementById('missed-alarms-modal').classList.contains('hidden')) {
+          closeMissedAlarmsModal();
+          return;
+        }
         if (selectionMode) {
           cancelSelection();
           return;
