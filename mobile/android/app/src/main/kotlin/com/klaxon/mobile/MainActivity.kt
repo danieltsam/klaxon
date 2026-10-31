@@ -15,7 +15,13 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val PERMISSIONS_CHANNEL = "com.klaxon.mobile/permissions"
+    private val DEVICE_CHANNEL = "com.klaxon.mobile/device"
     private var channel: MethodChannel? = null
+
+    companion object {
+        // Cached after the first successful lookup so repeat calls are cheap.
+        private var cachedDeviceModel: String? = null
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -108,6 +114,30 @@ class MainActivity : FlutterActivity() {
                 }
                 "getLaunchIntentAction" -> {
                     result.success(intent?.action)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, DEVICE_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getDeviceModel" -> {
+                    val cached = cachedDeviceModel
+                    if (cached != null) {
+                        result.success(cached)
+                    } else {
+                        try {
+                            val model = Build.MODEL?.trim().orEmpty()
+                            if (model.isEmpty()) {
+                                result.success("unknown phone")
+                            } else {
+                                cachedDeviceModel = model
+                                result.success(model)
+                            }
+                        } catch (e: Exception) {
+                            result.success("unknown phone")
+                        }
+                    }
                 }
                 else -> result.notImplemented()
             }
