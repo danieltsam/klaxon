@@ -1,101 +1,107 @@
 # Klaxon
 
-A self-hosted remotely manageable Alarm app for Android phones. I run the backend myself, and I can set, trigger, and manage alarms on my phone from my workstation or any other device that can set network requests to my backend.
+A self-hosted alarm clock for Android that you run from your computer.
 
-## Why I made this
+Real alarms, not notifications. They take over the screen, override silent mode and ring until you stop them. Set and manage them from a web dashboard, an HTTP API, a CLI or Raycast. I built it because reminder apps blend into the notification shade and I kept missing things.
 
-I find regular reminders do not work well for me. They blend into normal notifications, and it's very easy for me to miss them.
+![Klaxon dashboard](docs/screenshots/dashboard.png)
 
-I prefer a more abrasive solution in alarms. A good alarm tone is pain-inducing, borderline upsetting and interrupts whatever I am doing.
-
-The problem is where I set them. I want the flexibility to set alarms from my laptop or desktop, not just from the phone (ideally using Raycast!). The less I touch my phone, the better.
-
-## Why didn't I just use something else?
-
-I could not find an existing free service that does this as surprising as this sounds for such a basic tool...
-
-- Proper alarm functionality on apps like TickTick or Todoist are gated by a paywall.
-- notify.sh, and Pushover can send notifications, but they cannot set a real Android alarm that takes over the phone screen and continues ringing till I silence it.
-- [Galarm](https://www.galarmapp.com/) was the closest thing I found, but is closed-source and requires an enterprise plan for API access. I cannot hook it into my own scripts.
+<p align="center">
+  <img src="docs/screenshots/phone-list.jpg" width="250" alt="Alarm list with filters">
+  <img src="docs/screenshots/phone-sheet.jpg" width="250" alt="Alarm details with skip next occurrence">
+  <img src="docs/screenshots/phone-settings.jpg" width="250" alt="Settings with device telemetry">
+</p>
 
 ## What it does
 
-- Sets real alarms on an Android phone. They use the full screen and override silent mode.
-- Lets me set, change, snooze, and cancel alarms from my workstation.
-- Lets me skip just the next occurrence of a recurring alarm, from any surface, without touching
-  the schedule.
-- Runs a web dashboard and exposes an API to CRUD alarms.
-- I mostly use the API and write my own scripts, including a Raycast extension.
+- Sets real Android alarms. Full screen, silent mode overridden, ringing until dismissed.
+- Schedules that repeat daily, on weekdays, weekends, chosen days, or every second week.
+- Skips one occurrence without switching the schedule off.
+- Records missed alarms instead of losing them, and reports whether delivery is working.
+- Runs from the dashboard, the `alarm` CLI, Raycast or plain HTTP.
 
-### Skipping one occurrence
+## Quick start
 
-A weekday alarm can skip the coming morning and keep the rest of the week.
+You need Docker, an Android phone with Google Play services, and a Firebase project. Flutter only matters if you want to build the app yourself.
 
-- `POST /api/alarms/:id/skip` advances the alarm one occurrence and records the consumed time in
-  `skipped_from`. Send `{"utc_offset_minutes": 600}` (minutes east of UTC) so the weekday maths
-  runs on your wall clock; omit it and the backend's own offset is used.
-- `POST /api/alarms/:id/unskip` puts it back, while the skipped time is still ahead.
-- `alarm skip <id>` and `alarm unskip <id>` do the same from the CLI; Raycast has both actions.
-- Only a pending recurring alarm is eligible. A one-off alarm has no next occurrence to skip.
+**1. Firebase**
 
-The row moves immediately and the phone arms the new time when the message lands. `fcm_dispatch` in
-the response reports `sent`/`failed`, not delivery: a phone that is off or force-stopped picks the
-change up on its next reconcile, exactly as it does for cancel and disable.
+- Create a project at [console.firebase.google.com](https://console.firebase.google.com).
+- Add an Android app with the package name `com.klaxon.mobile`.
+- Download `google-services.json` and replace `mobile/android/app/google-services.json`.
+- Project settings, service accounts, generate new private key. Save it as `data/service-account.json`.
 
-## How it works
+The second file is what lets the backend push alarms to your phone. The first one is what your phone's build needs to receive them.
 
-- An Android app, written in Flutter.
-- A self-hosted backend. It has the API, the web dashboard, and the database of my alarms.
-- Firebase Cloud Messaging, to deliver the alarms to the phone. This rides on Google Play services, which most phones already run.
-
-Everything runs on my private Tailscale network. I don't have to expose any port to the internet.
-
-## Run it
+**2. Backend**
 
 ```bash
-# 1. Firebase credentials for delivery
-cp /path/to/service-account.json data/service-account.json
-
-# 2. Backend config. Compose reads the ROOT .env, not backend/.env.
 cp backend/.env.example .env
-
-# 3. Build and start
 docker compose up -d --build
 ```
 
-- Dashboard: `http://<host>:8001`
-- Health: `GET /api/health` (delivery state is inside `delivery_health`)
-- Phone and clients use that same URL. There is no authentication, so keep it on a private network.
-- After a pull: `git pull --ff-only && docker compose up -d --build`.
-- Tests: `./run_tests.sh`.
+Open `http://localhost:8001`. Health is at `/api/health`.
 
-The Google Calendar mirror is optional. It needs an OAuth client, a `GCAL_TIMEZONE`, and a token in `data/google-oauth-token.json`; the token expires every 7 days on a Testing consent screen. After copying a fresh token, **restart the container**, because the token file is read once at startup.
+**3. Phone**
 
-### Phones without Google Play services
+Install the APK from the releases page, or build it:
 
-FCM depends on Google Play services. If a phone does not have them, this project cannot deliver alarms to that phone reliably. 
+```bash
+cd mobile
+flutter build apk --debug
+adb install -r build/app/outputs/flutter-apk/app-debug.apk
+```
 
-## Delivery health
+**4. Point the phone at the backend**
 
-The backend watches alarm delivery. It reports the result. A quiet system is then known quiet, not assumed healthy.
+In the app, open settings, find server and hardware telemetry, paste your backend address (`http://<your-computer>:8001`) and tap save and resync. Testing over USB? Run `adb reverse tcp:8001 tcp:8001` and use `http://127.0.0.1:8001`.
 
-- `GET /api/health` returns a `delivery_health` object, with `ok` and `reasons`.
-- The reasons are `no_registered_devices`, `firebase_uninitialized`, `dispatch_failed`, and `alarm_missed`.
-- The dashboard shows a banner when delivery is unverified.
+**5. Check it works**
 
-A dispatch is not proof of delivery. The system reports "dispatched", not "delivered".
+Create an alarm on the dashboard. It appears in the phone's list within a second or two. Set one for a minute from now to hear it.
 
-### Send alerts to another service
+If the phone is on another network, put both on Tailscale and use the tailnet address. There is no login, so keep the port off the public internet.
 
-Set `ALERT_WEBHOOK_URL` to the target URL. Set `ALERT_WEBHOOK_KIND` to one of these values:
+## Skipping one morning
 
-- `generic` (default). The body is `{"title": ..., "body": ...}`.
-- `discord`. The body is `{"content": ...}`.
-- `slack`. The body is `{"text": ...}`.
-- `healthchecks`. The backend sends a GET request on every sweep. This is a heartbeat.
+Late night, and 6:30am is not happening. Open the alarm on the phone or the dashboard and use skip next occurrence. The next one is consumed, the alarm stays on, and it rings again the morning after. Undo puts it back until that time passes.
 
-The backend sends a message at most once every 30 minutes for the same problem.
+The same thing from a terminal:
 
-The backend also sends a best-effort push to each registered phone. A phone that is off or force-stopped does not get the push. The webhook covers that case.
+```bash
+alarm skip <id>
+alarm unskip <id>
+```
 
-For backend liveness, use a dead-man's switch. A push from the backend cannot report that the backend is down.
+## The clients
+
+- Dashboard: create, edit, filter, silence a ringing alarm, copy the iCal feed. Missed alarms sit behind a count in the header, so they never shove the page around.
+- Phone: alarm list with all, active and off filters, a detail sheet with skip and undo, and live device telemetry.
+- CLI: `alarm "tomorrow 7am" gym`, `alarm list`, `alarm status`, `alarm skip <id>`.
+- Raycast: list and create alarms without leaving the keyboard.
+
+## When something goes wrong
+
+`GET /api/health` returns a `delivery_health` object with `ok` and `reasons`. The reasons are `no_registered_devices`, `firebase_uninitialized`, `dispatch_failed` and `alarm_missed`. The dashboard shows a banner when delivery is unverified.
+
+A dispatch is not proof of delivery, so the system reports dispatched, never delivered. If a phone never reports back after an alarm was sent, the alarm is recorded as missed with the reason, rather than quietly disappearing.
+
+Want a message somewhere else? Set `ALERT_WEBHOOK_URL` and `ALERT_WEBHOOK_KIND` to `generic`, `discord`, `slack` or `healthchecks`. Messages are throttled to one per problem per 30 minutes. `healthchecks` is a dead man's switch: the backend pings on every sweep, and the alert fires when the pings stop.
+
+## Google Calendar (optional)
+
+Klaxon can mirror alarms into a Google Calendar and read events back. It needs an OAuth client, `GCAL_TIMEZONE`, and a token at `data/google-oauth-token.json`. On a Testing consent screen that token expires every 7 days. After replacing it, restart the container, because the file is read once at startup.
+
+## Tests
+
+```bash
+./run_tests.sh
+```
+
+That runs the backend, mobile and client suites. It ends with `All Automated Test Suites Passed Successfully!` when everything is green. GitHub Actions runs the same three suites on pull requests and on master.
+
+## Limits
+
+- No authentication. Run it on a private network.
+- Push delivery needs Google Play services on the phone.
+- The backend never rings the phone. The phone holds the alarm, so a remote change lands when the push arrives or on the next sync. If the phone is offline when you dismiss, the report is queued and delivered later, and a missed record repairs itself then.

@@ -1939,9 +1939,23 @@
 
     // Audio preview player
     const audioEl = document.getElementById('audio-preview');
-    document.getElementById('btn-preview-sound').addEventListener('click', () => {
+    const PLAY_ICON = '<svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>';
+    const PAUSE_ICON = '<svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>';
+    const previewBtn = document.getElementById('btn-preview-sound');
+
+    // Changing the tone while a preview runs must not leave the button stuck on
+    // pause, or the next press pauses a sound you can no longer hear.
+    document.getElementById('settings-sound-select').addEventListener('change', () => {
+      if (!isPreviewPlaying) return;
+      audioEl.pause();
+      audioEl.currentTime = 0;
+      isPreviewPlaying = false;
+      previewBtn.innerHTML = PLAY_ICON;
+    });
+
+    previewBtn.addEventListener('click', () => {
       const sound = document.getElementById('settings-sound-select').value;
-      const btn = document.getElementById('btn-preview-sound');
+      const btn = previewBtn;
       if (isPreviewPlaying) {
         audioEl.pause();
         audioEl.currentTime = 0;
