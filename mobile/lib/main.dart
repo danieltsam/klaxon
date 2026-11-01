@@ -4940,14 +4940,18 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                           ),
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        alarm.soundTone,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: subtextColor,
+                      // The default tone is literally called "alarm", which says
+                      // nothing in an alarm app. Only other tones earn a label.
+                      if (alarm.soundTone != 'alarm') ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          alarm.soundTone,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: subtextColor,
+                          ),
                         ),
-                      ),
+                      ],
                       if (alarm.description.isNotEmpty) ...[
                         const SizedBox(width: 6),
                         Icon(Icons.notes_rounded, size: 12, color: subtextColor),
