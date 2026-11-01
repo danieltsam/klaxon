@@ -4682,7 +4682,12 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                       const Icon(Icons.volume_up_outlined, size: 12, color: Color(0xFF8A8F98)),
                       const SizedBox(width: 4),
                       Text(
-                        '${alarm.soundTone} • ${alarm.rampSeconds}s gentle ramp',
+                        // The default tone is called "alarm", so on the hero card
+                        // it repeated the product name. Show it only when it is
+                        // something the owner chose.
+                        alarm.soundTone == 'alarm'
+                            ? '${alarm.rampSeconds}s gentle ramp'
+                            : '${alarm.soundTone} • ${alarm.rampSeconds}s gentle ramp',
                         style: const TextStyle(fontSize: 11, color: Color(0xFF8A8F98)),
                       ),
                     ],
