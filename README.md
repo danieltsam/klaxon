@@ -20,9 +20,9 @@ The other half was where I set them. I wanted to do it from my laptop, ideally f
 
 ## Why not something else
 
-- TickTick and Todoist can attach a reminder to a task, but their alarm behaviour sits behind a paywall.
-- notify.sh and Pushover send a notification. They cannot set a real Android alarm that takes over the screen and rings until you stop it.
-- Galarm was the closest fit. It is closed source, and API access needs an enterprise plan, so I could not hook my own scripts into it.
+- [TickTick](https://ticktick.com) and [Todoist](https://todoist.com) can attach a reminder to a task, but their alarm behaviour sits behind a paywall.
+- [notify.sh](https://notify.sh) and [Pushover](https://pushover.net) send a notification. They cannot set a real Android alarm that takes over the screen and rings until you stop it.
+- [Galarm](https://www.galarmapp.com) was the closest fit. It is closed source, and API access needs an enterprise plan, so I could not hook my own scripts into it.
 
 ## What it does
 
