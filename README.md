@@ -105,3 +105,7 @@ That runs the backend, mobile and client suites. It ends with `All Automated Tes
 - No authentication. Run it on a private network.
 - Push delivery needs Google Play services on the phone.
 - The backend never rings the phone. The phone holds the alarm, so a remote change lands on the push or the next sync.
+
+## License
+
+MIT. Do what you like with it, keep the notice. See [LICENSE](LICENSE).
