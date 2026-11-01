@@ -774,6 +774,9 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                 Navigator.pop(sheetCtx);
                               }
                               await _syncWithBackend();
+                              // The first frame used local defaults because no backend was
+                              // configured yet. Once one answers, show its stored formats.
+                              await _loadSettings();
                             }
                           },
                           child: const Text(
@@ -3281,6 +3284,10 @@ class _AlarmHomeScreenState extends State<AlarmHomeScreen> with WidgetsBindingOb
                                       setState(() => _backendUrl = newUrl);
                                     }
                                     final result = await _syncWithBackend(silent: true);
+                                    if (result.success) {
+                                      // A newly configured backend may carry different formats.
+                                      await _loadSettings();
+                                    }
                                     if (bottomSheetContext.mounted) {
                                       setModalState(() {
                                         isSaving = false;
